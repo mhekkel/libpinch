@@ -1,0 +1,65 @@
+<project version="2.0">
+  <syspaths>
+    <path>.</path>
+    <path>C:\Boost\include\boost-1_48</path>
+    <path>/usr/include</path>
+  </syspaths>
+  <userpaths>
+    <path>.</path>
+    <path>src</path>
+  </userpaths>
+  <libpaths/>
+  <files>
+    <group name="assh">
+      <file>packet.cpp</file>
+    </group>
+    <group name="Sources">
+      <file>test-assh.cpp</file>
+    </group>
+  </files>
+  <targets>
+    <target kind="Executable">
+      <name>assh-test Debug</name>
+      <linkTarget>assh-test</linkTarget>
+      <compiler>/usr/bin/g++-4.5</compiler>
+      <defines>
+        <define>DEBUG</define>
+        <define>BOOST_FILESYSTEM_VERSION=2</define>
+      </defines>
+      <cflags>
+        <cflag>-O0</cflag>
+        <cflag>-pthread</cflag>
+        <cflag>-gdwarf-2</cflag>
+        <cflag>-std=c++0x</cflag>
+      </cflags>
+      <ldflags>
+        <ldflag>-static-libgcc</ldflag>
+        <ldflag>-pthread</ldflag>
+      </ldflags>
+      <warnings>
+        <warning>all</warning>
+        <warning>no-deprecated</warning>
+      </warnings>
+    </target>
+    <target kind="Executable">
+      <name>assh-test Release</name>
+      <linkTarget>assh-test</linkTarget>
+      <compiler>/usr/bin/c++</compiler>
+      <defines>
+        <define>NDEBUG</define>
+      </defines>
+      <cflags>
+        <cflag>-gdwarf-2</cflag>
+        <cflag>-O3</cflag>
+      </cflags>
+      <ldflags>
+        <ldflag>-static-libgcc</ldflag>
+        <ldflag>-pthread</ldflag>
+      </ldflags>
+      <warnings>
+        <warning>all</warning>
+        <warning>no-deprecated</warning>
+      </warnings>
+    </target>
+  </targets>
+</project>
