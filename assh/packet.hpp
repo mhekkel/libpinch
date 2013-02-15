@@ -9,11 +9,18 @@
 
 #include <vector>
 
+#include <boost/static_assert.hpp>
 #include <boost/asio.hpp>
+#include <boost/type_traits/is_integral.hpp>
+
 #include <cryptopp/integer.h>
 
 namespace assh
 {
+	
+class packet_exception : public std::exception
+{
+};
 	
 enum message_type : uint8
 {
@@ -40,34 +47,66 @@ enum message_type : uint8
 class packet
 {
   public:
+					packet(message_type message);
+					template<typename MutableBufferSequence>
+					packet(const MutableBufferSequence& buffers);
+					packet(const packet& rhs);
+					packet(packet&& rhs);
+	packet&			operator=(const packet& rhs);
+	packet&			operator=(packet&& rhs);
 	virtual			~packet();
 
 	message_type	message() const					{ return m_message; }
 					operator message_type() const	{ return m_message; }
 
 	void			to_buffers(uint32 blocksize, std::vector<boost::asio::const_buffer>& buffers);
+	
+	template<typename INT>
+	packet&			operator<<(INT v);
+	packet&			operator<<(const char* v);
+	packet&			operator<<(const std::string& v);
+	packet&			operator<<(const std::vector<byte>& v);
+	packet&			operator<<(const CryptoPP::Integer& v);
+	packet&			operator<<(const packet& v);
 
-	template<typename MutableBufferSequence>
-	static packet*	create(const MutableBufferSequence& buffers);
+	template<typename INT>
+	packet&			operator>>(INT& v);
+	packet&			operator>>(std::string& v);
+	packet&			operator>>(std::vector<byte>& v);
+	packet&			operator>>(CryptoPP::Integer& v);
+	packet&			operator>>(packet& v);
 
   protected:
-					packet(message_type message) : m_message(message), m_padding(nullptr) {}
-
-	virtual void	add_data(std::vector<boost::asio::const_buffer>& buffers) const;
 
 	message_type	m_message;
-	uint8			m_header[5];
-	uint8*			m_padding;
+	std::vector<uint8>
+					m_data;
+	uint32			m_offset;
 };
 
-class disconnect_packet : public packet
+template<typename INT>
+packet& packet::operator<<(INT v)
 {
-  public:
-					disconnect_packet()
-						: packet(disconnect) {}
-};
+	BOOST_STATIC_ASSERT(boost::is_integral<INT>::value);
+	
+	for (int i = sizeof(INT) - 1; i >= 0; --i)
+		m_data.push_back(static_cast<uint8>(v >> (i * 8)));
 
+	return *this;
+}
 
+template<typename INT>
+packet& packet::operator>>(INT& v)
+{
+	BOOST_STATIC_ASSERT(boost::is_integral<INT>::value);
+	
+	if (m_offset + sizeof(INT) > m_data.size())
+		throw packet_exception();
+	
+	for (int i = sizeof(INT) - 1; i >= 0; --i)
+		v = v << 8 | m_data[m_offset++];
 
+	return *this;
+}
 
 }
