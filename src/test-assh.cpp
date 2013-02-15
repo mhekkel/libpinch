@@ -76,17 +76,17 @@ int main(int argc, char* const argv[])
 		
 		
 
-		c.async_connect("maarten", boost::bind(foo, _1));
+		c.async_connect("maarten", [](const boost::system::error_code& ec)
+		{
+			if (ec)
+				cout << ec << endl;
+			else
+				cout << "Yeah!" << endl;	
+		});
+
 
 		io_service.run();
 		
-		//[](const boost::system::error_code& ec)
-		//{
-		//	if (ec)
-		//		cout << ec << endl;
-		//	else
-		//		cout << "Yeah!" << endl;	
-		//});
 		
 	}
 	catch (exception& e)
