@@ -1,9 +1,13 @@
+#include <assh/config.hpp>
+
 #include <iostream>
 
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
+#include <boost/bind.hpp>
 
-#include <assh/packet.hpp>
+#include <assh/connection.hpp>
+#include <assh/debug.hpp>
 
 #if defined(_MSC_VER)
 //#pragma comment (lib, "libzeep")
@@ -11,72 +15,9 @@
 #pragma comment (lib, "cryptlib")
 #endif
 
-
 using namespace std;
 
-// hex dump the packet
-ostream& operator<<(ostream& os, vector<boost::asio::const_buffer>& b)
-{
-	size_t size = boost::asio::buffer_size(b);
-	os << "dumping buffer of " << size << " bytes" << endl;
-
-	const char kHex[] = "0123456789abcdef";
-	char s[] = "xxxxxxxx  cccc cccc cccc cccc  cccc cccc cccc cccc  |................|";
-	const int kHexOffset[] = { 10, 12, 15, 17, 20, 22, 25, 27, 31, 33, 36, 38, 41, 43, 46, 48 };
-	const int kAsciiOffset = 53;
-	
-	uint32 offset = 0;
-	
-	typedef vector<boost::asio::const_buffer> buffers_type;
-	typedef boost::asio::buffers_iterator<buffers_type, uint8> buffer_iterator;
-	buffer_iterator bi(buffer_iterator::begin(b));
-	buffer_iterator ei(buffer_iterator::end(b));
-	
-	while (bi != ei)
-	{
-		size_t rr = ei - bi;
-		if (rr > 16)
-			rr = 16;
-		buffer_iterator e2 = bi + rr;
-		
-		char* t = s + 7;
-		long o = offset;
-		
-		while (t >= s)
-		{
-			*t-- = kHex[o % 16];
-			o /= 16;
-		}
-		
-		for (int i = 0; i < rr; ++i)
-		{
-			uint8 byte = *(bi + i);
-			
-			s[kHexOffset[i] + 0] = kHex[byte >> 4];
-			s[kHexOffset[i] + 1] = kHex[byte & 0x0f];
-			if (byte < 128 and not iscntrl(byte) and isprint(byte))
-				s[kAsciiOffset + i] = byte;
-			else
-				s[kAsciiOffset + i] = '.';
-		}
-		
-		for (int i = rr; i < 16; ++i)
-		{
-			s[kHexOffset[i] + 0] = ' ';
-			s[kHexOffset[i] + 1] = ' ';
-			s[kAsciiOffset + i] = ' ';
-		}
-		
-		os << s << endl;
-		
-		offset += rr;
-		bi += rr;
-	}
-
-	return os;
-}
-
-int main()
+void test_packet()
 {
 	assh::packet p(assh::userauth_request);
 	p << "maarten" << "" << "password" << (uint8)1 << (uint16)2 << (uint32)3 << (uint64)4;
@@ -102,6 +43,56 @@ int main()
 		 << i2 << endl
 		 << i3 << endl
 		 << i4 << endl;
+}
+
+void foo(const boost::system::error_code& ec)
+{
+	if (ec)
+		cout << ec << endl;
+	else
+		cout << "Yeah!" << endl;
+}
+
+int main(int argc, char* const argv[])
+{
+	try
+	{
+		if (argc != 3)
+		{
+			cerr << "usage: test <host> <port>" << endl;
+			return 1;
+		}
+		
+		boost::asio::io_service io_service;
+	
+		boost::asio::ip::tcp::resolver resolver(io_service);
+		boost::asio::ip::tcp::resolver::query query(argv[1], argv[2]);
+		boost::asio::ip::tcp::resolver::iterator iterator = resolver.resolve(query);
+		
+		boost::asio::ip::tcp::socket socket(io_service);
+		boost::asio::connect(socket, iterator);
+		
+		assh::connection c(socket);
+		
+		
+
+		c.async_connect("maarten", boost::bind(foo, _1));
+
+		io_service.run();
+		
+		//[](const boost::system::error_code& ec)
+		//{
+		//	if (ec)
+		//		cout << ec << endl;
+		//	else
+		//		cout << "Yeah!" << endl;	
+		//});
+		
+	}
+	catch (exception& e)
+	{
+		cerr << "exception: " << e.what() << endl;
+	}
 
 	return 0;
 }
