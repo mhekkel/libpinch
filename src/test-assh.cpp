@@ -17,33 +17,33 @@
 
 using namespace std;
 
-void test_packet()
-{
-	assh::packet p(assh::userauth_request);
-	p << "maarten" << "" << "password" << (uint8)1 << (uint16)2 << (uint32)3 << (uint64)4;
-	
-	vector<boost::asio::const_buffer> buffers;
-	
-	p.to_buffers(8, buffers);
-
-	cout << buffers << endl;
-
-	string s1, s2, s3;
-	uint8 i1;
-	uint16 i2;
-	uint32 i3;
-	uint64 i4;
-	
-	p >> s1 >> s2 >> s3 >> i1 >> i2 >> i3 >> i4;
-	
-	cout << s1 << endl
-		 << s2 << endl
-		 << s3 << endl
-		 << int(i1) << endl
-		 << i2 << endl
-		 << i3 << endl
-		 << i4 << endl;
-}
+//void test_packet()
+//{
+//	assh::opacket p(assh::userauth_request);
+//	p << "maarten" << "" << "password" << (uint8)1 << (uint16)2 << (uint32)3 << (uint64)4;
+//	
+//	vector<boost::asio::const_buffer> buffers;
+//	
+//	p.to_buffers(8, buffers);
+//
+//	cout << buffers << endl;
+//
+//	string s1, s2, s3;
+//	uint8 i1;
+//	uint16 i2;
+//	uint32 i3;
+//	uint64 i4;
+//	
+//	p >> s1 >> s2 >> s3 >> i1 >> i2 >> i3 >> i4;
+//	
+//	cout << s1 << endl
+//		 << s2 << endl
+//		 << s3 << endl
+//		 << int(i1) << endl
+//		 << i2 << endl
+//		 << i3 << endl
+//		 << i4 << endl;
+//}
 
 void foo(const boost::system::error_code& ec)
 {

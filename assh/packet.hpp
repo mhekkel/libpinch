@@ -44,48 +44,74 @@ enum message_type : uint8
 	channel_failure,
 };
 
-class packet
+class opacket
 {
   public:
-					packet(message_type message);
-					template<typename MutableBufferSequence>
-					packet(const MutableBufferSequence& buffers);
-					packet(const packet& rhs);
-					packet(packet&& rhs);
-	packet&			operator=(const packet& rhs);
-	packet&			operator=(packet&& rhs);
-	virtual			~packet();
+					opacket();
+					opacket(message_type message);
+					opacket(const opacket& rhs);
+					opacket(opacket&& rhs);
+	opacket&		operator=(const opacket& rhs);
+	opacket&		operator=(opacket&& rhs);
 
-	message_type	message() const					{ return m_message; }
-					operator message_type() const	{ return m_message; }
-
-	void			to_buffers(uint32 blocksize, std::vector<boost::asio::const_buffer>& buffers);
+	void			write(std::ostream& os, int blocksize) const;
 	
-	template<typename INT>
-	packet&			operator<<(INT v);
-	packet&			operator<<(const char* v);
-	packet&			operator<<(const std::string& v);
-	packet&			operator<<(const std::vector<byte>& v);
-	packet&			operator<<(const CryptoPP::Integer& v);
-	packet&			operator<<(const packet& v);
+					operator std::vector<uint8>() const	{ return m_data; }
 
 	template<typename INT>
-	packet&			operator>>(INT& v);
-	packet&			operator>>(std::string& v);
-	packet&			operator>>(std::vector<byte>& v);
-	packet&			operator>>(CryptoPP::Integer& v);
-	packet&			operator>>(packet& v);
+	opacket&		operator<<(INT v);
+	opacket&		operator<<(const char* v);
+	opacket&		operator<<(const std::string& v);
+	opacket&		operator<<(const std::vector<std::string>& v);
+	opacket&		operator<<(const char* v[]);
+	opacket&		operator<<(const std::vector<byte>& v);
+	opacket&		operator<<(const CryptoPP::Integer& v);
+	opacket&		operator<<(const opacket& v);
+	
+	std::vector<uint8>
+					hash() const;
 
   protected:
+	std::vector<uint8>	m_data;
+};
 
+class ipacket
+{
+  public:
+					ipacket();
+					ipacket(const ipacket& rhs);
+					ipacket(ipacket&& rhs);
+	ipacket&		operator=(const ipacket& rhs);
+	ipacket&		operator=(ipacket&& rhs);
+
+	bool			full();
+	void			clear();
+	void			append(const std::vector<char>& block);
+
+	message_type	message() const						{ return m_message; }
+					operator message_type() const		{ return m_message; }
+
+					operator std::vector<uint8>() const	{ return m_data; }
+
+	void			skip(uint32 bytes)					{ m_offset += bytes; }
+
+	template<typename INT>
+	ipacket&		operator>>(INT& v);
+	ipacket&		operator>>(std::string& v);
+	ipacket&		operator>>(std::vector<std::string>& v);
+	ipacket&		operator>>(std::vector<byte>& v);
+	ipacket&		operator>>(CryptoPP::Integer& v);
+	ipacket&		operator>>(ipacket& v);
+
+  protected:
 	message_type	m_message;
 	std::vector<uint8>
 					m_data;
-	uint32			m_offset;
+	uint32			m_offset, m_length;
 };
 
 template<typename INT>
-packet& packet::operator<<(INT v)
+opacket& opacket::operator<<(INT v)
 {
 	BOOST_STATIC_ASSERT(boost::is_integral<INT>::value);
 	
@@ -96,7 +122,7 @@ packet& packet::operator<<(INT v)
 }
 
 template<typename INT>
-packet& packet::operator>>(INT& v)
+ipacket& ipacket::operator>>(INT& v)
 {
 	BOOST_STATIC_ASSERT(boost::is_integral<INT>::value);
 	
