@@ -238,8 +238,23 @@ ipacket& ipacket::operator>>(CryptoPP::Integer& v)
 	if (l > m_data.size())
 		throw packet_exception();
 
-	v.Decode(&m_data[0], l, CryptoPP::Integer::SIGNED);
-	m_data.erase(m_data.begin(), m_data.begin() + l);
+	v.Decode(&m_data[m_offset], l, CryptoPP::Integer::SIGNED);
+	m_offset += l;
+
+	return *this;
+}
+
+ipacket& ipacket::operator>>(ipacket& v)
+{
+	uint32 l;
+	operator>>(l);
+	
+	if (l > m_data.size())
+		throw packet_exception();
+
+	v.m_data.assign(m_data.begin() + m_offset, m_data.begin() + m_offset + l);
+	m_offset += l;
+
 	return *this;
 }
 

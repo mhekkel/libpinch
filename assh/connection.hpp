@@ -13,10 +13,21 @@
 #include <boost/random/uniform_int_distribution.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 
+#include <cryptopp/gfpcrypt.h>
+#include <cryptopp/rsa.h>
 #include <cryptopp/osrng.h>
+#include <cryptopp/aes.h>
+#include <cryptopp/des.h>
+#define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
+#include <cryptopp/md5.h>
+#include <cryptopp/blowfish.h>
+#include <cryptopp/filters.h>
+#include <cryptopp/files.h>
+#include <cryptopp/factory.h>
 
 #include <assh/packet.hpp>
 #include <assh/error.hpp>
+#include <assh/hash.hpp>
 
 namespace assh
 {
@@ -31,6 +42,8 @@ namespace ba = boost::algorithm;
 //	kMacAlgorithms = { "hmac-sha1", "hmac-md5" },
 //	kUseCompressionAlgorithms = { "zlib@openssh.com", "zlib", "none" },
 //	kDontUseCompressionAlgorithms = { "none", "zlib@openssh.com", "zlib" };
+
+const std::string kSSHVersionString("SSH-2.0-libassh");
 
 const char* kKeyExchangeAlgorithms[] = { "diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1", nullptr };
 const char* kServerHostKeyAlgorithms[] = { "ssh-rsa", "ssh-dss", nullptr };
@@ -133,10 +146,10 @@ class basic_connection
 										{
 											m_connection.m_connected = true;
 
-											const char kVersion[] = "SSH-2.0-libassh\r\n";
+											static const std::string versionstring = kSSHVersionString + "\r\n";
 
 											boost::asio::async_write(m_connection.m_socket,
-												boost::asio::const_buffers_1(kVersion, std::strlen(kVersion)),
+												boost::asio::const_buffers_1(versionstring.c_str(), versionstring.length()),
 												handshake<Handler>(*this, request_version));
 											break;
 										}
@@ -262,7 +275,7 @@ class basic_connection
 						return out;
 					}
 
-	opacket			process_kexdhreply(const ipacket& in, boost::system::error_code& ec)
+	opacket			process_kexdhreply(ipacket& in, boost::system::error_code& ec)
 					{
 						ipacket hostkey, signature;
 						CryptoPP::Integer f;
@@ -279,18 +292,21 @@ class basic_connection
 						else
 							K = CryptoPP::a_exp_b_mod_c(f, m_x, p2);
 					
-						opacket h_test;
-						h_test << kSSHVersionString << m_host_version
-							   << m_my_payload << m_host_payload
-							   << hostkey
-							   << m_e << f << K;
-					
-						std::vector<byte> H(h_test.hash());
+						std::vector<uint8> H = hash<CryptoPP::SHA1>()
+							.update(kSSHVersionString)
+							.update(m_host_version)
+							.update(m_my_payload)
+							.update(m_host_payload)
+							.update(hostkey)
+							.update(m_e)
+							.update(f)
+							.update(K)
+							.final();
 					
 						if (m_session_id.empty())
 							m_session_id = H;
 					
-						unique_ptr<PK_Verifier> h_key;
+						std::unique_ptr<CryptoPP::PK_Verifier> h_key;
 					
 						std::string pk_type;
 						ipacket pk_rs;
@@ -307,48 +323,69 @@ class basic_connection
 							CryptoPP::Integer h_p, h_q, h_g, h_y;
 							hostkey >> h_p >> h_q >> h_g >> h_y;
 					
-							h_key.reset(new GDSA<SHA1>::Verifier(h_p, h_q, h_g, h_y));
+							h_key.reset(new CryptoPP::GDSA<CryptoPP::SHA1>::Verifier(h_p, h_q, h_g, h_y));
 						}
 						else if (h_pk_type == "ssh-rsa")
 						{
 							CryptoPP::Integer h_e, h_n;
 							hostkey >> h_e >> h_n;
 					
-							h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
+							h_key.reset(new CryptoPP::RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
 						}
 					
-						if (pk_type != h_pk_type or not h_key->VerifyMessage(&H[0], dLen, pk_rs.peek(), pk_rs.size()))
+						const std::vector<uint8>& pk_rs_d(pk_rs);
+						if (pk_type != h_pk_type or not h_key->VerifyMessage(&H[0], H.size(), &pk_rs_d[0], pk_rs_d.size()))
 							ec = error::make_error_code(error::host_key_verification_failed);
 					
 						int keyLen = 16;
 					
-						if (keyLen < 20 and choose_protocol(mMACAlgC2S, kMacAlgorithms) == "hmac-sha1")
+						if (keyLen < 20 and choose_protocol(m_MAC_alg_c2s, kMacAlgorithms) == "hmac-sha1")
 							keyLen = 20;
 					
-						if (keyLen < 20 and choose_protocol(mMACAlgS2C, kMacAlgorithms) == "hmac-sha1")
+						if (keyLen < 20 and choose_protocol(m_MAC_alg_s2c, kMacAlgorithms) == "hmac-sha1")
 							keyLen = 20;
 					
-						if (keyLen < 24 and choose_protocol(mEncryptionAlgC2S, kEncryptionAlgorithms) == "3des-cbc")
+						if (keyLen < 24 and choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms) == "3des-cbc")
 							keyLen = 24;
 					
-						if (keyLen < 24 and choose_protocol(mEncryptionAlgS2C, kEncryptionAlgorithms) == "3des-cbc")
+						if (keyLen < 24 and choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms) == "3des-cbc")
 							keyLen = 24;
 					
-						if (keyLen < 24 and ba::starts_with(choose_protocol(mEncryptionAlgC2S, kEncryptionAlgorithms), "aes192-"))
+						if (keyLen < 24 and ba::starts_with(choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms), "aes192-"))
 							keyLen = 24;
 					
-						if (keyLen < 24 and ba::starts_with(choose_protocol(mEncryptionAlgS2C, kEncryptionAlgorithms), "aes192-"))
+						if (keyLen < 24 and ba::starts_with(choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms), "aes192-"))
 							keyLen = 24;
 					
-						if (keyLen < 32 and ba::starts_with(choose_protocol(mEncryptionAlgC2S, kEncryptionAlgorithms), "aes256-"))
+						if (keyLen < 32 and ba::starts_with(choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms), "aes256-"))
 							keyLen = 32;
 					
-						if (keyLen < 32 and ba::starts_with(choose_protocol(mEncryptionAlgS2C, kEncryptionAlgorithms), "aes256-"))
+						if (keyLen < 32 and ba::starts_with(choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms), "aes256-"))
 							keyLen = 32;
 					
+						// derive the keys
 						for (int i = 0; i < 6; ++i)
-							derivekey(K, &H[0], i, keyLen, m_keys[i]);
-						
+						{
+							std::vector<uint8> key = hash<CryptoPP::SHA1>()
+								.update(K)
+								.update(H)
+								.update('A' + i)
+								.update(m_session_id)
+								.final();
+							
+							for (int k = 20; k < keyLen; k += 20)
+							{
+								std::vector<uint8> k2 = hash<CryptoPP::SHA1>()
+									.update(K)
+									.update(H)
+									.update(key)
+									.final();
+								key.insert(key.end(), k2.begin(), k2.end());
+							}
+							
+							m_keys[i] = key;
+						}
+
 						return opacket(newkeys);
 					}
 
@@ -453,7 +490,7 @@ class basic_connection
 
 							//if (m_decryptor_cypher)
 							//{
-					  //  		std::vector<byte> data(blockSize);
+					  //  		std::vector<uint8> data(blockSize);
 					  //  		m_decryptor_cypher->ProcessData(&data[0], &b[0], blockSize);    			
 				   // 			std::swap(data, block);
 							//}
@@ -469,12 +506,12 @@ class basic_connection
 //										
 //										for (int32 i = 3; i >= 0; --i)
 //										{
-//											byte b = mInSequenceNr >> (i * 8);
+//											uint8 b = mInSequenceNr >> (i * 8);
 //											mVerifier->Update(&b, 1);
 //										}
 //										mVerifier->Update(&m_packet[0], m_packet.size());
 //										
-//										vector<byte> b2(mVerifier->DigestSize());
+//										vector<uint8> b2(mVerifier->DigestSize());
 //										in.read(reinterpret_cast<char*>(&b2[0]), mVerifier->DigestSize());
 //										
 //										if (not mVerifier->Verify(&b2[0]))
@@ -642,6 +679,7 @@ class basic_connection
 							m_lang_c2s, m_lang_s2c;
 
 	CryptoPP::Integer		m_x, m_e;
+	std::vector<uint8>		m_keys[6];
 	
 	std::deque<basic_read_handler*>
 							m_read_handlers;
