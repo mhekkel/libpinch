@@ -8,6 +8,7 @@
 #include <assh/config.hpp>
 
 #include <vector>
+#include <deque>
 
 #include <boost/static_assert.hpp>
 #include <boost/asio.hpp>
@@ -17,7 +18,10 @@
 
 namespace assh
 {
-	
+
+class ipacket;
+class opacket;
+
 class packet_exception : public std::exception
 {
 };
@@ -58,6 +62,8 @@ class opacket
 	
 					operator std::vector<uint8>() const	{ return m_data; }
 
+	bool			empty() const						{ return m_data.empty() or static_cast<message_type>(m_data[0]) == undefined; }
+
 	template<typename INT>
 	opacket&		operator<<(INT v);
 	opacket&		operator<<(const char* v);
@@ -67,6 +73,7 @@ class opacket
 	opacket&		operator<<(const std::vector<byte>& v);
 	opacket&		operator<<(const CryptoPP::Integer& v);
 	opacket&		operator<<(const opacket& v);
+	opacket&		operator<<(const ipacket& v);
 	
 	std::vector<uint8>
 					hash() const;
@@ -86,7 +93,9 @@ class ipacket
 
 	bool			full();
 	void			clear();
-	void			append(const std::vector<char>& block);
+	void			strip_padding();
+	
+	void			append(const std::vector<uint8>& block);
 
 	message_type	message() const						{ return m_message; }
 					operator message_type() const		{ return m_message; }
@@ -105,6 +114,7 @@ class ipacket
 
   protected:
 	message_type	m_message;
+	uint8			m_padding;
 	std::vector<uint8>
 					m_data;
 	uint32			m_offset, m_length;

@@ -65,4 +65,10 @@ class hash
 	HAlg				m_hash;
 };
 
+template<typename H, typename T>
+hash<H>& operator|(hash<H>& h, T t)
+{
+	return h.update(t);
+}
+
 }

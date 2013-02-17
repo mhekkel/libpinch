@@ -128,6 +128,19 @@ opacket& opacket::operator<<(const CryptoPP::Integer& v)
 	return *this;
 }
 
+opacket& opacket::operator<<(const vector<uint8>& v)
+{
+	operator<<(static_cast<uint32>(v.size()));
+	m_data.insert(m_data.end(), v.begin(), v.end());
+	return *this;
+}
+
+opacket& opacket::operator<<(const ipacket& v)
+{
+	const vector<uint8>& data(v);
+	return operator<<(data);
+}
+
 vector<uint8> opacket::hash() const
 {
 	CryptoPP::SHA1 hash;
@@ -140,6 +153,7 @@ vector<uint8> opacket::hash() const
 
 ipacket::ipacket()
 	: m_message(undefined)
+	, m_padding(0)
 	, m_offset(0)
 	, m_length(0)
 {
@@ -147,6 +161,7 @@ ipacket::ipacket()
 
 ipacket::ipacket(const ipacket& rhs)
 	: m_message(rhs.m_message)
+	, m_padding(rhs.m_padding)
 	, m_data(rhs.m_data)
 	, m_offset(rhs.m_offset)
 	, m_length(rhs.m_length)
@@ -155,11 +170,13 @@ ipacket::ipacket(const ipacket& rhs)
 
 ipacket::ipacket(ipacket&& rhs)
 	: m_message(rhs.m_message)
+	, m_padding(rhs.m_padding)
 	, m_data(move(rhs.m_data))
 	, m_offset(rhs.m_offset)
 	, m_length(rhs.m_length)
 {
 	rhs.m_message = undefined;
+	rhs.m_padding = 0;
 	rhs.m_offset = rhs.m_length = 0;
 }
 
@@ -168,6 +185,7 @@ ipacket& ipacket::operator=(ipacket&& rhs)
 	if (this != &rhs)
 	{
 		m_message = rhs.m_message;	rhs.m_message = undefined;
+		m_padding = rhs.m_padding;	rhs.m_padding = 0;
 		m_data = move(rhs.m_data);
 		m_offset = rhs.m_offset;	rhs.m_offset = 0;
 		m_length = rhs.m_length;	rhs.m_length = 0;
@@ -179,17 +197,25 @@ ipacket& ipacket::operator=(ipacket&& rhs)
 
 bool ipacket::full()
 {
-	return m_data.size() == m_length + sizeof(uint32);
+	return m_data.size() == m_length + sizeof(uint32) - 5;
 }
 
 void ipacket::clear()
 {
 	m_data.clear();
+	m_message = undefined;
+	m_padding = 0;
 	m_length = 0;
 	m_offset = 0;
 }
 
-void ipacket::append(const vector<char>& block)
+void ipacket::strip_padding()
+{
+	assert(m_padding < m_data.size());
+	m_data.erase(m_data.end() - m_padding, m_data.end());
+}
+
+void ipacket::append(const vector<uint8>& block)
 {
 	if (m_data.size() == 0)
 	{
@@ -201,11 +227,13 @@ void ipacket::append(const vector<char>& block)
 		// that's too much
 		m_data.reserve(m_length + sizeof(uint32));
 		
+		m_padding = block[4];
 		m_message = static_cast<message_type>(block[5]);
-		m_offset = 6;
+		m_offset = 1;
+		m_data.assign(block.begin() + 5, block.end());
 	}
-
-	m_data.insert(m_data.end(), block.begin(), block.end());
+	else
+		m_data.insert(m_data.end(), block.begin(), block.end());
 }
 
 ipacket& ipacket::operator>>(string& v)

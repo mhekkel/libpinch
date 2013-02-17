@@ -24,6 +24,7 @@
 #include <cryptopp/filters.h>
 #include <cryptopp/files.h>
 #include <cryptopp/factory.h>
+#include <cryptopp/modes.h>
 
 #include <assh/packet.hpp>
 #include <assh/error.hpp>
@@ -31,6 +32,8 @@
 
 namespace assh
 {
+	
+using namespace CryptoPP;
 
 namespace io = boost::iostreams;
 namespace ba = boost::algorithm;
@@ -82,7 +85,7 @@ const byte
 		0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 	};
 
-const CryptoPP::Integer
+const Integer
 	p2(k_p_2, sizeof(k_p_2)),		q2((p2 - 1) / 2),
 	p14(k_p_14, sizeof(k_p_14)),	q14((p14 - 1) / 2);
 
@@ -96,135 +99,237 @@ class basic_connection
 
 					basic_connection(socket_type& socket)
 						: m_socket(socket)
+						, m_connect_handler(nullptr)
 					{
 					}
 
 					~basic_connection()
 					{
+						delete m_connect_handler;
 					}
 
-	template<class Handler>
-	class handshake
+	struct basic_connect_handler
 	{
-	  public:
-		enum stage_type { start, request_version, received_version, sent_kexinit,
-			process_kexinit };
+		virtual void		operator()(const boost::system::error_code& ec) = 0;
+	};
 
-							handshake(basic_connection& connection, Handler&& handler, stage_type stage = start)
-								: m_connection(connection), m_handler(std::move(handler)), m_stage(stage)
-							{
-							}
-
-							handshake(const handshake& rhs, stage_type stage)
-								: m_connection(rhs.m_connection), m_handler(rhs.m_handler), m_stage(stage)
-							{
-							}
-
-							handshake(const handshake& rhs)
-								: m_connection(rhs.m_connection), m_handler(rhs.m_handler), m_stage(rhs.m_stage)
-							{
-							}
-
-		handshake&			operator=(const handshake&);
-
-							handshake(handshake&& rhs)
-								: m_connection(std::move(rhs.m_connection))
-								, m_handler(std::move(rhs.m_handler))
-								, m_stage(std::move(rhs.m_stage))
-							{
-							}
+	template<class Handler>
+	struct connect_handler : public basic_connect_handler
+	{
+							connect_handler(Handler&& handler) : m_handler(std::move(handler)) {}
+							connect_handler(connect_handler&& rhs) : m_handler(std::move(rhs.m_handler)) {}
+							connect_handler(const connect_handler&);
+		connect_handler&	operator=(const connect_handler&);
 		
-		void				operator()(const boost::system::error_code& ec, std::size_t bytes_transferred)
-							{
-								if (ec)
-									m_handler(ec);
-								else
-								{
-									switch (m_stage)
-									{
-										case start:
-										{
-											m_connection.m_connected = true;
-
-											static const std::string versionstring = kSSHVersionString + "\r\n";
-
-											boost::asio::async_write(m_connection.m_socket,
-												boost::asio::const_buffers_1(versionstring.c_str(), versionstring.length()),
-												handshake<Handler>(*this, request_version));
-											break;
-										}
-
-										case request_version:
-											boost::asio::async_read_until(
-												m_connection.m_socket, m_connection.m_response, "\n", handshake<Handler>(*this, received_version));
-											break;
-										
-										case received_version:
-										{
-											std::istream response_stream(&m_connection.m_response);
-											
-											std::getline(response_stream, m_connection.m_host_version);
-											ba::trim_right(m_connection.m_host_version);
-											
-											if (ba::starts_with(m_connection.m_host_version, "SSH-2.0"))
-												m_connection.start_keyexchange(handshake<Handler>(*this, sent_kexinit));
-											else
-												m_handler(error::make_error_code(error::protocol_version_not_supported));
-										}
-										
-										case sent_kexinit:
-										{
-											m_connection.async_read_packet(handshake<Handler>(*this, process_kexinit));
-											break;
-										}
-										
-										default:
-											break;
-									}
-								}
-							}
+		virtual void		operator()(const boost::system::error_code& ec)		{ m_handler(ec); }
 		
-		void				operator()(boost::system::error_code ec, ipacket& in)
-							{
-								if (not ec)
-								{
-									opacket out;
-									boost::system::error_code ec;
-									
-									switch (in.message())
-									{
-										case kexinit:		out = m_connection.process_kexinit(in, ec); 	break;
-										case kexdh_reply:	out = m_connection.process_kexdhreply(in, ec);	break;
-										default:			ec = error::protocol_error;						break;
-									}
-
-									if (not ec)
-										m_connection.async_send_packet(out, handshake(*this, process_kexinit));
-								}
-
-								if (ec)
-									m_handler(ec);
-							}
-
-		basic_connection&		m_connection;
-		Handler					m_handler;
-		stage_type				m_stage;
+		Handler				m_handler;
 	};
 
 	template<typename Handler>
 	void			async_connect(const std::string& user, Handler&& handler)
 					{
 					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
+					    
+					    if (m_connect_handler != nullptr)
+					    	handler(error::make_error_code(error::protocol_error));
+					    else
+					    {
+							m_authenticated = false;
+							m_auth_state = auth_state_none;
+							m_password_attempts = 0;
+							m_in_seq_nr = m_out_seq_nr = 0;
+							m_blocksize = 8;
+							
+							m_connect_handler = new connect_handler<Handler>(std::move(handler));
+							
+							static const std::string versionstring = kSSHVersionString + "\r\n";
 
-						m_connected = m_authenticated = false;
-						m_auth_state = auth_state_none;
-						m_password_attempts = 0;
-						m_in_seq_nr = m_out_seq_nr = 0;
-						m_blocksize = 8;
-						
-						handshake<Handler>(*this, std::move(handler))(boost::system::error_code(), 0);
+							boost::asio::async_write(m_socket,
+								boost::asio::const_buffers_1(versionstring.c_str(), versionstring.length()),
+								boost::bind(&basic_connection::handle_protocol_version_request, this, boost::asio::placeholders::error));
+					    }
+					}
+
+	void			handle_protocol_version_request(const boost::system::error_code& ec)
+					{
+						if (ec)
+							(*m_connect_handler)(ec);
+						else
+							boost::asio::async_read_until(m_socket, m_response, "\n",
+								boost::bind(&basic_connection::handle_protocol_version_response, this, boost::asio::placeholders::error));
+					}
+
+	void			handle_protocol_version_response(const boost::system::error_code& ec)
+					{
+						if (ec)
+							(*m_connect_handler)(ec);
+						else
+						{
+							std::istream response_stream(&m_response);
+							
+							std::getline(response_stream, m_host_version);
+							ba::trim_right(m_host_version);
+							
+							if (ba::starts_with(m_host_version, "SSH-2.0"))
+							{
+								opacket out(kexinit);
+								
+								boost::random::uniform_int_distribution<uint8> rb;
+								for (uint32 i = 0; i < 16; ++i)
+									out << rb(m_rng);
+								
+								string compress = "none";	// "zlib@openssh.com,zlib,none"
+		
+								out << kKeyExchangeAlgorithms
+									<< kServerHostKeyAlgorithms
+									<< kEncryptionAlgorithms
+									<< kEncryptionAlgorithms
+									<< kMacAlgorithms
+									<< kMacAlgorithms
+									<< compress
+									<< compress
+									<< ""
+									<< ""
+									<< false
+									<< uint32(0);
+								
+								async_send_packet(out, boost::bind(&basic_connection::handle_kexinit_sent, this, boost::asio::placeholders::error));
+								
+								m_my_payload = out;
+								
+								boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(8),
+									boost::bind(&basic_connection::received_data, this, boost::asio::placeholders::error));
+							}
+							else
+								(*m_connect_handler)(error::make_error_code(error::protocol_version_not_supported));
+						}
+					}
+
+	void			handle_kexinit_sent(const boost::system::error_code& ec)
+					{
+						if (ec)
+							(*m_connect_handler)(ec);
 					}
 	
+//	template<typename Handler>
+//	struct read_op
+//	{
+//
+//
+//		void		operator()(const boost::system::error_code& ec)
+//					{
+//						if (ec)
+//							m_handler(ec);
+//						else
+//						{
+//							
+//						}
+//					}
+//
+//		Handler		m_handler;
+//	};
+
+	void			received_data(const boost::system::error_code& ec)
+					{
+						if (ec)
+						{
+							full_stop(ec);
+							return;
+						}
+						
+						while (m_response.size() >= m_blocksize)
+						{
+							std::vector<uint8> block(m_blocksize);
+							m_response.sgetn(reinterpret_cast<char*>(&block[0]), m_blocksize);
+
+							if (m_decryptor_cipher)
+							{
+								std::vector<uint8> data(m_blocksize);
+								m_decryptor->ProcessData(&data[0], &block[0], m_blocksize);    			
+								std::swap(data, block);
+							}
+
+							m_packet.append(block);
+
+							if (m_packet.full())
+							{
+								m_packet.strip_padding();
+
+//									if (mVerifier)
+//									{
+//										if (mResponse.size() < mVerifier->DigestSize())
+//											break;
+//										
+//										for (int32 i = 3; i >= 0; --i)
+//										{
+//											uint8 b = mInSequenceNr >> (i * 8);
+//											mVerifier->Update(&b, 1);
+//										}
+//										mVerifier->Update(&m_packet[0], m_packet.size());
+//										
+//										vector<uint8> b2(mVerifier->DigestSize());
+//										in.read(reinterpret_cast<char*>(&b2[0]), mVerifier->DigestSize());
+//										
+//										if (not mVerifier->Verify(&b2[0]))
+//											Error(error::make_error_code(error::mac_error));
+//									}
+								
+								process_packet(m_packet);
+
+								m_packet.clear();
+								++m_in_seq_nr;
+							}
+						}
+						
+						uint32 at_least = m_blocksize;
+						if (m_response.size() >= m_blocksize)
+						{
+							// if we arrive here, we might have read a block, but not the digest?
+							// call readsome with 0 as at-least, that will return something we hope.
+							at_least = 1;
+						}
+						else
+							at_least -= m_response.size();
+
+						boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
+							boost::bind(&basic_connection::received_data, this, boost::asio::placeholders::error));
+					}
+
+	void			process_packet(ipacket& in)
+					{
+						opacket out;
+						boost::system::error_code ec;
+						
+						switch ((message_type)m_packet)
+						{
+							case kexinit:		out = process_kexinit(in, ec); 	break;
+							case kexdh_reply:	out = process_kexdhreply(in, ec); break;
+							case newkeys:		out = process_newkeys(in, ec);	break;
+							default:
+								if (not m_read_handlers.empty())
+								{
+									basic_read_handler* handler = m_read_handlers.front();
+									m_read_handlers.pop_front();
+									
+									handler->receive_and_post(std::move(m_packet), m_socket.get_io_service());
+
+									delete handler;
+								}
+								break;
+						}
+						
+						if (ec and m_connect_handler)
+							(*m_connect_handler)(ec);
+						
+						if (not out.empty())
+							async_send_packet(out, [this](const boost::system::error_code& ec)
+								{
+									if (ec and m_connect_handler)
+										(*m_connect_handler)(ec);
+								});
+					}
+
 	opacket			process_kexinit(ipacket& in, boost::system::error_code& ec)
 					{
 						// capture the packet contents for the host payload
@@ -247,14 +352,14 @@ class basic_connection
 					
 						m_e = 0;
 
-						CryptoPP::AutoSeededRandomPool	rng;
+						AutoSeededRandomPool	rng;
 					
 						if (choose_protocol(m_kex_alg, kKeyExchangeAlgorithms) == "diffie-hellman-group14-sha1")
 						{
 							do
 							{
 								m_x.Randomize(rng, 2, q14 - 1);
-								m_e = CryptoPP::a_exp_b_mod_c(2, m_x, p14);
+								m_e = a_exp_b_mod_c(2, m_x, p14);
 							}
 							while (m_e < 1 or m_e >= p14 - 1);
 						}
@@ -263,7 +368,7 @@ class basic_connection
 							do
 							{
 								m_x.Randomize(rng, 2, q2 - 1);
-								m_e = CryptoPP::a_exp_b_mod_c(2, m_x, p2);
+								m_e = a_exp_b_mod_c(2, m_x, p2);
 							}
 							while (m_e < 1 or m_e >= p2 - 1);
 						}
@@ -278,7 +383,7 @@ class basic_connection
 	opacket			process_kexdhreply(ipacket& in, boost::system::error_code& ec)
 					{
 						ipacket hostkey, signature;
-						CryptoPP::Integer f;
+						Integer f;
 					
 						in >> hostkey >> f >> signature;
 						
@@ -286,27 +391,20 @@ class basic_connection
 //						if (mPortNumber != 22)
 //							hostName = hostName + ':' + boost::lexical_cast<string>(mPortNumber);
 					
-						CryptoPP::Integer K;
+						Integer K;
 						if (choose_protocol(m_kex_alg, kKeyExchangeAlgorithms) == "diffie-hellman-group14-sha1")
-							K = CryptoPP::a_exp_b_mod_c(f, m_x, p14);
+							K = a_exp_b_mod_c(f, m_x, p14);
 						else
-							K = CryptoPP::a_exp_b_mod_c(f, m_x, p2);
+							K = a_exp_b_mod_c(f, m_x, p2);
 					
-						std::vector<uint8> H = hash<CryptoPP::SHA1>()
-							.update(kSSHVersionString)
-							.update(m_host_version)
-							.update(m_my_payload)
-							.update(m_host_payload)
-							.update(hostkey)
-							.update(m_e)
-							.update(f)
-							.update(K)
-							.final();
+						opacket hp;
+						hp << kSSHVersionString << m_host_version << m_my_payload << m_host_payload << hostkey << m_e << f << K;
+						std::vector<uint8> H = hash<SHA1>().update(hp).final();
 					
 						if (m_session_id.empty())
 							m_session_id = H;
 					
-						std::unique_ptr<CryptoPP::PK_Verifier> h_key;
+						std::unique_ptr<PK_Verifier> h_key;
 					
 						std::string pk_type;
 						ipacket pk_rs;
@@ -320,232 +418,202 @@ class basic_connection
 					
 						if (h_pk_type == "ssh-dss")
 						{
-							CryptoPP::Integer h_p, h_q, h_g, h_y;
+							Integer h_p, h_q, h_g, h_y;
 							hostkey >> h_p >> h_q >> h_g >> h_y;
 					
-							h_key.reset(new CryptoPP::GDSA<CryptoPP::SHA1>::Verifier(h_p, h_q, h_g, h_y));
+							h_key.reset(new GDSA<SHA1>::Verifier(h_p, h_q, h_g, h_y));
 						}
 						else if (h_pk_type == "ssh-rsa")
 						{
-							CryptoPP::Integer h_e, h_n;
+							Integer h_e, h_n;
 							hostkey >> h_e >> h_n;
 					
-							h_key.reset(new CryptoPP::RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
+							h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
 						}
 					
 						const std::vector<uint8>& pk_rs_d(pk_rs);
 						if (pk_type != h_pk_type or not h_key->VerifyMessage(&H[0], H.size(), &pk_rs_d[0], pk_rs_d.size()))
 							ec = error::make_error_code(error::host_key_verification_failed);
 					
-						int keyLen = 16;
-					
-						if (keyLen < 20 and choose_protocol(m_MAC_alg_c2s, kMacAlgorithms) == "hmac-sha1")
-							keyLen = 20;
-					
-						if (keyLen < 20 and choose_protocol(m_MAC_alg_s2c, kMacAlgorithms) == "hmac-sha1")
-							keyLen = 20;
-					
-						if (keyLen < 24 and choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms) == "3des-cbc")
-							keyLen = 24;
-					
-						if (keyLen < 24 and choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms) == "3des-cbc")
-							keyLen = 24;
-					
-						if (keyLen < 24 and ba::starts_with(choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms), "aes192-"))
-							keyLen = 24;
-					
-						if (keyLen < 24 and ba::starts_with(choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms), "aes192-"))
-							keyLen = 24;
-					
-						if (keyLen < 32 and ba::starts_with(choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms), "aes256-"))
-							keyLen = 32;
-					
-						if (keyLen < 32 and ba::starts_with(choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms), "aes256-"))
-							keyLen = 32;
-					
-						// derive the keys
+						// derive the keys, 32 bytes should be enough
+						int keylen = 32;
 						for (int i = 0; i < 6; ++i)
 						{
-							std::vector<uint8> key = hash<CryptoPP::SHA1>()
-								.update(K)
-								.update(H)
-								.update('A' + i)
-								.update(m_session_id)
-								.final();
+							std::vector<uint8> key = (hash<SHA1>() | K | H | ('A' + i) | m_session_id).final();
 							
-							for (int k = 20; k < keyLen; k += 20)
+							for (int k = 20; k < keylen; k += 20)
 							{
-								std::vector<uint8> k2 = hash<CryptoPP::SHA1>()
-									.update(K)
-									.update(H)
-									.update(key)
-									.final();
+								std::vector<uint8> k2 = (hash<SHA1>() | K | H | key).final();
 								key.insert(key.end(), k2.begin(), k2.end());
 							}
 							
-							m_keys[i] = key;
+							m_keys[i].assign(key.begin(), key.begin() + keylen);
 						}
 
 						return opacket(newkeys);
 					}
-
-	template<typename Handler>
-	void			start_keyexchange(Handler&& handler)
-					{
-						opacket out(kexinit);
-						
-						boost::random::uniform_int_distribution<uint8> rb;
-						for (uint32 i = 0; i < 16; ++i)
-							out << rb(m_rng);
-						
-						string compress = "none";	// "zlib@openssh.com,zlib,none"
-
-						out << kKeyExchangeAlgorithms
-							<< kServerHostKeyAlgorithms
-							<< kEncryptionAlgorithms
-							<< kEncryptionAlgorithms
-							<< kMacAlgorithms
-							<< kMacAlgorithms
-							<< compress
-							<< compress
-							<< ""
-							<< ""
-							<< false
-							<< uint32(0);
-						
-						async_send_packet(out, std::move(handler));
-						
-						m_my_payload = out;
-
-						// start the read
-						boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(8),
-							boost::bind(&basic_connection::received_data, this, boost::asio::placeholders::error));
-					}
-
-	template<typename Handler>
-	struct write_op
-	{
-					write_op(basic_connection& connection, Handler&& hander)
-						: m_connection(connection), m_handler(std::move(hander)) {}
-					
-					write_op(basic_connection& connection, streambuf_ptr request, Handler&& hander)
-						: m_connection(connection), m_handler(std::move(hander)), m_request(request) {}
-					
-					write_op(const write_op& rhs)
-						: m_connection(rhs.m_connection), m_handler(rhs.m_handler), m_request(rhs.m_request) {}
-					
-					write_op(write_op&& rhs)
-						: m_connection(std::move(rhs.m_connection))
-						, m_handler(std::move(rhs.m_handler))
-						, m_request(std::move(rhs.m_request)) {}
-					
-		write_op&	operator=(const write_op& rhs);	
-
-		void		operator()(const boost::system::error_code& ec)
-					{
-						m_handler(ec);
-					}
-
-		void		operator()(const boost::system::error_code& ec, std::size_t bytes_transferred)
-					{
-						m_handler(ec, bytes_transferred);
-					}
 		
-		basic_connection&	m_connection;
-		Handler				m_handler;
-		streambuf_ptr		m_request;
-	};
-
-	template<typename Handler>
-	void			async_send_packet(const opacket& p, Handler&& handler)
+	opacket			process_newkeys(ipacket& in, boost::system::error_code& ec)
 					{
-						streambuf_ptr request(new boost::asio::streambuf);
+						std::string protocol;
 						
-						//io::filtering_stream<io::output> out;
-						////if (m_compressor)
-						////	out.push(*m_compressor);
-						////if (m_encryptor_cypher)
-						////	out.push(encrypt_op(m_out_seq_nr, m_encryptor_cypher, m_signer));
-						//out.push(*request);
-						std::ostream out(request.get());
-						
-						p.write(out, m_blocksize);
-						
-						++m_out_seq_nr;
-						boost::asio::async_write(m_socket, *request, write_op<Handler>(*this, request, std::move(handler)));
-					}
-
-	void			received_data(const boost::system::error_code& ec)
-					{
-						if (ec)
+						do
 						{
-							full_stop(ec);
-							return;
+							// Client to server encryption
+							protocol = choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms);
+							
+							if (protocol == "3des-cbc")
+								m_encryptor_cipher.reset(new DES_EDE3::Encryption(&m_keys[2][0]));
+							else if (protocol == "blowfish-cbc")
+								m_encryptor_cipher.reset(new BlowfishEncryption(&m_keys[2][0]));
+							else if (protocol == "aes128-cbc" or protocol == "aes128-ctr")
+								m_encryptor_cipher.reset(new AESEncryption(&m_keys[2][0], 16));
+							else if (protocol == "aes192-cbc" or protocol == "aes192-ctr")
+								m_encryptor_cipher.reset(new AESEncryption(&m_keys[2][0], 24));
+							else if (protocol == "aes256-cbc" or protocol == "aes256-ctr")
+								m_encryptor_cipher.reset(new AESEncryption(&m_keys[2][0], 32));
+							else
+								break;
+						
+							if (ba::ends_with(protocol, "-cbc"))
+								m_encryptor.reset(
+									new CBC_Mode_ExternalCipher::Encryption(
+										*m_encryptor_cipher.get(), &m_keys[0][0]));
+							else
+								m_encryptor.reset(
+									new CTR_Mode_ExternalCipher::Encryption(
+										*m_encryptor_cipher.get(), &m_keys[0][0]));
+						
+							// Server to client encryption
+							protocol = choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms);
+							
+							if (ba::ends_with(protocol, "-ctr"))
+							{
+								if (protocol == "aes128-ctr")
+									m_decryptor_cipher.reset(new AESEncryption(&m_keys[3][0], 16));
+								else if (protocol == "aes192-ctr")
+									m_decryptor_cipher.reset(new AESEncryption(&m_keys[3][0], 24));
+								else if (protocol == "aes256-ctr")
+									m_decryptor_cipher.reset(new AESEncryption(&m_keys[3][0], 32));
+								else
+									break;
+								
+								m_decryptor.reset(
+									new CTR_Mode_ExternalCipher::Decryption(
+										*m_decryptor_cipher.get(), &m_keys[1][0]));
+							}
+							else
+							{
+								if (protocol == "3des-cbc")
+									m_decryptor_cipher.reset(new DES_EDE3_Decryption(&m_keys[3][0]));
+								else if (protocol == "blowfish-cbc")
+									m_decryptor_cipher.reset(new BlowfishDecryption(&m_keys[3][0]));
+								else if (protocol == "aes128-cbc" or protocol == "aes128-ctr")
+									m_decryptor_cipher.reset(new AESDecryption(&m_keys[3][0], 16));
+								else if (protocol == "aes192-cbc" or protocol == "aes192-ctr")
+									m_decryptor_cipher.reset(new AESDecryption(&m_keys[3][0], 24));
+								else if (protocol == "aes256-cbc" or protocol == "aes256-ctr")
+									m_decryptor_cipher.reset(new AESDecryption(&m_keys[3][0], 32));
+								else
+									break;
+							
+								m_decryptor.reset(
+									new CBC_Mode_ExternalCipher::Decryption(
+										*m_decryptor_cipher.get(), &m_keys[1][0]));
+							}
+						
+							protocol = choose_protocol(m_MAC_alg_c2s, kMacAlgorithms);
+							if (protocol == "hmac-sha1")
+								m_signer.reset(
+									new HMAC<SHA1>(&m_keys[4][0], 20));
+							else
+								m_signer.reset(
+									new HMAC<Weak::MD5>(&m_keys[4][0]));
+						
+							protocol = choose_protocol(m_MAC_alg_s2c, kMacAlgorithms);
+							if (protocol == "hmac-sha1")
+								m_verifier.reset(
+									new HMAC<SHA1>(&m_keys[5][0], 20));
+							else
+								m_verifier.reset(
+									new HMAC<Weak::MD5>(&m_keys[5][0]));
+						
+//							string compress;
+//							if (Preferences::GetInteger("compress-sftp", true))
+//								compress = kUseCompressionAlgorithms;
+//							else
+//								compress = kDontUseCompressionAlgorithms;
+//						
+//							if (choose_protocol(mCompressionAlgS2C, compress) == "zlib")
+//								mCompressor.reset(new MSshPacketCompressor);
+//							else
+//								mDelayedCompress = choose_protocol(mCompressionAlgS2C, compress) == "zlib@openssh.com";
+//						
+//							if (choose_protocol(mCompressionAlgC2S, compress) == "zlib")
+//								mDecompressor.reset(new MSshPacketDecompressor);
+//							else
+//								mDelayedDecompress = choose_protocol(mCompressionAlgC2S, compress) == "zlib@openssh.com";
+						}
+						while (false);
+						
+						if (m_decryptor)
+							m_blocksize = m_decryptor_cipher->BlockSize();
+						
+						opacket out(undefined);
+						
+						if (not m_authenticated)
+						{
+							out = opacket(service_request);
+							out << "ssh-userauth";
 						}
 						
-						while (m_response.size() >= m_blocksize)
+						return out;
+					}
+
+	std::string		choose_protocol(const std::vector<std::string>& server, const std::vector<std::string>& client)
+					{
+						std::vector<std::string>::iterator c, s;
+						
+						bool found = false;
+						
+						for (c = client.begin(); c != client.end() and not found; ++c)
 						{
-							std::vector<char> block(m_blocksize);
-							m_response.sgetn(&block[0], m_blocksize);
-
-							//if (m_decryptor_cypher)
-							//{
-					  //  		std::vector<uint8> data(blockSize);
-					  //  		m_decryptor_cypher->ProcessData(&data[0], &b[0], blockSize);    			
-				   // 			std::swap(data, block);
-							//}
-
-							m_packet.append(block);
-							if (m_packet.full())
+							for (s = server.begin(); s != server.end() and not found; ++s)
 							{
-
-//									if (mVerifier)
-//									{
-//										if (mResponse.size() < mVerifier->DigestSize())
-//											break;
-//										
-//										for (int32 i = 3; i >= 0; --i)
-//										{
-//											uint8 b = mInSequenceNr >> (i * 8);
-//											mVerifier->Update(&b, 1);
-//										}
-//										mVerifier->Update(&m_packet[0], m_packet.size());
-//										
-//										vector<uint8> b2(mVerifier->DigestSize());
-//										in.read(reinterpret_cast<char*>(&b2[0]), mVerifier->DigestSize());
-//										
-//										if (not mVerifier->Verify(&b2[0]))
-//											Error(error::make_error_code(error::mac_error));
-//									}
-
-								if (not m_read_handlers.empty())
+								if (*s == *c)
 								{
-									basic_read_handler* handler = m_read_handlers.front();
-									m_read_handlers.pop_front();
-									
-									handler->receive_and_post(std::move(m_packet), m_socket.get_io_service());
-
-									delete handler;
+									result = *c;
+									found = true;
 								}
-
-								m_packet.clear();
-								++m_in_seq_nr;
 							}
 						}
 						
-						uint32 at_least = m_blocksize;
-						if (m_response.size() >= m_blocksize)
-						{
-							// if we arrive here, we might have read a block, but not the digest?
-							// call readsome with 0 as at-least, that will return something we hope.
-							at_least = 1;
-						}
-						else
-							at_least -= m_response.size();
-
-						boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
-							boost::bind(&basic_connection::received_data, this, boost::asio::placeholders::error));
+						return result;
 					}
+
+	std::string		choose_protocol(const std::vector<std::string>& server, const char* client[])
+					{
+						std::vector<std::string>::const_iterator s;
+						const char** c = client;
+						
+						bool found = false;
+						string result;
+						
+						for (; *c != nullptr; ++c)
+						{
+							for (s = server.begin(); s != server.end() and not found; ++s)
+							{
+								if (*s == *c)
+								{
+									result = *s;
+									found = true;
+								}
+							}
+						}
+						
+						return result;
+					}
+
 
 	void			full_stop(const boost::system::error_code& ec)
 					{
@@ -598,59 +666,60 @@ class basic_connection
 							m_read_handlers.push_back(new handler_type(std::move(handler)));
 					}
 
-	void			process(const ipacket& p)
+	template<typename Handler>
+	struct write_op
+	{
+					write_op(basic_connection& connection, Handler&& hander)
+						: m_connection(connection), m_handler(std::move(hander)) {}
+					
+					write_op(basic_connection& connection, streambuf_ptr request, Handler&& hander)
+						: m_connection(connection), m_handler(std::move(hander)), m_request(request) {}
+					
+					write_op(const write_op& rhs)
+						: m_connection(rhs.m_connection), m_handler(rhs.m_handler), m_request(rhs.m_request) {}
+					
+					write_op(write_op&& rhs)
+						: m_connection(std::move(rhs.m_connection))
+						, m_handler(std::move(rhs.m_handler))
+						, m_request(std::move(rhs.m_request)) {}
+					
+		write_op&	operator=(const write_op& rhs);	
+
+		void		operator()(const boost::system::error_code& ec)
 					{
-						
+						m_handler(ec);
 					}
 
-	void			process_kexinit(const ipacket& p)
+		void		operator()(const boost::system::error_code& ec, std::size_t bytes_transferred)
 					{
+						m_handler(ec);
+					}
+		
+		basic_connection&	m_connection;
+		Handler				m_handler;
+		streambuf_ptr		m_request;
+	};
+
+	template<typename Handler>
+	void			async_send_packet(const opacket& p, Handler&& handler)
+					{
+						streambuf_ptr request(new boost::asio::streambuf);
+						std::ostream out(request.get());
 						
+//						io::filtering_stream<io::output> out;
+						////if (m_compressor)
+						////	out.push(*m_compressor);
+						////if (m_encryptor_cipher)
+						////	out.push(encrypt_op(m_out_seq_nr, m_encryptor_cipher, m_signer));
+//						out.push(std::ostream(request.get()));
+						
+						p.write(out, m_blocksize);
+						
+						++m_out_seq_nr;
+						boost::asio::async_write(m_socket, *request, write_op<Handler>(*this, request, std::move(handler)));
 					}
 
-	std::string		choose_protocol(const std::vector<std::string>& server, const std::vector<std::string>& client)
-					{
-						std::vector<std::string>::iterator c, s;
-						
-						bool found = false;
-						
-						for (c = client.begin(); c != client.end() and not found; ++c)
-						{
-							for (s = server.begin(); s != server.end() and not found; ++s)
-							{
-								if (*s == *c)
-								{
-									result = *c;
-									found = true;
-								}
-							}
-						}
-						
-						return result;
-					}
 
-	std::string		choose_protocol(const std::vector<std::string>& server, const char* client[])
-					{
-						std::vector<std::string>::const_iterator s;
-						const char** c = client;
-						
-						bool found = false;
-						string result;
-						
-						for (; *c != nullptr; ++c)
-						{
-							for (s = server.begin(); s != server.end() and not found; ++s)
-							{
-								if (*s == *c)
-								{
-									result = *s;
-									found = true;
-								}
-							}
-						}
-						
-						return result;
-					}
 
 	enum auth_state
 	{
@@ -661,6 +730,7 @@ class basic_connection
 	};
 
 	socket_type&			m_socket;
+	basic_connect_handler*	m_connect_handler;
 	bool					m_connected;
 	bool					m_authenticated;
 	std::vector<uint8>		m_my_payload, m_host_payload, m_session_id;
@@ -678,7 +748,16 @@ class basic_connection
 							m_compression_alg_c2s, m_compression_alg_s2c,
 							m_lang_c2s, m_lang_s2c;
 
-	CryptoPP::Integer		m_x, m_e;
+	std::unique_ptr<BlockCipher>					m_decryptor_cipher;
+	std::unique_ptr<StreamTransformation>			m_decryptor;
+	std::unique_ptr<BlockCipher>					m_encryptor_cipher;
+	std::unique_ptr<StreamTransformation>			m_encryptor;
+	std::unique_ptr<MessageAuthenticationCode>		m_signer;
+	std::unique_ptr<MessageAuthenticationCode>		m_verifier;
+	//std::unique_ptr<MSshPacketCompressor>					m_compressor;
+	//std::unique_ptr<MSshPacketDecompressor>					m_decompressor;
+
+	Integer		m_x, m_e;
 	std::vector<uint8>		m_keys[6];
 	
 	std::deque<basic_read_handler*>
