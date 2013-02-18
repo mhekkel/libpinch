@@ -72,9 +72,7 @@ int main(int argc, char* const argv[])
 		boost::asio::ip::tcp::socket socket(io_service);
 		boost::asio::connect(socket, iterator);
 		
-		assh::connection c(socket);
-		
-		
+		assh::connection c(socket, "maarten");
 
 		c.async_connect("maarten", [](const boost::system::error_code& ec)
 		{

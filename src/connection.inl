@@ -98,8 +98,9 @@ string choose_protocol(const vector<string>& server, const char* client[]);
 // --------------------------------------------------------------------
 
 template<typename SOCKET>
-basic_connection<SOCKET>::basic_connection(socket_type& socket)
+basic_connection<SOCKET>::basic_connection(socket_type& socket, const string& user)
 	: m_socket(socket)
+	, m_user(user)
 	, m_connect_handler(nullptr)
 {
 }
@@ -308,9 +309,11 @@ void basic_connection<SOCKET>::process_packet(ipacket& in)
 		case kexinit:			out = process_kexinit(in, ec); 	break;
 		case kexdh_reply:		out = process_kexdhreply(in, ec); break;
 		case newkeys:			out = process_newkeys(in, ec);	break;
+		case service_accept:	out = process_service_accept(in, ec); break;
 		case userauth_success:	out = process_userauth_success(in, ec); break;
 		case userauth_failure:	out = process_userauth_failure(in, ec); break;
 		case userauth_banner:	out = process_userauth_banner(in, ec); break;
+		case ignore:			break;
 		default:
 			if (m_authenticated and not m_read_handlers.empty())
 			{
@@ -580,20 +583,32 @@ opacket basic_connection<SOCKET>::process_newkeys(ipacket& in, boost::system::er
 }
 
 template<typename SOCKET>
+opacket basic_connection<SOCKET>::process_service_accept(ipacket& in, boost::system::error_code& ec)
+{
+	opacket out(userauth_request);
+	out << m_user << "ssh-connection" << "none";
+	return out;
+}
+
+template<typename SOCKET>
 opacket basic_connection<SOCKET>::process_userauth_success(ipacket& in, boost::system::error_code& ec)
 {
+	m_authenticated = true;
+	m_connect_handler->handle_connect(boost::system::error_code());
 	return opacket();
 }
 
 template<typename SOCKET>
 opacket basic_connection<SOCKET>::process_userauth_failure(ipacket& in, boost::system::error_code& ec)
 {
+	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user));
 	return opacket();
 }
 
 template<typename SOCKET>
 opacket basic_connection<SOCKET>::process_userauth_banner(ipacket& in, boost::system::error_code& ec)
 {
+	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user));
 	return opacket();
 }
 

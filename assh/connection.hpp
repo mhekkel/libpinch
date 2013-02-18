@@ -42,7 +42,7 @@ class basic_connection
 	typedef SOCKET									socket_type;
 	typedef std::shared_ptr<boost::asio::streambuf>	streambuf_ptr;
 
-					basic_connection(socket_type& socket);
+					basic_connection(socket_type& socket, const std::string& user);
 	virtual			~basic_connection();
 
 	struct basic_connect_handler
@@ -82,6 +82,7 @@ class basic_connection
 	opacket			process_kexinit(ipacket& in, boost::system::error_code& ec);
 	opacket			process_kexdhreply(ipacket& in, boost::system::error_code& ec);
 	opacket			process_newkeys(ipacket& in, boost::system::error_code& ec);
+	opacket			process_service_accept(ipacket& in, boost::system::error_code& ec);
 	opacket			process_userauth_success(ipacket& in, boost::system::error_code& ec);
 	opacket			process_userauth_failure(ipacket& in, boost::system::error_code& ec);
 	opacket			process_userauth_banner(ipacket& in, boost::system::error_code& ec);
@@ -189,6 +190,7 @@ class basic_connection
 	};
 
 	socket_type&				m_socket;
+	std::string					m_user;
 	basic_connect_handler*		m_connect_handler;
 	bool						m_authenticated;
 	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;
