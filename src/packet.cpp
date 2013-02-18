@@ -55,6 +55,9 @@ void opacket::write(ostream& os, int blocksize) const
 	uint32 padding_size = blocksize - (size % blocksize);
 	if (padding_size == blocksize)
 		padding_size = 0;
+
+	while (padding_size < 4)
+		padding_size += blocksize;
 	
 	r::uniform_int_distribution<uint8> rb;
 	for (uint32 i = 0; i < padding_size; ++i)
@@ -63,10 +66,10 @@ void opacket::write(ostream& os, int blocksize) const
 	header[4] = static_cast<uint8>(padding_size);
 	
 	size += padding_size - 4;
-	header[3] = static_cast<uint8>(size % 256);	size >>= 8;
-	header[2] = static_cast<uint8>(size % 256);	size >>= 8;
-	header[1] = static_cast<uint8>(size % 256);	size >>= 8;
-	header[0] = static_cast<uint8>(size % 256);
+	header[3] = static_cast<uint8>(size);	size >>= 8;
+	header[2] = static_cast<uint8>(size);	size >>= 8;
+	header[1] = static_cast<uint8>(size);	size >>= 8;
+	header[0] = static_cast<uint8>(size);
 
 	os.write(reinterpret_cast<const char*>(header), 5);
 	os.write(reinterpret_cast<const char*>(&m_data[0]), m_data.size());
@@ -198,6 +201,11 @@ ipacket& ipacket::operator=(ipacket&& rhs)
 bool ipacket::full()
 {
 	return m_data.size() == m_length + sizeof(uint32) - 5;
+}
+
+bool ipacket::empty()
+{
+	return m_message == undefined;
 }
 
 void ipacket::clear()

@@ -92,6 +92,8 @@ class ipacket
 	ipacket&		operator=(ipacket&& rhs);
 
 	bool			full();
+	bool			empty();
+
 	void			clear();
 	void			strip_padding();
 	
