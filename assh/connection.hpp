@@ -5,33 +5,14 @@
 
 #pragma once
 
-//#include <iostream>
-//
-//#include <boost/asio.hpp>
-//#include <boost/algorithm/string.hpp>
-#include <boost/random/random_device.hpp>
-//#include <boost/random/uniform_int_distribution.hpp>
-//#include <boost/iostreams/filtering_stream.hpp>
-//
-//#include <cryptopp/gfpcrypt.h>
-//#include <cryptopp/rsa.h>
-//#include <cryptopp/osrng.h>
-//#include <cryptopp/aes.h>
-//#include <cryptopp/des.h>
-//#define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
-//#include <cryptopp/md5.h>
-//#include <cryptopp/blowfish.h>
-//#include <cryptopp/filters.h>
-//#include <cryptopp/files.h>
-//#include <cryptopp/factory.h>
-//#include <cryptopp/modes.h>
-
 #include <assh/packet.hpp>
 #include <assh/error.hpp>
 #include <assh/hash.hpp>
 
 namespace assh
 {
+
+class ssh_agent;
 
 extern const std::string kSSHVersionString;
 
@@ -70,6 +51,8 @@ class basic_connection
 				    	start_handshake(new connect_handler<Handler>(move(handler)));
 					}
 
+	boost::function<bool(std::string& password)>	password_callback;
+
   protected:
 
 	void			start_handshake(basic_connect_handler* handler);
@@ -86,6 +69,7 @@ class basic_connection
 	opacket			process_userauth_success(ipacket& in, boost::system::error_code& ec);
 	opacket			process_userauth_failure(ipacket& in, boost::system::error_code& ec);
 	opacket			process_userauth_banner(ipacket& in, boost::system::error_code& ec);
+	opacket			process_userauth_info_request(ipacket& in, boost::system::error_code& ec);
 
 	void			full_stop(const boost::system::error_code& ec);
 
@@ -184,9 +168,9 @@ class basic_connection
 	enum auth_state
 	{
 		auth_state_none,
-		public_key,
-		keyboard_interactive,
-		password
+		auth_state_public_key,
+		auth_state_keyboard_interactive,
+		auth_state_password
 	};
 
 	socket_type&				m_socket;
@@ -208,7 +192,6 @@ class basic_connection
 								m_lang_c2s, m_lang_s2c;
 
 
-	boost::random::random_device							m_rng;
 	std::unique_ptr<CryptoPP::BlockCipher>					m_decryptor_cipher;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_decryptor;
 	std::unique_ptr<CryptoPP::BlockCipher>					m_encryptor_cipher;
@@ -225,7 +208,8 @@ class basic_connection
 								m_read_handlers;
 	std::string					m_host_version;
 	
-	
+	ssh_agent*					m_ssh_agent;
+	std::deque<opacket>			m_private_keys;
 
   private:
 								basic_connection(const basic_connection&);

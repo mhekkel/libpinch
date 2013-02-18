@@ -9,8 +9,6 @@
 
 #include <boost/asio.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/random/random_device.hpp>
-#include <boost/random/uniform_int_distribution.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/flush.hpp>
 
@@ -28,11 +26,11 @@
 #include <cryptopp/modes.h>
 
 #include <assh/connection.hpp>
+#include <assh/ssh_agent.hpp>
 
 using namespace std;
 using namespace CryptoPP;
 
-namespace r = boost::random;
 namespace io = boost::iostreams;
 namespace ba = boost::algorithm;
 
@@ -40,6 +38,8 @@ namespace assh
 {
 
 // --------------------------------------------------------------------
+
+AutoSeededRandomPool	rng;
 
 //const vector<string>
 //	kKeyExchangeAlgorithms = { "diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1" },
@@ -94,6 +94,7 @@ const Integer
 
 string choose_protocol(const vector<string>& server, const vector<string>& client);
 string choose_protocol(const vector<string>& server, const char* client[]);
+string choose_protocol(const vector<string>& server, const char* client);
 
 // --------------------------------------------------------------------
 
@@ -161,9 +162,8 @@ void basic_connection<SOCKET>::handle_protocol_version_response(const boost::sys
 		{
 			opacket out(kexinit);
 			
-			boost::random::uniform_int_distribution<uint8> rb;
 			for (uint32 i = 0; i < 16; ++i)
-				out << rb(m_rng);
+				out << rng.GenerateByte();
 			
 			string compress = "none";	// "zlib@openssh.com,zlib,none"
 
@@ -306,6 +306,11 @@ void basic_connection<SOCKET>::process_packet(ipacket& in)
 	
 	switch ((message_type)m_packet)
 	{
+		case disconnect:
+			if (m_connect_handler)
+				m_connect_handler->handle_connect(error::make_error_code(error::connection_lost));
+			m_socket.close();
+			break;
 		case kexinit:			out = process_kexinit(in, ec); 	break;
 		case kexdh_reply:		out = process_kexdhreply(in, ec); break;
 		case newkeys:			out = process_newkeys(in, ec);	break;
@@ -313,6 +318,8 @@ void basic_connection<SOCKET>::process_packet(ipacket& in)
 		case userauth_success:	out = process_userauth_success(in, ec); break;
 		case userauth_failure:	out = process_userauth_failure(in, ec); break;
 		case userauth_banner:	out = process_userauth_banner(in, ec); break;
+		case userauth_info_request:
+								out = process_userauth_info_request(in, ec); break;
 		case ignore:			break;
 		default:
 			if (m_authenticated and not m_read_handlers.empty())
@@ -361,8 +368,6 @@ opacket basic_connection<SOCKET>::process_kexinit(ipacket& in, boost::system::er
 		>> first_kex_packet_follows;
 
 	m_e = 0;
-
-	AutoSeededRandomPool	rng;
 
 	if (choose_protocol(m_kex_alg, kKeyExchangeAlgorithms) == "diffie-hellman-group14-sha1")
 	{
@@ -577,6 +582,15 @@ opacket basic_connection<SOCKET>::process_newkeys(ipacket& in, boost::system::er
 	{
 		out = opacket(service_request);
 		out << "ssh-userauth";
+		
+		// fetch the private keys
+		ssh_agent& agent(ssh_agent::instance());
+		for (ssh_agent::iterator pk = agent.begin(); pk != agent.end(); ++pk)
+		{
+			opacket blob;
+			blob << *pk;
+			m_private_keys.push_back(blob);
+		}
 	}
 	
 	return out;
@@ -601,8 +615,117 @@ opacket basic_connection<SOCKET>::process_userauth_success(ipacket& in, boost::s
 template<typename SOCKET>
 opacket basic_connection<SOCKET>::process_userauth_failure(ipacket& in, boost::system::error_code& ec)
 {
-	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user));
-	return opacket();
+	vector<string> s;
+	bool partial;
+	opacket out(userauth_request);
+	
+	in >> s >> partial;
+	
+	if (choose_protocol(s, "publickey") == "publickey" and not m_private_keys.empty())
+	{
+		out << m_user << "ssh-connection" << "publickey" << false
+			<< "ssh-rsa" << m_private_keys.front();
+		m_private_keys.pop_front();
+		m_auth_state = auth_state_public_key;
+	}
+	else if (choose_protocol(s, "password") == "password")
+	{
+//		out << 
+	}
+	else
+		out = opacket(disconnect);
+	
+	
+//	bool done = false;
+//
+//	while (not done)
+//	{
+//		switch (m_auth_state)
+//		{
+//			case auth_state_none:
+//				m_auth_state = auth_state_keyboard_interactive;
+//				if (m_ssh_agent != nullptr and not m_ssh_agent->empty() and
+//					choose_protocol(s, "publickey") == "publickey")
+//				{
+//					for (ssh_agent::iterator key = m_ssh_agent->begin(); key != m_ssh_agent->end(); ++key)
+//					{
+//						opacket blob;
+//						blob << *key;
+//						m_private_key_blobs.push_back(blob);
+//					}
+//					
+//					m_auth_state = auth_state_public_key;
+//					done = true;
+//				}
+//				break;
+//			
+//			case auth_state_public_key:
+//				if (m_private_key_blobs.empty())
+//					m_auth_state = auth_state_keyboard_interactive;
+//				else
+//					done = true;
+//				break;
+//			
+//			case auth_state_keyboard_interactive:
+//				m_auth_state = auth_state_password;
+//				break;
+//			
+//			case auth_state_password:
+//				if (not password_callback.empty() and choose_protocol(s, "password") == "password" and ++m_password_attempts <= 3)
+//					done = true;
+//				else
+//					full_stop(error::make_error_code(error::no_more_auth_methods_available));
+//				break;
+//		}
+//	}
+//	
+//	opacket out(userauth_request);
+//	
+//	switch (m_auth_state)
+//	{
+//		case auth_state_public_key:
+//			out << m_user << "ssh-connection" << "publickey" << false
+//				<< "ssh-rsa" << m_private_key_blobs.front();
+//			m_private_key_blobs.pop_front();
+//			break;
+//		
+//		case auth_state_keyboard_interactive:
+//			out << m_user << "ssh-connection" << "keyboard-interactive" << "" << "";
+//			break;
+//		
+//		case auth_state_password:
+//		{
+//			if (password_callback(pw))
+//			
+//			ConnectionMessage(_("Password authentication"));
+//		
+//			string p[1];
+//			bool e[1];
+//			
+//		//	p[0] = MStrings::GetIndString(1011, 2);
+//			p[0] = _("Password");
+//			e[0] = false;
+//		
+//			MWindow* docWindow = MWindow::GetFirstWindow();	// I hope...
+//			unique_ptr<MAuthDialog> dlog(new MAuthDialog(_("Logging in"),
+//				FormatString("Please enter password for account ^0", mUserName),
+//				1, p, e));
+//		
+//			AddRoute(dlog->eAuthInfo, eRecvPassword);
+//		
+//			dlog->Show(docWindow);
+//			dlog.release();	
+//			break;
+//		}
+//		
+//		default:
+//			break;
+//	}
+
+
+
+//	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user));
+	return out;
 }
 
 template<typename SOCKET>
@@ -610,6 +733,73 @@ opacket basic_connection<SOCKET>::process_userauth_banner(ipacket& in, boost::sy
 {
 	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user));
 	return opacket();
+}
+
+template<typename SOCKET>
+opacket basic_connection<SOCKET>::process_userauth_info_request(ipacket& in, boost::system::error_code& ec)
+{
+	opacket out(userauth_request);
+
+	if (m_auth_state == auth_state_public_key)
+	{
+		string alg;
+		ipacket blob;
+	
+		in >> alg >> blob;
+	
+		out << m_user << "ssh-connection" << "publickey" << true << "ssh-rsa" << blob;
+	
+		opacket signature;
+		signature << "ssh-rsa" << ssh_private_key(blob).sign(m_session_id, out);
+
+		out << signature;
+	}
+
+	return out;
+//	else if (mAuthenticationState == SSH_AUTH_STATE_KEYBOARD_INTERACTIVE)
+//	{
+//		uint8 msg;
+//		string title, instruction, lang, p[5];
+//		bool e[5];
+//		uint32 n;
+//		
+//		in >> msg >> title >> instruction >> lang >> n;
+//		
+//		if (n == 0)
+//		{
+//			MSshPacket out;
+//			out << uint8(SSH_MSG_USERAUTH_INFO_RESPONSE) << uint32(0);
+//			Send(out);
+//		}
+//		else
+//		{
+//			if (title.length() == 0)
+//				title = _("Logging in");
+//			
+//			if (instruction.length() == 0)
+//				instruction = FormatString("Please enter password for acount ^0 ip address ^1", mUserName, mIPAddress);
+//			
+//			if (n > 5)
+//				THROW(("Invalid authentication protocol", 0));
+//			
+//			for (uint32 i = 0; i < n; ++i)
+//				in >> p[i] >> e[i];
+//			
+//			if (n == 0)
+//				n = 1;
+//			
+//			MWindow* docWindow = MWindow::GetFirstWindow();	// I hope...
+//			auto_ptr<MAuthDialog> dlog(new MAuthDialog(title, instruction, n, p, e));
+//			AddRoute(dlog->eAuthInfo, eRecvAuthInfo);
+//			dlog->Show(docWindow);
+//			dlog.release();
+//		}
+//	}
+//	else
+//		Error(error::make_error_code(error::protocol_error));
+//}
+//		
+//	}
 }
 
 template<typename SOCKET>
@@ -834,6 +1024,25 @@ string choose_protocol(const vector<string>& server, const char* client[])
 				result = *s;
 				found = true;
 			}
+		}
+	}
+	
+	return result;
+}
+
+string choose_protocol(const vector<string>& server, const char* client)
+{
+	vector<string>::const_iterator s;
+	
+	bool found = false;
+	string result;
+	
+	for (s = server.begin(); s != server.end() and not found; ++s)
+	{
+		if (*s == client)
+		{
+			result = *s;
+			found = true;
 		}
 	}
 	

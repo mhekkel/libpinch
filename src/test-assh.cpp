@@ -77,7 +77,7 @@ int main(int argc, char* const argv[])
 		c.async_connect("maarten", [](const boost::system::error_code& ec)
 		{
 			if (ec)
-				cout << ec << endl;
+				cout << ec.message() << endl;
 			else
 				cout << "Yeah!" << endl;	
 		});
