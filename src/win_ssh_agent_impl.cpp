@@ -3,30 +3,29 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "MWinLib.h"
+#include <assh/config.hpp>
 
-#include <wincrypt.h>
+#include <assh/ssh_agent.hpp>
+#include <assh/detail/ssh_agent_impl.hpp>
+#include <assh/packet.hpp>
+
+#include <winsdkver.h>
 #include <Aclapi.h>
+#include <wincrypt.h>
 
 #include <cryptopp/base64.h>
 
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
 
-#include "..\Ssh\MSsh.h"
-#include "..\Ssh\MSshPacket.h"
-#include "..\Ssh\MSshAgent.h"
-#include "..\Ssh\MSshAgentImpl.h"
-#include "MWinApplicationImpl.h"
-#include "MPreferences.h"
-#include "MWinUtils.h"
 
 #pragma comment (lib, "crypt32")
 
-#include <wincrypt.h>
-
 using namespace CryptoPP;
 using namespace std;
+
+namespace assh
+{
 
 // --------------------------------------------------------------------
 // We support Pageant compatible signing.
@@ -41,6 +40,8 @@ class MCertificateStore
 	static MCertificateStore&	Instance();
 	
 				operator HCERTSTORE ()			{ return mCertificateStore; }
+
+	bool		GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer& n);
 
   private:
 				MCertificateStore();
@@ -64,30 +65,30 @@ MCertificateStore::MCertificateStore()
 	::CertControlStore(mCertificateStore, 0, CERT_STORE_CTRL_NOTIFY_CHANGE, &mEvent);
 	::SetTimer(nullptr, 0, 1000, &MCertificateStore::Timer);
 	
-	if (Preferences::GetBoolean("act-as-pageant", true))
-	{
-		try
-		{
-			HINSTANCE inst = MWinApplicationImpl::GetInstance()->GetHInstance();
-	
-			WNDCLASS lWndClass = { sizeof(WNDCLASS) };
-			lWndClass.lpszClassName = kPageantName;
-	
-			if (not ::GetClassInfo(inst, lWndClass.lpszClassName, &lWndClass))
-			{
-				lWndClass.lpfnWndProc = &MCertificateStore::WndProc;
-				lWndClass.hInstance = inst;
-				::RegisterClass(&lWndClass);
-			}
-	
-			mPageant = ::CreateWindow(kPageantName, kPageantName,
-					0, 0, 0, 0, 0, HWND_MESSAGE, NULL, inst, NULL);
-		}
-		catch (...)
-		{
-			mPageant = nullptr;
-		}
-	}
+	//if (Preferences::GetBoolean("act-as-pageant", true))
+	//{
+	//	try
+	//	{
+	//		HINSTANCE inst = MWinApplicationImpl::GetInstance()->GetHInstance();
+	//
+	//		WNDCLASS lWndClass = { sizeof(WNDCLASS) };
+	//		lWndClass.lpszClassName = kPageantName;
+	//
+	//		if (not ::GetClassInfo(inst, lWndClass.lpszClassName, &lWndClass))
+	//		{
+	//			lWndClass.lpfnWndProc = &MCertificateStore::WndProc;
+	//			lWndClass.hInstance = inst;
+	//			::RegisterClass(&lWndClass);
+	//		}
+	//
+	//		mPageant = ::CreateWindow(kPageantName, kPageantName,
+	//				0, 0, 0, 0, 0, HWND_MESSAGE, NULL, inst, NULL);
+	//	}
+	//	catch (...)
+	//	{
+	//		mPageant = nullptr;
+	//	}
+	//}
 }
 
 MCertificateStore::~MCertificateStore()
@@ -96,10 +97,7 @@ MCertificateStore::~MCertificateStore()
 		::CloseHandle(mEvent);
 
 	if (mCertificateStore != nullptr)
-	{
-		if (not ::CertCloseStore(mCertificateStore, CERT_CLOSE_STORE_CHECK_FLAG) and ::GetLastError() == CRYPT_E_PENDING_CLOSE)
-			PRINT(("crypt pending close"));
-	}
+		(void)::CertCloseStore(mCertificateStore, CERT_CLOSE_STORE_CHECK_FLAG);
 }
 
 void MCertificateStore::Check()
@@ -108,7 +106,7 @@ void MCertificateStore::Check()
 	{
 		::CertControlStore(mCertificateStore, 0, CERT_STORE_CTRL_RESYNC, &mEvent);
 
-		MSshAgent::Instance().Update();
+		ssh_agent::instance().update();
 	}
 }
 
@@ -116,6 +114,44 @@ MCertificateStore& MCertificateStore::Instance()
 {
 	static MCertificateStore sInstance;
 	return sInstance;
+}
+
+bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer& n)
+{
+	bool result = false;
+	DWORD cbPublicKeyStruc = 0;
+	PCERT_PUBLIC_KEY_INFO pk = &context->pCertInfo->SubjectPublicKeyInfo;
+	
+	if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+		RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
+	    0, nullptr, &cbPublicKeyStruc))
+	{
+		vector<uint8> b(cbPublicKeyStruc);
+		
+		if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+			RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
+		    0, &b[0], &cbPublicKeyStruc))
+		{
+			PUBLICKEYSTRUC* pks = reinterpret_cast<PUBLICKEYSTRUC*>(&b[0]);
+			
+			if ((pks->aiKeyAlg & ALG_TYPE_RSA) != 0)
+			{
+				RSAPUBKEY* pkd = reinterpret_cast<RSAPUBKEY*>(&b[0] + sizeof(PUBLICKEYSTRUC));
+				byte* data = reinterpret_cast<byte*>(&b[0] + sizeof(RSAPUBKEY) + sizeof(PUBLICKEYSTRUC));
+				
+				// public key is in little endian format
+				uint32 len = pkd->bitlen / 8;
+				reverse(data, data + len);
+
+				e = pkd->pubexp;
+				n = Integer(data, len);
+				
+				result = true;
+			}
+		}
+	}
+	
+	return result;
 }
 
 LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -128,83 +164,83 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 		{
 			case WM_COPYDATA:
 			{
-				uint8* p = nullptr;
-				HANDLE mapFile = nullptr;
-				
-				do
-				{
-					COPYDATASTRUCT *cds = reinterpret_cast<COPYDATASTRUCT*>(lParam);
-					if (cds == nullptr or cds->dwData != AGENT_COPYDATA_ID)
-						break;
-					
-					char* fileName = reinterpret_cast<char*>(cds->lpData);
-					if (fileName == nullptr or fileName[cds->cbData - 1] != 0)
-						break;
-					
-					mapFile = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, false,
-						fileName);
-					if (mapFile == nullptr or mapFile == INVALID_HANDLE_VALUE)
-						break;
-					
-					p = reinterpret_cast<uint8*>(::MapViewOfFile(mapFile, FILE_MAP_WRITE, 0, 0, 0));
-					if (p == nullptr)
-						break;
-					
-					HANDLE proc = ::OpenProcess(MAXIMUM_ALLOWED, false, ::GetCurrentProcessId());
-					if (proc == nullptr)
-						break;
-					
-					PSECURITY_DESCRIPTOR procSD = nullptr, mapSD = nullptr;
-					PSID mapOwner, procOwner;
-					
-					if (::GetSecurityInfo(proc, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-							&procOwner, nullptr, nullptr, nullptr, &procSD) != ERROR_SUCCESS)
-					{
-						if (procSD != nullptr)
-							::LocalFree(procSD);
-						procSD = nullptr;
-					}
-					::CloseHandle(proc);
-					
-					if (::GetSecurityInfo(mapFile, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-						&mapOwner, nullptr, nullptr, nullptr, &mapSD) != ERROR_SUCCESS)
-					{
-						if (mapSD != nullptr)
-							::LocalFree(mapSD);
-						mapSD = nullptr;
-					}
-					
-					if (::EqualSid(mapOwner, procOwner))
-					{
-						uint32 len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
-						if (len < 10240)
-						{
-							MSshPacket in(p + 4, len);
-							MSshPacket out;
-							
-							MSshAgent::Instance().ProcessAgentRequest(in, out);
-							
-							MSshPacket wrapped;
-							wrapped << out;
+				//uint8* p = nullptr;
+				//HANDLE mapFile = nullptr;
+				//
+				//do
+				//{
+				//	COPYDATASTRUCT *cds = reinterpret_cast<COPYDATASTRUCT*>(lParam);
+				//	if (cds == nullptr or cds->dwData != AGENT_COPYDATA_ID)
+				//		break;
+				//	
+				//	char* fileName = reinterpret_cast<char*>(cds->lpData);
+				//	if (fileName == nullptr or fileName[cds->cbData - 1] != 0)
+				//		break;
+				//	
+				//	mapFile = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, false,
+				//		fileName);
+				//	if (mapFile == nullptr or mapFile == INVALID_HANDLE_VALUE)
+				//		break;
+				//	
+				//	p = reinterpret_cast<uint8*>(::MapViewOfFile(mapFile, FILE_MAP_WRITE, 0, 0, 0));
+				//	if (p == nullptr)
+				//		break;
+				//	
+				//	HANDLE proc = ::OpenProcess(MAXIMUM_ALLOWED, false, ::GetCurrentProcessId());
+				//	if (proc == nullptr)
+				//		break;
+				//	
+				//	PSECURITY_DESCRIPTOR procSD = nullptr, mapSD = nullptr;
+				//	PSID mapOwner, procOwner;
+				//	
+				//	if (::GetSecurityInfo(proc, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
+				//			&procOwner, nullptr, nullptr, nullptr, &procSD) != ERROR_SUCCESS)
+				//	{
+				//		if (procSD != nullptr)
+				//			::LocalFree(procSD);
+				//		procSD = nullptr;
+				//	}
+				//	::CloseHandle(proc);
+				//	
+				//	if (::GetSecurityInfo(mapFile, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
+				//		&mapOwner, nullptr, nullptr, nullptr, &mapSD) != ERROR_SUCCESS)
+				//	{
+				//		if (mapSD != nullptr)
+				//			::LocalFree(mapSD);
+				//		mapSD = nullptr;
+				//	}
+				//	
+				//	if (::EqualSid(mapOwner, procOwner))
+				//	{
+				//		uint32 len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+				//		if (len < 10240)
+				//		{
+				//			MSshPacket in(p + 4, len);
+				//			MSshPacket out;
+				//			
+				//			MSshAgent::Instance().ProcessAgentRequest(in, out);
+				//			
+				//			MSshPacket wrapped;
+				//			wrapped << out;
 	
-							copy(wrapped.peek(), wrapped.peek() + wrapped.size(), p);
-							result = 1;
-						}
-					}
-					
-					if (procSD != nullptr)
-						::LocalFree(procSD);
-					
-					if (mapSD != nullptr)
-						::LocalFree(mapSD);
-				}
-				while (false);
+				//			copy(wrapped.peek(), wrapped.peek() + wrapped.size(), p);
+				//			result = 1;
+				//		}
+				//	}
+				//	
+				//	if (procSD != nullptr)
+				//		::LocalFree(procSD);
+				//	
+				//	if (mapSD != nullptr)
+				//		::LocalFree(mapSD);
+				//}
+				//while (false);
 
-				if (p != nullptr)
-					::UnmapViewOfFile(p);
-				
-				if (mapFile != nullptr and mapFile != INVALID_HANDLE_VALUE)
-					::CloseHandle(mapFile);
+				//if (p != nullptr)
+				//	::UnmapViewOfFile(p);
+				//
+				//if (mapFile != nullptr and mapFile != INVALID_HANDLE_VALUE)
+				//	::CloseHandle(mapFile);
 
 				break;
 			}
@@ -228,55 +264,27 @@ void MCertificateStore::Timer(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTi
 
 // --------------------------------------------------------------------
 
-class MWinSshPrivateKeyImpl : public MSshPrivateKeyImpl
+class MWinSshPrivateKeyImpl : public ssh_private_key_impl
 {
   public:
-  					MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext);
-	virtual			~MWinSshPrivateKeyImpl();
+		  					MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext,
+		  						Integer& e, Integer& n);
+	virtual					~MWinSshPrivateKeyImpl();
 
-	virtual void	SignData(const MSshPacket& inData,
-						vector<uint8>& outSignature);
+	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
 
-	virtual string	GetHash() const;
-	virtual string	GetComment() const;
+	virtual string			get_hash() const;
+	virtual string			get_comment() const;
 
   private:
-	PCCERT_CONTEXT	mCertificateContext;
+	PCCERT_CONTEXT			mCertificateContext;
 };
 
-MWinSshPrivateKeyImpl::MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext)
+MWinSshPrivateKeyImpl::MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext, Integer& e, Integer& n)
 	: mCertificateContext(inCertificateContext)
 {
-	DWORD cbPublicKeyStruc = 0;
-	PCERT_PUBLIC_KEY_INFO pk = &mCertificateContext->pCertInfo->SubjectPublicKeyInfo;
-	
-	if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-		RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
-	    0, nullptr, &cbPublicKeyStruc))
-	{
-		vector<uint8> b(cbPublicKeyStruc);
-		
-		if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-			RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
-		    0, &b[0], &cbPublicKeyStruc))
-		{
-			PUBLICKEYSTRUC* pks = reinterpret_cast<PUBLICKEYSTRUC*>(&b[0]);
-			
-			if ((pks->aiKeyAlg & ALG_TYPE_RSA) == 0)
-				THROW(("Not an RSA signing key"));
-
-			RSAPUBKEY* pkd = reinterpret_cast<RSAPUBKEY*>(&b[0] + sizeof(PUBLICKEYSTRUC));
-			byte* data = reinterpret_cast<byte*>(&b[0] + sizeof(RSAPUBKEY) + sizeof(PUBLICKEYSTRUC));
-			
-			mE = pkd->pubexp;
-			
-			// public key is in little endian format
-			uint32 len = pkd->bitlen / 8;
-			
-			reverse(data, data + len);
-			mN = Integer(data, len);
-		}
-	}
+	m_e = e;
+	m_n = n;
 }
 
 MWinSshPrivateKeyImpl::~MWinSshPrivateKeyImpl()
@@ -285,12 +293,13 @@ MWinSshPrivateKeyImpl::~MWinSshPrivateKeyImpl()
 		::CertFreeCertificateContext(mCertificateContext);
 }
 
-void MWinSshPrivateKeyImpl::SignData(
-	const MSshPacket& inData, vector<uint8>& outSignature)
+vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const opacket& inData)
 {
 	BOOL freeKey = false;
 	DWORD keySpec, cb;
 	HCRYPTPROV key;
+	
+	vector<uint8> result;
 	
 	if (::CryptAcquireCertificatePrivateKey(mCertificateContext, 0, nullptr, &key, &keySpec, &freeKey))
 	{
@@ -298,19 +307,22 @@ void MWinSshPrivateKeyImpl::SignData(
 
 		if (::CryptCreateHash(key, CALG_SHA1, 0, 0, &hash))
 		{
-			if (::CryptHashData(hash, inData.peek(), inData.size(), 0))
+			const vector<uint8>& data(inData);
+			
+			if (::CryptHashData(hash, &session_id[0], session_id.size(), 0) and
+				::CryptHashData(hash, &data[0], data.size(), 0))
 			{
 				cb = 0;
 				::CryptSignHash(hash, keySpec, nullptr, 0, nullptr, &cb);
 				
 				if (cb > 0)
 				{
-					vector<uint8> b(cb);
-					if (::CryptSignHash(hash, keySpec, nullptr, 0, &b[0], &cb))
+					result = vector<uint8>(cb);
+					
+					if (::CryptSignHash(hash, keySpec, nullptr, 0, &result[0], &cb))
 					{
 						// data is in little endian format
-						reverse(&b[0], &b[0] + cb);
-						swap(outSignature, b);
+						reverse(result.begin(), result.end());
 					}
 				}
 			}
@@ -321,9 +333,11 @@ void MWinSshPrivateKeyImpl::SignData(
 		if (freeKey)
 			::CryptReleaseContext(key, 0);
 	}
+	
+	return result;
 }
 
-string MWinSshPrivateKeyImpl::GetComment() const
+string MWinSshPrivateKeyImpl::get_comment() const
 {
 	string comment;
 
@@ -340,7 +354,7 @@ string MWinSshPrivateKeyImpl::GetComment() const
 			vector<wchar_t> b(cb);
 			::CertGetNameString(mCertificateContext, type,
 				CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, &b[0], cb);
-			comment = w2c(&b[0]);
+//			comment = w2c(&b[0]);
 
 			if (not comment.empty())
 				break;
@@ -350,7 +364,7 @@ string MWinSshPrivateKeyImpl::GetComment() const
 	return comment;
 }
 
-string MWinSshPrivateKeyImpl::GetHash() const
+string MWinSshPrivateKeyImpl::get_hash() const
 {
 	string hash;
 
@@ -371,73 +385,65 @@ string MWinSshPrivateKeyImpl::GetHash() const
 
 // --------------------------------------------------------------------
 
-MSshPrivateKeyImpl*	MSshPrivateKeyImpl::CreateForHash(const std::string& inHash)
+ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
 {
-	string hash;
+//	string hash;
+//
+//	Base64Decoder d(new StringSink(hash));
+//	d.Put(reinterpret_cast<const byte*>(inHash.c_str()), inHash.length());
+//	d.MessageEnd();
+//	
+//	CRYPT_HASH_BLOB k;
+//	k.cbData = hash.length();
+//	k.pbData = const_cast<byte*>(reinterpret_cast<const byte*>(hash.c_str()));
+//	
+//	PCCERT_CONTEXT context = ::CertFindCertificateInStore(
+//		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+//		0, CERT_FIND_SHA1_HASH, &k, nullptr);
+//	
+//	return new MWinSshPrivateKeyImpl(context);
 
-	Base64Decoder d(new StringSink(hash));
-	d.Put(reinterpret_cast<const byte*>(inHash.c_str()), inHash.length());
-	d.MessageEnd();
-	
-	CRYPT_HASH_BLOB k;
-	k.cbData = hash.length();
-	k.pbData = const_cast<byte*>(reinterpret_cast<const byte*>(hash.c_str()));
-	
-	PCCERT_CONTEXT context = ::CertFindCertificateInStore(
-		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-		0, CERT_FIND_SHA1_HASH, &k, nullptr);
-	
-	if (context == nullptr)
-		THROW(("Certificate not found"));
-
-	return new MWinSshPrivateKeyImpl(context);
+	return nullptr;
 }
 
-MSshPrivateKeyImpl*	MSshPrivateKeyImpl::CreateForBlob(MSshPacket& inBlob)
+ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& inBlob)
 {
-	MSshPrivateKeyImpl* result = nullptr;
+	ssh_private_key_impl* result = nullptr;
+	PCCERT_CONTEXT context = nullptr;
+	MCertificateStore& store(MCertificateStore::Instance());
 	
-	PCCERT_CONTEXT context = ::CertEnumCertificatesInStore(
-		MCertificateStore::Instance(), nullptr);
-	
-	while (context != nullptr)
+	while (context = ::CertEnumCertificatesInStore(store, context))
 	{
-		try
-		{
-			result = new MWinSshPrivateKeyImpl(::CertDuplicateCertificateContext(context));
-			result->Reference();
-
-			MSshPrivateKey key(result);
+		Integer e, n;
 		
-			MSshPacket blob;
-			blob << key;
+		if (store.GetPublicKey(context, e, n))
+		{
+			opacket blob;
+			blob << "ssh-rsa" << e << n;
 			
-			if (blob == inBlob)
+			if (static_cast<const vector<uint8>&>(blob) == static_cast<const vector<uint8>&>(inBlob))
 			{
-				::CertFreeCertificateContext(context);
+				result = new MWinSshPrivateKeyImpl(context, e, n);
 				break;
 			}
-			
-			result->Release();
-			result = nullptr;
 		}
-		catch (...) {}
-
-		context = ::CertEnumCertificatesInStore(MCertificateStore::Instance(), context);
 	}
 	
 	return result;
 }
 
-void MSshPrivateKeyImpl::CreateList(vector<MSshPrivateKey>& outKeys)
+void ssh_private_key_impl::create_list(vector<ssh_private_key>& outKeys)
 {
-	PCCERT_CONTEXT context = ::CertEnumCertificatesInStore(
-		MCertificateStore::Instance(), nullptr);
+	MCertificateStore& store(MCertificateStore::Instance());
+	PCCERT_CONTEXT context = nullptr;
 	
-	while (context != nullptr)
+	while (context = ::CertEnumCertificatesInStore(store, context))
 	{
-		outKeys.push_back(
-			MSshPrivateKey(new MWinSshPrivateKeyImpl(::CertDuplicateCertificateContext(context))));
-		context = ::CertEnumCertificatesInStore(MCertificateStore::Instance(), context);
+		Integer e, n;
+		
+		if (store.GetPublicKey(context, e, n))
+			outKeys.push_back(ssh_private_key(new MWinSshPrivateKeyImpl(::CertDuplicateCertificateContext(context), e, n)));
 	}
+}
+
 }

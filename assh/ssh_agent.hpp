@@ -19,6 +19,7 @@ namespace assh
 {
 
 class opacket;
+class ipacket;
 class ssh_private_key_impl;
 
 // --------------------------------------------------------------------
@@ -27,13 +28,13 @@ class ssh_private_key_impl;
 class ssh_private_key
 {
   public:
-						ssh_private_key(ssh_private_key_impl* inImpl = nullptr);
-						ssh_private_key(const std::string& inHash);
-						ssh_private_key(ipacket& inBlob);
+						ssh_private_key(ssh_private_key_impl* impl);
+						ssh_private_key(const std::string& hash);
+						ssh_private_key(ipacket& blob);
 						~ssh_private_key();
 
-						ssh_private_key(const ssh_private_key& inKey);
-	ssh_private_key&	operator=(const ssh_private_key& inKey);
+						ssh_private_key(const ssh_private_key& key);
+	ssh_private_key&	operator=(const ssh_private_key& key);
 
 	std::vector<uint8>	sign(const std::vector<uint8>& session_id, const opacket& data);
 
@@ -41,15 +42,15 @@ class ssh_private_key
 	std::string			get_comment() const;
 	
 						operator bool() const							{ return m_impl != nullptr; }
-	bool				operator==(const ssh_private_key& inKey) const;
+	bool				operator==(const ssh_private_key& key) const;
 
-	friend opacket& operator<<(opacket& p, const ssh_private_key& inKey);
+	friend opacket& operator<<(opacket& p, const ssh_private_key& key);
 
   protected:
 	ssh_private_key_impl*	m_impl;
 };	
 
-opacket& operator<<(opacket& p, const ssh_private_key& inKey);
+opacket& operator<<(opacket& p, const ssh_private_key& key);
 
 // --------------------------------------------------------------------
 // ssh_agent
@@ -60,19 +61,19 @@ class ssh_agent
 
 	static ssh_agent&	instance();
 	
-	void				process_agent_request(opacket& in, opacket& out);
+//	void				process_agent_request(opacket& in, opacket& out);
 	void				update();
 
 	typedef std::vector<ssh_private_key>	ssh_private_key_list;
 	typedef ssh_private_key_list::iterator	iterator;
 
-	uint32				size() const				{ return mPrivateKeys.size(); }
-	bool				empty() const				{ return mPrivateKeys.empty(); }
+	uint32				size() const				{ return m_private_keys.size(); }
+	bool				empty() const				{ return m_private_keys.empty(); }
 
-//	ssh_private_key		operator[](uint32 inIndex)	{ return mPrivateKeys[inIndex]; }
+//	ssh_private_key		operator[](uint32 inIndex)	{ return m_private_keys[inIndex]; }
 
-	iterator			begin()						{ return mPrivateKeys.begin(); }
-	iterator			end()						{ return mPrivateKeys.end(); }
+	iterator			begin()						{ return m_private_keys.begin(); }
+	iterator			end()						{ return m_private_keys.end(); }
 
   private:
 

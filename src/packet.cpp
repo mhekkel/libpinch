@@ -32,6 +32,11 @@ opacket::opacket(message_type message)
 	m_data[0] = message;
 }
 
+opacket::opacket(const opacket& rhs)
+	: m_data(rhs.m_data)
+{
+}
+
 opacket::opacket(opacket&& rhs)
 	: m_data(move(rhs.m_data))
 {
@@ -139,6 +144,12 @@ opacket& opacket::operator<<(const vector<uint8>& v)
 }
 
 opacket& opacket::operator<<(const ipacket& v)
+{
+	const vector<uint8>& data(v);
+	return operator<<(data);
+}
+
+opacket& opacket::operator<<(const opacket& v)
 {
 	const vector<uint8>& data(v);
 	return operator<<(data);

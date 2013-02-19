@@ -10,8 +10,9 @@
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
 
-#include "ssh_agent.hpp"
+#include <assh/ssh_agent.hpp>
 #include <assh/detail/ssh_agent_impl.hpp>
+#include <assh/packet.hpp>
 
 using namespace std;
 using namespace CryptoPP;
@@ -32,12 +33,12 @@ ssh_private_key_impl::~ssh_private_key_impl()
 	assert(m_refcount == 0);
 }
 
-void ssh_private_key_impl::Reference()
+void ssh_private_key_impl::reference()
 {
 	++m_refcount;
 }
 
-void ssh_private_key_impl::Release()
+void ssh_private_key_impl::release()
 {
 	if (--m_refcount == 0)
 		delete this;
@@ -64,60 +65,44 @@ ssh_private_key::ssh_private_key(ipacket& blob)
 ssh_private_key::ssh_private_key(const ssh_private_key& inKey)
 	: m_impl(inKey.m_impl)
 {
-	if (m_impl != nullptr)
-		m_impl->Reference();
+	m_impl->reference();
 }
 
 ssh_private_key::~ssh_private_key()
 {
-	if (m_impl != nullptr)
-		m_impl->Release();
+	m_impl->release();
 }
 
 ssh_private_key& ssh_private_key::operator=(const ssh_private_key& inKey)
 {
 	if (this != &inKey)
 	{
-		if (m_impl != nullptr)
-			m_impl->Release();
+		m_impl->release();
 		m_impl = inKey.m_impl;
-		if (m_impl != nullptr)
-			m_impl->Reference();
+		m_impl->reference();
 	}
 	
 	return *this;
 }
 
-void ssh_private_key::SignData(const MSshPacket& inData, std::vector<uint8>& outSignature)
+vector<uint8> ssh_private_key::sign(const vector<uint8>& session_id, const opacket& p)
 {
-	if (m_impl == nullptr)
-		THROW(("Invalid empty private key"));
-	
-	m_impl->SignData(inData, outSignature);
+	return m_impl->sign(session_id, p);
 }
 
-string ssh_private_key::GetHash() const
+string ssh_private_key::get_hash() const
 {
-	if (m_impl == nullptr)
-		THROW(("Invalid empty private key"));
-	
-	return m_impl->GetHash();
+	return m_impl->get_hash();
 }
 
-string ssh_private_key::GetComment() const
+string ssh_private_key::get_comment() const
 {
-	if (m_impl == nullptr)
-		THROW(("Invalid empty private key"));
-	
-	return m_impl->GetComment();
+	return m_impl->get_comment();
 }
 
-MSshPacket& operator<<(MSshPacket& p, const ssh_private_key& inKey)
+opacket& operator<<(opacket& p, const ssh_private_key& key)
 {
-	if (inKey.m_impl == nullptr)
-		THROW(("Invalid empty private key"));
-	
-	p << "ssh-rsa" << inKey.m_impl->m_e << inKey.m_impl->m_n;
+	p << "ssh-rsa" << key.m_impl->m_e << key.m_impl->m_n;
 	return p;
 }
 
@@ -139,7 +124,7 @@ ssh_agent::~ssh_agent()
 	m_private_keys.clear();
 }
 
-//void ssh_agent::process_agent_request(MSshPacket& in, MSshPacket& out)
+//void ssh_agent::process_agent_request(opacket& in, opacket& out)
 //{
 //	uint8 msg;
 //	in >> msg;
@@ -152,9 +137,9 @@ ssh_agent::~ssh_agent()
 //			
 //			for (ssh_private_keyList::iterator key = m_private_keys.begin(); key != m_private_keys.end(); ++key)
 //			{
-//				MSshPacket blob;
+//				opacket blob;
 //				blob << *key;
-//				out << blob << key->GetComment();
+//				out << blob << key->get_comment();
 //			}
 //			break;
 //		}
@@ -171,7 +156,7 @@ ssh_agent::~ssh_agent()
 //				vector<uint8> sigdata;
 //				key.SignData(data, sigdata);
 //		
-//				MSshPacket signature;
+//				opacket signature;
 //				signature << "ssh-rsa" << sigdata;
 //				out << uint8(SSH_AGENT_SIGN_RESPONSE) << signature;
 //			}
@@ -204,17 +189,17 @@ void ssh_agent::update()
 //{
 //}
 //
-//void ssh_agentChannel::Setup(MSshPacket& in)
+//void ssh_agentChannel::Setup(opacket& in)
 //{
 //	mChannelOpen = true;
 //
-//	MSshPacket out;
+//	opacket out;
 //	out << uint8(SSH_MSG_CHANNEL_OPEN_CONFIRMATION) << mHostChannelID
 //		<< mMyChannelID << mMyWindowSize << kMaxPacketSize;
 //	Send(out);
 //}
 //
-//void ssh_agentChannel::ReceiveData(MSshPacket& inData)
+//void ssh_agentChannel::ReceiveData(opacket& inData)
 //{
 //	copy(inData.peek(), inData.peek() + inData.size(), back_inserter(mPacket));
 //
@@ -222,14 +207,14 @@ void ssh_agent::update()
 //	{
 //		if (mPacketLength > 0 and mPacketLength <= mPacket.size())
 //		{
-//			MSshPacket in(mPacket, mPacketLength), out;
+//			opacket in(mPacket, mPacketLength), out;
 //
 //			mPacket.erase(mPacket.begin(), mPacket.begin() + mPacketLength);
 //			mPacketLength = 0;
 //
 //			ssh_agent::Instance().ProcessAgentRequest(in, out);
 //			
-//			MSshPacket d2;
+//			opacket d2;
 //			d2 << out;
 //			MSshChannel::SendData(d2);
 //			continue;

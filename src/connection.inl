@@ -749,8 +749,11 @@ opacket basic_connection<SOCKET>::process_userauth_info_request(ipacket& in, boo
 	
 		out << m_user << "ssh-connection" << "publickey" << true << "ssh-rsa" << blob;
 	
+		opacket session_id;
+		session_id << m_session_id;
+
 		opacket signature;
-		signature << "ssh-rsa" << ssh_private_key(blob).sign(m_session_id, out);
+		signature << "ssh-rsa" << ssh_private_key(blob).sign(session_id, out);
 
 		out << signature;
 	}
