@@ -6,19 +6,17 @@
 #pragma once
 
 #include <assh/packet.hpp>
-#include <assh/error.hpp>
-#include <assh/hash.hpp>
 
 namespace assh
 {
 
-extern const std::string kSSHVersionString;
+extern const std::string
+	kSSHVersionString, kKeyExchangeAlgorithms, kServerHostKeyAlgorithms,
+	kEncryptionAlgorithms, kMacAlgorithms, kUseCompressionAlgorithms, kDontUseCompressionAlgorithms;
 
 class basic_connection
 {
   public:
-	typedef std::shared_ptr<boost::asio::streambuf>	streambuf_ptr;
-
 	virtual			~basic_connection();
 
 	template<typename Handler>
@@ -138,15 +136,11 @@ class basic_connection
 						write_op(Handler&& hander)
 							: m_handler(std::move(hander)) {}
 						
-						write_op(streambuf_ptr request, Handler&& hander)
-							: m_handler(std::move(hander)), m_request(request) {}
-						
 						write_op(const write_op& rhs)
-							: m_handler(rhs.m_handler), m_request(rhs.m_request) {}
+							: m_handler(rhs.m_handler) {}
 						
 						write_op(write_op&& rhs)
-							: m_handler(std::move(rhs.m_handler))
-							, m_request(std::move(rhs.m_request)) {}
+							: m_handler(std::move(rhs.m_handler)) {}
 					
 		write_op&		operator=(const write_op& rhs);
 
@@ -161,11 +155,10 @@ class basic_connection
 						}
 		
 		Handler			m_handler;
-		streambuf_ptr	m_request;
 	};
 
 	template<typename Handler>
-	void			async_write(streambuf_ptr request, Handler&& handler)
+	void			async_write(boost::asio::streambuf* request, Handler&& handler)
 					{
 						async_write_int(request, new write_op<Handler>(std::move(handler)));
 					}
@@ -177,7 +170,7 @@ class basic_connection
 					}
 
 	void			async_write_packet_int(const opacket& p, basic_write_op* handler);
-	virtual void	async_write_int(streambuf_ptr request, basic_write_op* handler) = 0;
+	virtual void	async_write_int(boost::asio::streambuf* request, basic_write_op* handler) = 0;
 	
 	virtual void	async_read_version_string() = 0;
 	virtual void	async_read(uint32 at_least) = 0;
@@ -194,7 +187,7 @@ class basic_connection
 	std::string					m_user;
 	basic_connect_handler*		m_connect_handler;
 	bool						m_authenticated;
-	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;
+	std::vector<uint8>			m_my_payload, m_session_id;
 	auth_state					m_auth_state;
 	uint32						m_password_attempts;
 	uint32						m_in_seq_nr, m_out_seq_nr;
@@ -202,12 +195,6 @@ class basic_connection
 	uint32						m_blocksize;
 	boost::asio::streambuf		m_response;
 	
-	std::string					m_kex_alg, m_server_host_key_alg,
-								m_encryption_alg_c2s, m_encryption_alg_s2c,
-								m_MAC_alg_c2s, m_MAC_alg_s2c,
-								m_compression_alg_c2s, m_compression_alg_s2c,
-								m_lang_c2s, m_lang_s2c;
-
 	std::unique_ptr<CryptoPP::BlockCipher>					m_decryptor_cipher;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_decryptor;
 	std::unique_ptr<CryptoPP::BlockCipher>					m_encryptor_cipher;
@@ -217,13 +204,9 @@ class basic_connection
 	//std::unique_ptr<MSshPacketCompressor>					m_compressor;
 	//std::unique_ptr<MSshPacketDecompressor>				m_decompressor;
 
-	CryptoPP::Integer			m_x, m_e;
-	std::vector<uint8>			m_keys[6];
-	
 	std::deque<basic_read_handler*>
 								m_read_handlers;
 	std::string					m_host_version;
-	
 	std::deque<opacket>			m_private_keys;
 
   private:
@@ -241,12 +224,12 @@ class basic_connection_t : public basic_connection
 							: basic_connection(socket.get_io_service(), user), m_socket(socket) {}
 
   protected:
-	virtual void		async_write_int(streambuf_ptr request, basic_write_op* op)
+	virtual void		async_write_int(boost::asio::streambuf* request, basic_write_op* op)
 						{
 							boost::asio::async_write(m_socket, *request,
 								[op, request](const boost::system::error_code& ec, size_t bytes_transferred)
 								{
-									(void)request.get();
+									delete request;
 									(*op)(ec, bytes_transferred);
 									delete op;
 								});
@@ -275,6 +258,9 @@ class basic_connection_t : public basic_connection
 };
 
 typedef basic_connection_t<boost::asio::ip::tcp::socket> connection;
+
+std::string choose_protocol(const std::string& server, const std::string& client);
+
 	
 }
 

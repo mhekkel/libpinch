@@ -28,6 +28,7 @@
 #include <cryptopp/modes.h>
 
 #include <assh/connection.hpp>
+#include <assh/hash.hpp>
 #include <assh/ssh_agent.hpp>
 
 using namespace std;
@@ -52,80 +53,27 @@ const string
 	kUseCompressionAlgorithms("zlib@openssh.com,zlib,none"),
 	kDontUseCompressionAlgorithms("none,zlib@openssh.com,zlib");
 
-const byte
-	k_p_2[] = {
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
-		0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1, 0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
-		0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22, 0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
-		0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B, 0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
-		0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45, 0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
-		0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B, 0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
-		0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5, 0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
-		0x49, 0x28, 0x66, 0x51, 0xEC, 0xE6, 0x53, 0x81, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-	},
-	k_p_14[] = {
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
-		0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1, 0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
-		0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22, 0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
-		0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B, 0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
-		0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45, 0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
-		0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B, 0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
-		0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5, 0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
-		0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D, 0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
-		0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A, 0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
-		0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96, 0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
-		0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D, 0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
-		0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C, 0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
-		0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03, 0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
-		0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9, 0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
-		0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5, 0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
-		0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-	};
-
-const Integer
-	p2(k_p_2, sizeof(k_p_2)),		q2((p2 - 1) / 2),
-	p14(k_p_14, sizeof(k_p_14)),	q14((p14 - 1) / 2);
-
 string choose_protocol(const string& server, const string& client)
 {
 	string result;
+	bool found = false;
 
 	typedef ba::split_iterator<string::const_iterator> split_iter_type;
 	split_iter_type c = ba::make_split_iterator(client, ba::first_finder(",", ba::is_equal()));
 	split_iter_type s = ba::make_split_iterator(server, ba::first_finder(",", ba::is_equal()));
 	
-	for (; c != split_iter_type(); ++c)
+	for (; not found and c != split_iter_type(); ++c)
 	{
-		for (; s != split_iter_type(); ++s)
+		for (; not found and s != split_iter_type(); ++s)
 		{
 			if (*c == *s)
 			{
 				result = boost::copy_range<string>(*c);
-				break;
+				found = true;
 			}
 		}
 	}
 
-//	vector<string> server, client;
-//	ba::split(server, s_server, ba::is_any_of(","));
-//	ba::split(client, s_client, ba::is_any_of(","));
-//	
-//	vector<string>::iterator c, s;
-//	
-//	bool found = false;
-//	
-//	for (c = client.begin(); c != client.end() and not found; ++c)
-//	{
-//		for (s = server.begin(); s != server.end() and not found; ++s)
-//		{
-//			if (*s == *c)
-//			{
-//				result = *c;
-//				found = true;
-//			}
-//		}
-//	}
-	
 	return result;
 }
 
@@ -135,12 +83,14 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	: m_io_service(io_service)
 	, m_user(user)
 	, m_connect_handler(nullptr)
+	, m_key_exchange(nullptr)
 {
 }
 
 basic_connection::~basic_connection()
 {
 	delete m_connect_handler;
+	delete m_key_exchange;
 }
 
 void basic_connection::start_handshake(basic_connect_handler* handler)
@@ -159,8 +109,8 @@ void basic_connection::start_handshake(basic_connect_handler* handler)
 		m_in_seq_nr = m_out_seq_nr = 0;
 		m_blocksize = 8;
 		
-		streambuf_ptr request(new boost::asio::streambuf);
-		ostream out(request.get());
+		boost::asio::streambuf* request(new boost::asio::streambuf);
+		ostream out(request);
 		out << kSSHVersionString << "\r\n";
 	
 		async_write(request, [this](const boost::system::error_code& ec, size_t bytes_transferred)
@@ -226,24 +176,6 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 			m_connect_handler->handle_connect(error::make_error_code(error::protocol_version_not_supported), m_io_service);
 	}
 }
-
-//	template<typename Handler>
-//	struct read_op
-//	{
-//
-//
-//		void		operator()(const boost::system::error_code& ec)
-//					{
-//						if (ec)
-//							m_handler(ec);
-//						else
-//						{
-//							
-//						}
-//					}
-//
-//		Handler		m_handler;
-//	};
 
 // the read loop, this routine keeps calling itself until an error condition is met
 void basic_connection::received_data(const boost::system::error_code& ec)
@@ -372,228 +304,40 @@ void basic_connection::process_packet(ipacket& in)
 
 opacket basic_connection::process_kexinit(ipacket& in, boost::system::error_code& ec)
 {
-	// capture the packet contents for the host payload
-	m_host_payload = in;
+	m_key_exchange = key_exchange::create(in, m_host_version, m_my_payload);
 
-	bool first_kex_packet_follows;
-	in.skip(16);
-		
-	in	>> m_kex_alg
-		>> m_server_host_key_alg
-		>> m_encryption_alg_c2s
-		>> m_encryption_alg_s2c
-		>> m_MAC_alg_c2s
-		>> m_MAC_alg_s2c
-		>> m_compression_alg_c2s
-		>> m_compression_alg_s2c
-		>> m_lang_c2s
-		>> m_lang_s2c
-		>> first_kex_packet_follows;
+	opacket out;
 
-	m_e = 0;
-
-	if (choose_protocol(m_kex_alg, kKeyExchangeAlgorithms) == "diffie-hellman-group14-sha1")
-	{
-		do
-		{
-			m_x.Randomize(rng, 2, q14 - 1);
-			m_e = a_exp_b_mod_c(2, m_x, p14);
-		}
-		while (m_e < 1 or m_e >= p14 - 1);
-	}
-	else if (choose_protocol(m_kex_alg, kKeyExchangeAlgorithms) == "diffie-hellman-group1-sha1")
-	{
-		do
-		{
-			m_x.Randomize(rng, 2, q2 - 1);
-			m_e = a_exp_b_mod_c(2, m_x, p2);
-		}
-		while (m_e < 1 or m_e >= p2 - 1);
-	}
-	else
+	if (m_key_exchange == nullptr)
 		ec = error::make_error_code(error::key_exchange_failed);
-
-	opacket out(kexdh_init);
-	out << m_e;
+	else
+		out = m_key_exchange->process_kexinit();
+	
 	return out;
 }
 
 opacket basic_connection::process_kexdhreply(ipacket& in, boost::system::error_code& ec)
 {
-	ipacket hostkey, signature;
-	Integer f;
-
-	in >> hostkey >> f >> signature;
+	opacket out;
 	
-//						string hostName = mIPAddress;
-//						if (mPortNumber != 22)
-//							hostName = hostName + ':' + boost::lexical_cast<string>(mPortNumber);
-
-	Integer K;
-	if (choose_protocol(m_kex_alg, kKeyExchangeAlgorithms) == "diffie-hellman-group14-sha1")
-		K = a_exp_b_mod_c(f, m_x, p14);
+	if (m_key_exchange == nullptr)
+		ec = error::make_error_code(error::key_exchange_failed);
 	else
-		K = a_exp_b_mod_c(f, m_x, p2);
-
-	opacket hp;
-	hp << kSSHVersionString << m_host_version << m_my_payload << m_host_payload << hostkey << m_e << f << K;
-	vector<uint8> H = hash<SHA1>().update(hp).final();
-
-	if (m_session_id.empty())
-		m_session_id = H;
-
-	unique_ptr<PK_Verifier> h_key;
-
-	string pk_type;
-	ipacket pk_rs;
-	signature >> pk_type >> pk_rs;
-
-//						if (not MKnownHosts::Instance().CheckHost(hostName, pk_type, hostkey))
-//							Error(error::make_error_code(error::host_key_not_verifiable));
-
-	string h_pk_type;
-	hostkey >> h_pk_type;
-
-	if (h_pk_type == "ssh-dss")
-	{
-		Integer h_p, h_q, h_g, h_y;
-		hostkey >> h_p >> h_q >> h_g >> h_y;
-
-		h_key.reset(new GDSA<SHA1>::Verifier(h_p, h_q, h_g, h_y));
-	}
-	else if (h_pk_type == "ssh-rsa")
-	{
-		Integer h_e, h_n;
-		hostkey >> h_e >> h_n;
-
-		h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
-	}
-
-	const vector<uint8>& pk_rs_d(pk_rs);
-	if (pk_type != h_pk_type or not h_key->VerifyMessage(&H[0], H.size(), &pk_rs_d[0], pk_rs_d.size()))
-		ec = error::make_error_code(error::host_key_verification_failed);
-
-	// derive the keys, 32 bytes should be enough
-	int keylen = 32;
-	for (int i = 0; i < 6; ++i)
-	{
-		vector<uint8> key = (hash<SHA1>() | K | H | ('A' + i) | m_session_id).final();
-		
-		for (int k = 20; k < keylen; k += 20)
-		{
-			vector<uint8> k2 = (hash<SHA1>() | K | H | key).final();
-			key.insert(key.end(), k2.begin(), k2.end());
-		}
-		
-		m_keys[i].assign(key.begin(), key.begin() + keylen);
-	}
-
-	return opacket(newkeys);
+		out = m_key_exchange->process_kexdhreply(in, ec);
+	
+	return out;
 }
 
 opacket basic_connection::process_newkeys(ipacket& in, boost::system::error_code& ec)
 {
-	string protocol;
+	m_encryptor.reset(m_key_exchange->encryptor());
+	m_decryptor.reset(m_key_exchange->decryptor());
+	m_signer.reset(m_key_exchange->signer());
+	m_verifier.reset(m_key_exchange->verifier());
 	
-	do
-	{
-		// Client to server encryption
-		protocol = choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms);
-		
-		if (protocol == "3des-cbc")
-			m_encryptor_cipher.reset(new DES_EDE3::Encryption(&m_keys[2][0]));
-		else if (protocol == "blowfish-cbc")
-			m_encryptor_cipher.reset(new BlowfishEncryption(&m_keys[2][0]));
-		else if (protocol == "aes128-cbc" or protocol == "aes128-ctr")
-			m_encryptor_cipher.reset(new AESEncryption(&m_keys[2][0], 16));
-		else if (protocol == "aes192-cbc" or protocol == "aes192-ctr")
-			m_encryptor_cipher.reset(new AESEncryption(&m_keys[2][0], 24));
-		else if (protocol == "aes256-cbc" or protocol == "aes256-ctr")
-			m_encryptor_cipher.reset(new AESEncryption(&m_keys[2][0], 32));
-		else
-			break;
-	
-		if (ba::ends_with(protocol, "-cbc"))
-			m_encryptor.reset(
-				new CBC_Mode_ExternalCipher::Encryption(
-					*m_encryptor_cipher.get(), &m_keys[0][0]));
-		else
-			m_encryptor.reset(
-				new CTR_Mode_ExternalCipher::Encryption(
-					*m_encryptor_cipher.get(), &m_keys[0][0]));
-	
-		// Server to client encryption
-		protocol = choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms);
-		
-		if (ba::ends_with(protocol, "-ctr"))
-		{
-			if (protocol == "aes128-ctr")
-				m_decryptor_cipher.reset(new AESEncryption(&m_keys[3][0], 16));
-			else if (protocol == "aes192-ctr")
-				m_decryptor_cipher.reset(new AESEncryption(&m_keys[3][0], 24));
-			else if (protocol == "aes256-ctr")
-				m_decryptor_cipher.reset(new AESEncryption(&m_keys[3][0], 32));
-			else
-				break;
-			
-			m_decryptor.reset(
-				new CTR_Mode_ExternalCipher::Decryption(
-					*m_decryptor_cipher.get(), &m_keys[1][0]));
-		}
-		else
-		{
-			if (protocol == "3des-cbc")
-				m_decryptor_cipher.reset(new DES_EDE3_Decryption(&m_keys[3][0]));
-			else if (protocol == "blowfish-cbc")
-				m_decryptor_cipher.reset(new BlowfishDecryption(&m_keys[3][0]));
-			else if (protocol == "aes128-cbc" or protocol == "aes128-ctr")
-				m_decryptor_cipher.reset(new AESDecryption(&m_keys[3][0], 16));
-			else if (protocol == "aes192-cbc" or protocol == "aes192-ctr")
-				m_decryptor_cipher.reset(new AESDecryption(&m_keys[3][0], 24));
-			else if (protocol == "aes256-cbc" or protocol == "aes256-ctr")
-				m_decryptor_cipher.reset(new AESDecryption(&m_keys[3][0], 32));
-			else
-				break;
-		
-			m_decryptor.reset(
-				new CBC_Mode_ExternalCipher::Decryption(
-					*m_decryptor_cipher.get(), &m_keys[1][0]));
-		}
-	
-		protocol = choose_protocol(m_MAC_alg_c2s, kMacAlgorithms);
-		if (protocol == "hmac-sha1")
-			m_signer.reset(
-				new HMAC<SHA1>(&m_keys[4][0], 20));
-		else
-			m_signer.reset(
-				new HMAC<Weak::MD5>(&m_keys[4][0]));
-	
-		protocol = choose_protocol(m_MAC_alg_s2c, kMacAlgorithms);
-		if (protocol == "hmac-sha1")
-			m_verifier.reset(
-				new HMAC<SHA1>(&m_keys[5][0], 20));
-		else
-			m_verifier.reset(
-				new HMAC<Weak::MD5>(&m_keys[5][0]));
-	
-//							string compress;
-//							if (Preferences::GetInteger("compress-sftp", true))
-//								compress = kUseCompressionAlgorithms;
-//							else
-//								compress = kDontUseCompressionAlgorithms;
-//						
-//							if (choose_protocol(mCompressionAlgS2C, compress) == "zlib")
-//								mCompressor.reset(new MSshPacketCompressor);
-//							else
-//								mDelayedCompress = choose_protocol(mCompressionAlgS2C, compress) == "zlib@openssh.com";
-//						
-//							if (choose_protocol(mCompressionAlgC2S, compress) == "zlib")
-//								mDecompressor.reset(new MSshPacketDecompressor);
-//							else
-//								mDelayedDecompress = choose_protocol(mCompressionAlgC2S, compress) == "zlib@openssh.com";
-	}
-	while (false);
-	
+	delete m_key_exchange;
+	m_key_exchange = nullptr;
+
 	if (m_decryptor)
 		m_blocksize = m_decryptor_cipher->BlockSize();
 	
@@ -769,8 +513,8 @@ Handler		m_handler;
 
 struct packet_encryptor
 {
-        typedef char							char_type;
-		struct category : io::multichar_output_filter_tag, io::flushable_tag {};
+    typedef char char_type;
+	struct category : io::multichar_output_filter_tag, io::flushable_tag {};
 
 				packet_encryptor(StreamTransformation& cipher,
 						MessageAuthenticationCode& signer, uint32 blocksize, uint32 seq_nr)
@@ -837,7 +581,6 @@ struct packet_encryptor
 					return true;
 				}
 
-
 	StreamTransformation&		m_cipher;
 	MessageAuthenticationCode&	m_signer;
 	vector<uint8>				m_block;
@@ -847,7 +590,7 @@ struct packet_encryptor
 
 void basic_connection::async_write_packet_int(const opacket& p, basic_write_op* op)
 {
-	streambuf_ptr request(new boost::asio::streambuf);
+	boost::asio::streambuf* request(new boost::asio::streambuf);
 
 	{
 		io::filtering_stream<io::output> out;
