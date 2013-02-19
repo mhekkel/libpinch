@@ -45,7 +45,14 @@ opacket::opacket(opacket&& rhs)
 opacket& opacket::operator=(opacket&& rhs)
 {
 	if (this != &rhs)
-		m_data= move(rhs.m_data);
+		m_data = move(rhs.m_data);
+	return *this;
+}
+
+opacket& opacket::operator=(const opacket& rhs)
+{
+	if (this != &rhs)
+		m_data = rhs.m_data;
 	return *this;
 }
 

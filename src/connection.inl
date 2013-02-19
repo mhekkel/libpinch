@@ -101,6 +101,7 @@ string choose_protocol(const vector<string>& server, const char* client);
 template<typename SOCKET>
 basic_connection<SOCKET>::basic_connection(socket_type& socket, const string& user)
 	: m_socket(socket)
+	, m_io_service(socket.get_io_service())
 	, m_user(user)
 	, m_connect_handler(nullptr)
 {
@@ -116,7 +117,9 @@ template<typename SOCKET>
 void basic_connection<SOCKET>::start_handshake(basic_connect_handler* handler)
 {
     if (m_connect_handler != nullptr)
-    	handler->handle_connect(error::make_error_code(error::protocol_error));
+    {
+    	handler->handle_connect(error::make_error_code(error::protocol_error), m_io_service);
+    }
     else
 	{
 		m_connect_handler = handler;
@@ -140,7 +143,7 @@ template<typename SOCKET>
 void basic_connection<SOCKET>::handle_protocol_version_request(const boost::system::error_code& ec, streambuf_ptr request)
 {
 	if (ec)
-		m_connect_handler->handle_connect(ec);
+		m_connect_handler->handle_connect(ec, m_io_service);
 	else
 		boost::asio::async_read_until(m_socket, m_response, "\n",
 			boost::bind(&basic_connection<SOCKET>::handle_protocol_version_response, this, boost::asio::placeholders::error));
@@ -150,7 +153,7 @@ template<typename SOCKET>
 void basic_connection<SOCKET>::handle_protocol_version_response(const boost::system::error_code& ec)
 {
 	if (ec)
-		m_connect_handler->handle_connect(ec);
+		m_connect_handler->handle_connect(ec, m_io_service);
 	else
 	{
 		istream response_stream(&m_response);
@@ -183,7 +186,7 @@ void basic_connection<SOCKET>::handle_protocol_version_response(const boost::sys
 			async_send_packet(out, [this](const boost::system::error_code& ec)
 			{
 				if (ec)
-					m_connect_handler->handle_connect(ec);
+					m_connect_handler->handle_connect(ec, m_io_service);
 			});
 			
 			m_my_payload = out;
@@ -192,7 +195,7 @@ void basic_connection<SOCKET>::handle_protocol_version_response(const boost::sys
 			received_data(boost::system::error_code());
 		}
 		else
-			m_connect_handler->handle_connect(error::make_error_code(error::protocol_version_not_supported));
+			m_connect_handler->handle_connect(error::make_error_code(error::protocol_version_not_supported), m_io_service);
 	}
 }
 
@@ -308,7 +311,7 @@ void basic_connection<SOCKET>::process_packet(ipacket& in)
 	{
 		case disconnect:
 			if (m_connect_handler)
-				m_connect_handler->handle_connect(error::make_error_code(error::connection_lost));
+				m_connect_handler->handle_connect(error::make_error_code(error::connection_lost), m_io_service);
 			m_socket.close();
 			break;
 		case kexinit:			out = process_kexinit(in, ec); 	break;
@@ -335,13 +338,13 @@ void basic_connection<SOCKET>::process_packet(ipacket& in)
 	}
 	
 	if (ec and m_connect_handler)
-		m_connect_handler->handle_connect(ec);
+		m_connect_handler->handle_connect(ec, m_io_service);
 	else if (not out.empty())
 	{
 		async_send_packet(out, [this](const boost::system::error_code& ec)
 			{
 				if (ec and m_connect_handler)
-					m_connect_handler->handle_connect(ec);
+					m_connect_handler->handle_connect(ec, m_io_service);
 			});
 	}
 }
@@ -608,7 +611,11 @@ template<typename SOCKET>
 opacket basic_connection<SOCKET>::process_userauth_success(ipacket& in, boost::system::error_code& ec)
 {
 	m_authenticated = true;
-	m_connect_handler->handle_connect(boost::system::error_code());
+	m_connect_handler->handle_connect(boost::system::error_code(), m_io_service);
+
+	delete m_connect_handler;
+	m_connect_handler = nullptr;
+
 	return opacket();
 }
 
@@ -617,13 +624,14 @@ opacket basic_connection<SOCKET>::process_userauth_failure(ipacket& in, boost::s
 {
 	vector<string> s;
 	bool partial;
-	opacket out(userauth_request);
+	opacket out;
 	
 	in >> s >> partial;
 	
 	if (choose_protocol(s, "publickey") == "publickey" and not m_private_keys.empty())
 	{
-		out << m_user << "ssh-connection" << "publickey" << false
+		out = opacket(userauth_request)
+			<< m_user << "ssh-connection" << "publickey" << false
 			<< "ssh-rsa" << m_private_keys.front();
 		m_private_keys.pop_front();
 		m_auth_state = auth_state_public_key;
@@ -634,104 +642,14 @@ opacket basic_connection<SOCKET>::process_userauth_failure(ipacket& in, boost::s
 	}
 	else
 		out = opacket(disconnect);
-	
-	
-//	bool done = false;
-//
-//	while (not done)
-//	{
-//		switch (m_auth_state)
-//		{
-//			case auth_state_none:
-//				m_auth_state = auth_state_keyboard_interactive;
-//				if (m_ssh_agent != nullptr and not m_ssh_agent->empty() and
-//					choose_protocol(s, "publickey") == "publickey")
-//				{
-//					for (ssh_agent::iterator key = m_ssh_agent->begin(); key != m_ssh_agent->end(); ++key)
-//					{
-//						opacket blob;
-//						blob << *key;
-//						m_private_key_blobs.push_back(blob);
-//					}
-//					
-//					m_auth_state = auth_state_public_key;
-//					done = true;
-//				}
-//				break;
-//			
-//			case auth_state_public_key:
-//				if (m_private_key_blobs.empty())
-//					m_auth_state = auth_state_keyboard_interactive;
-//				else
-//					done = true;
-//				break;
-//			
-//			case auth_state_keyboard_interactive:
-//				m_auth_state = auth_state_password;
-//				break;
-//			
-//			case auth_state_password:
-//				if (not password_callback.empty() and choose_protocol(s, "password") == "password" and ++m_password_attempts <= 3)
-//					done = true;
-//				else
-//					full_stop(error::make_error_code(error::no_more_auth_methods_available));
-//				break;
-//		}
-//	}
-//	
-//	opacket out(userauth_request);
-//	
-//	switch (m_auth_state)
-//	{
-//		case auth_state_public_key:
-//			out << m_user << "ssh-connection" << "publickey" << false
-//				<< "ssh-rsa" << m_private_key_blobs.front();
-//			m_private_key_blobs.pop_front();
-//			break;
-//		
-//		case auth_state_keyboard_interactive:
-//			out << m_user << "ssh-connection" << "keyboard-interactive" << "" << "";
-//			break;
-//		
-//		case auth_state_password:
-//		{
-//			if (password_callback(pw))
-//			
-//			ConnectionMessage(_("Password authentication"));
-//		
-//			string p[1];
-//			bool e[1];
-//			
-//		//	p[0] = MStrings::GetIndString(1011, 2);
-//			p[0] = _("Password");
-//			e[0] = false;
-//		
-//			MWindow* docWindow = MWindow::GetFirstWindow();	// I hope...
-//			unique_ptr<MAuthDialog> dlog(new MAuthDialog(_("Logging in"),
-//				FormatString("Please enter password for account ^0", mUserName),
-//				1, p, e));
-//		
-//			AddRoute(dlog->eAuthInfo, eRecvPassword);
-//		
-//			dlog->Show(docWindow);
-//			dlog.release();	
-//			break;
-//		}
-//		
-//		default:
-//			break;
-//	}
 
-
-
-//	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user));
 	return out;
 }
 
 template<typename SOCKET>
 opacket basic_connection<SOCKET>::process_userauth_banner(ipacket& in, boost::system::error_code& ec)
 {
-	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user));
+	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user), m_io_service);
 	return opacket();
 }
 
@@ -759,57 +677,13 @@ opacket basic_connection<SOCKET>::process_userauth_info_request(ipacket& in, boo
 	}
 
 	return out;
-//	else if (mAuthenticationState == SSH_AUTH_STATE_KEYBOARD_INTERACTIVE)
-//	{
-//		uint8 msg;
-//		string title, instruction, lang, p[5];
-//		bool e[5];
-//		uint32 n;
-//		
-//		in >> msg >> title >> instruction >> lang >> n;
-//		
-//		if (n == 0)
-//		{
-//			MSshPacket out;
-//			out << uint8(SSH_MSG_USERAUTH_INFO_RESPONSE) << uint32(0);
-//			Send(out);
-//		}
-//		else
-//		{
-//			if (title.length() == 0)
-//				title = _("Logging in");
-//			
-//			if (instruction.length() == 0)
-//				instruction = FormatString("Please enter password for acount ^0 ip address ^1", mUserName, mIPAddress);
-//			
-//			if (n > 5)
-//				THROW(("Invalid authentication protocol", 0));
-//			
-//			for (uint32 i = 0; i < n; ++i)
-//				in >> p[i] >> e[i];
-//			
-//			if (n == 0)
-//				n = 1;
-//			
-//			MWindow* docWindow = MWindow::GetFirstWindow();	// I hope...
-//			auto_ptr<MAuthDialog> dlog(new MAuthDialog(title, instruction, n, p, e));
-//			AddRoute(dlog->eAuthInfo, eRecvAuthInfo);
-//			dlog->Show(docWindow);
-//			dlog.release();
-//		}
-//	}
-//	else
-//		Error(error::make_error_code(error::protocol_error));
-//}
-//		
-//	}
 }
 
 template<typename SOCKET>
 void basic_connection<SOCKET>::full_stop(const boost::system::error_code& ec)
 {
 	if (m_connect_handler)
-		m_connect_handler->handle_connect(ec);
+		m_connect_handler->handle_connect(ec, m_io_service);
 
 	m_socket.close();
 }
