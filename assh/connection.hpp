@@ -12,19 +12,25 @@
 namespace assh
 {
 
-class ssh_agent;
-
 extern const std::string kSSHVersionString;
 
-template<typename SOCKET>
 class basic_connection
 {
   public:
-	typedef SOCKET									socket_type;
 	typedef std::shared_ptr<boost::asio::streambuf>	streambuf_ptr;
 
-					basic_connection(socket_type& socket, const std::string& user);
 	virtual			~basic_connection();
+
+	template<typename Handler>
+	void			async_connect(const std::string& user, Handler&& handler)
+					{
+					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
+				    	start_handshake(new connect_handler<Handler>(move(handler)));
+					}
+
+  protected:
+
+					basic_connection(boost::asio::io_service& io_service, const std::string& user);
 
 	struct basic_connect_handler
 	{
@@ -54,20 +60,11 @@ class basic_connection
 		boost::system::error_code	m_ec;
 	};
 
-	template<typename Handler>
-	void			async_connect(const std::string& user, Handler&& handler)
-					{
-					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
-				    	start_handshake(new connect_handler<Handler>(move(handler)));
-					}
 
-	boost::function<bool(std::string& password)>	password_callback;
-
-  protected:
 
 	void			start_handshake(basic_connect_handler* handler);
-	void			handle_protocol_version_request(const boost::system::error_code& ec, streambuf_ptr);
-	void			handle_protocol_version_response(const boost::system::error_code& ec);
+	void			handle_protocol_version_request(const boost::system::error_code& ec, std::size_t);
+	void			handle_protocol_version_response(const boost::system::error_code& ec, std::size_t);
 	
 	void			received_data(const boost::system::error_code& ec);
 
@@ -160,7 +157,7 @@ class basic_connection
 
 		virtual void	operator()(const boost::system::error_code& ec, std::size_t bytes_transferred)
 						{
-							m_handler(ec);
+							m_handler(ec, bytes_transferred);
 						}
 		
 		Handler			m_handler;
@@ -168,12 +165,22 @@ class basic_connection
 	};
 
 	template<typename Handler>
-	void			async_send_packet(const opacket& p, Handler&& handler)
+	void			async_write(streambuf_ptr request, Handler&& handler)
 					{
-						async_send_packet_int(p, new write_op<Handler>(std::move(handler)));
+						async_write_int(request, new write_op<Handler>(std::move(handler)));
 					}
 
-	void			async_send_packet_int(const opacket& p, basic_write_op* handler);
+	template<typename Handler>
+	void			async_write(const opacket& p, Handler&& handler)
+					{
+						async_write_packet_int(p, new write_op<Handler>(std::move(handler)));
+					}
+
+	void			async_write_packet_int(const opacket& p, basic_write_op* handler);
+	virtual void	async_write_int(streambuf_ptr request, basic_write_op* handler) = 0;
+	
+	virtual void	async_read_version_string() = 0;
+	virtual void	async_read(uint32 at_least) = 0;
 	
 	enum auth_state
 	{
@@ -183,7 +190,6 @@ class basic_connection
 		auth_state_password
 	};
 
-	socket_type&				m_socket;
 	boost::asio::io_service&	m_io_service;
 	std::string					m_user;
 	basic_connect_handler*		m_connect_handler;
@@ -196,12 +202,11 @@ class basic_connection
 	uint32						m_blocksize;
 	boost::asio::streambuf		m_response;
 	
-	std::vector<std::string>	m_kex_alg, m_server_host_key_alg,
+	std::string					m_kex_alg, m_server_host_key_alg,
 								m_encryption_alg_c2s, m_encryption_alg_s2c,
 								m_MAC_alg_c2s, m_MAC_alg_s2c,
 								m_compression_alg_c2s, m_compression_alg_s2c,
 								m_lang_c2s, m_lang_s2c;
-
 
 	std::unique_ptr<CryptoPP::BlockCipher>					m_decryptor_cipher;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_decryptor;
@@ -219,7 +224,6 @@ class basic_connection
 								m_read_handlers;
 	std::string					m_host_version;
 	
-	ssh_agent*					m_ssh_agent;
 	std::deque<opacket>			m_private_keys;
 
   private:
@@ -227,9 +231,50 @@ class basic_connection
 	basic_connection&			operator=(const basic_connection&);
 };
 
-typedef basic_connection<boost::asio::ip::tcp::socket> connection;
+template<typename SOCKET>
+class basic_connection_t : public basic_connection
+{
+  public:
+	typedef SOCKET		socket_type;
+
+						basic_connection_t(socket_type& socket, const std::string& user)
+							: basic_connection(socket.get_io_service(), user), m_socket(socket) {}
+
+  protected:
+	virtual void		async_write_int(streambuf_ptr request, basic_write_op* op)
+						{
+							boost::asio::async_write(m_socket, *request,
+								[op, request](const boost::system::error_code& ec, size_t bytes_transferred)
+								{
+									(void)request.get();
+									(*op)(ec, bytes_transferred);
+									delete op;
+								});
+						}
+
+	virtual void		async_read_version_string()
+						{
+							boost::asio::async_read_until(m_socket, m_response, "\n",
+								[this](const boost::system::error_code& ec, size_t bytes_transferred)
+							{
+								handle_protocol_version_response(ec, bytes_transferred);
+							});
+						}
+						
+	virtual void		async_read(uint32 at_least)
+						{
+							boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
+								[this](const boost::system::error_code& ec, size_t bytes_transferred)
+								{
+									this->received_data(ec);
+								});
+						}
+
+  private:
+	socket_type&		m_socket;
+};
+
+typedef basic_connection_t<boost::asio::ip::tcp::socket> connection;
 	
 }
-
-#include <assh/../src/connection.inl>
 
