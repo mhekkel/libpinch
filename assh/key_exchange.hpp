@@ -21,16 +21,11 @@ class key_exchange
 {
   public:
 
-	static key_exchange*	create(ipacket& in);
+	static key_exchange*	create(ipacket& in, const std::string& host_version, std::vector<uint8>& session_id,
+								const std::vector<uint8>& my_payload);
 
-	virtual opacket			process_kexinit() = 0;
-	virtual opacket			process_kexdhreply(ipacket& in,
-								const std::string& host_version, std::vector<uint8>& session_id,
-								const std::vector<uint8>& my_payload, const std::vector<uint8>& host_payload,
-								boost::system::error_code& ec);
+	virtual bool			process(ipacket& in, opacket& out, boost::system::error_code& ec);
 
-	virtual opacket			process_kexdhgexgroup(ipacket& in, boost::system::error_code& ec);
-	virtual opacket			process_kexdhgexreply(ipacket& in, boost::system::error_code& ec);
 
 	CryptoPP::StreamTransformation*			decryptor();
 	CryptoPP::StreamTransformation*			encryptor();
@@ -39,12 +34,22 @@ class key_exchange
   	
   protected:
 
-							key_exchange();
+							key_exchange(const std::string& host_version, std::vector<uint8>& session_id,
+								const std::vector<uint8>& my_payload, const std::vector<uint8>& host_payload);
 
-	virtual void			calculate_hash(ipacket& hostkey, CryptoPP::Integer& f, const std::string& host_version,
-								const std::vector<uint8>& my_payload, const std::vector<uint8>& host_payload) = 0;
+	void					init(ipacket& in);
+	void					process_kex_dh_reply(ipacket& in, opacket& out, boost::system::error_code& ec);
+	virtual void			calculate_hash(ipacket& hostkey, CryptoPP::Integer& f) = 0;
 
-	CryptoPP::Integer		m_x, m_e, m_K;
+	template<typename HashAlgorithm>
+	void					derive_keys();
+
+	virtual void			derive_keys_with_hash();
+
+	std::vector<uint8>&		m_session_id;
+	std::string				m_host_version;
+	std::vector<uint8>		m_host_payload, m_my_payload;
+	CryptoPP::Integer		m_x, m_e, m_K, m_p, m_q, m_g;
 	std::string				m_encryption_alg_c2s, m_encryption_alg_s2c,
 							m_MAC_alg_c2s, m_MAC_alg_s2c,
 							m_compression_alg_c2s, m_compression_alg_s2c,

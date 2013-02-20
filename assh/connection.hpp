@@ -23,7 +23,7 @@ class basic_connection
 	void			async_connect(const std::string& user, Handler&& handler)
 					{
 					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
-				    	start_handshake(new connect_handler<Handler>(move(handler)));
+				    	start_handshake(new connect_handler<Handler>(std::move(handler)));
 					}
 
   protected:
@@ -32,6 +32,7 @@ class basic_connection
 
 	struct basic_connect_handler
 	{
+		virtual				~basic_connect_handler() {}
 		virtual void		handle_connect(const boost::system::error_code& ec, boost::asio::io_service& io_service) = 0;
 	};
 
@@ -67,14 +68,14 @@ class basic_connection
 	void			received_data(const boost::system::error_code& ec);
 
 	void			process_packet(ipacket& in);
-	opacket			process_kexinit(ipacket& in, boost::system::error_code& ec);
-	opacket			process_kexdhreply(ipacket& in, boost::system::error_code& ec);
-	opacket			process_newkeys(ipacket& in, boost::system::error_code& ec);
-	opacket			process_service_accept(ipacket& in, boost::system::error_code& ec);
-	opacket			process_userauth_success(ipacket& in, boost::system::error_code& ec);
-	opacket			process_userauth_failure(ipacket& in, boost::system::error_code& ec);
-	opacket			process_userauth_banner(ipacket& in, boost::system::error_code& ec);
-	opacket			process_userauth_info_request(ipacket& in, boost::system::error_code& ec);
+	void			process_kexinit(ipacket& in, opacket& out, boost::system::error_code& ec);
+	void			process_kexdhreply(ipacket& in, opacket& out, boost::system::error_code& ec);
+	void			process_newkeys(ipacket& in, opacket& out, boost::system::error_code& ec);
+	void			process_service_accept(ipacket& in, opacket& out, boost::system::error_code& ec);
+	void			process_userauth_success(ipacket& in, opacket& out, boost::system::error_code& ec);
+	void			process_userauth_failure(ipacket& in, opacket& out, boost::system::error_code& ec);
+	void			process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec);
+	void			process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec);
 
 	void			full_stop(const boost::system::error_code& ec);
 
@@ -96,19 +97,20 @@ class basic_connection
 
 	struct basic_read_handler
 	{
-		virtual void receive_and_post(ipacket&& p, boost::asio::io_service& io_service) = 0;
+		virtual			~basic_read_handler() {}
+		virtual void	receive_and_post(ipacket&& p, boost::asio::io_service& io_service) = 0;
 	};
 
 	template<typename Handler>
 	struct read_handler : public basic_read_handler
 	{
-		read_handler(Handler&& handler)
-			: m_handler(std::move(handler)) {}
+						read_handler(Handler&& handler)
+							: m_handler(std::move(handler)) {}
 		
-		virtual void receive_and_post(ipacket&& p, boost::asio::io_service& io_service)
-		{
-			io_service.post(bound_handler<Handler>(m_handler, boost::system::error_code(), std::move(p)));
-		}
+		virtual void	receive_and_post(ipacket&& p, boost::asio::io_service& io_service)
+						{
+							io_service.post(bound_handler<Handler>(m_handler, boost::system::error_code(), std::move(p)));
+						}
 
 		Handler		m_handler;
 	};
@@ -126,8 +128,8 @@ class basic_connection
 
 	struct basic_write_op
 	{
-//		virtual void operator()(const boost::system::error_code& ec) = 0;
-		virtual void operator()(const boost::system::error_code& ec, std::size_t bytes_transferred) = 0;
+		virtual			~basic_write_op() {}
+		virtual void	operator()(const boost::system::error_code& ec, std::size_t bytes_transferred) = 0;
 	};
 
 	template<typename Handler>
@@ -143,11 +145,6 @@ class basic_connection
 							: m_handler(std::move(rhs.m_handler)) {}
 					
 		write_op&		operator=(const write_op& rhs);
-
-//		void		operator()(const boost::system::error_code& ec)
-//					{
-//						m_handler(ec);
-//					}
 
 		virtual void	operator()(const boost::system::error_code& ec, std::size_t bytes_transferred)
 						{
@@ -187,12 +184,13 @@ class basic_connection
 	std::string					m_user;
 	basic_connect_handler*		m_connect_handler;
 	bool						m_authenticated;
+	std::string					m_host_version;
 	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;
 	auth_state					m_auth_state;
 	uint32						m_password_attempts;
 	uint32						m_in_seq_nr, m_out_seq_nr;
 	ipacket						m_packet;
-	uint32						m_blocksize;
+	uint32						m_iblocksize, m_oblocksize;
 	boost::asio::streambuf		m_response;
 	
 	key_exchange*				m_key_exchange;
@@ -205,7 +203,6 @@ class basic_connection
 
 	std::deque<basic_read_handler*>
 								m_read_handlers;
-	std::string					m_host_version;
 	std::deque<opacket>			m_private_keys;
 
   private:

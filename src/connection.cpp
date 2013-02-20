@@ -78,7 +78,7 @@ void basic_connection::start_handshake(basic_connect_handler* handler)
 		m_auth_state = auth_state_none;
 		m_password_attempts = 0;
 		m_in_seq_nr = m_out_seq_nr = 0;
-		m_blocksize = 8;
+		m_iblocksize = m_oblocksize = 8;
 		
 		boost::asio::streambuf* request(new boost::asio::streambuf);
 		ostream out(request);
@@ -157,17 +157,17 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 		return;
 	}
 	
-	while (m_response.size() >= m_blocksize)
+	while (m_response.size() >= m_iblocksize)
 	{
 		if (not m_packet.full())
 		{
-			vector<uint8> block(m_blocksize);
-			m_response.sgetn(reinterpret_cast<char*>(&block[0]), m_blocksize);
+			vector<uint8> block(m_iblocksize);
+			m_response.sgetn(reinterpret_cast<char*>(&block[0]), m_iblocksize);
 
 			if (m_decryptor)
 			{
-				vector<uint8> data(m_blocksize);
-				m_decryptor->ProcessData(&data[0], &block[0], m_blocksize);
+				vector<uint8> data(m_iblocksize);
+				m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
 				swap(data, block);
 			}
 
@@ -214,8 +214,8 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 		}
 	}
 	
-	uint32 at_least = m_blocksize;
-	if (m_response.size() >= m_blocksize)
+	uint32 at_least = m_iblocksize;
+	if (m_response.size() >= m_iblocksize)
 	{
 		// if we arrive here, we might have read a block, but not the digest?
 		// call readsome with 0 as at-least, that will return something we hope.
@@ -232,38 +232,54 @@ void basic_connection::process_packet(ipacket& in)
 	opacket out;
 	boost::system::error_code ec;
 	
-	switch ((message_type)m_packet)
+	bool handled = false;
+	
+	if (m_key_exchange)
+		handled = m_key_exchange->process(in, out, ec);
+	
+	if (not handled)
 	{
-		case disconnect:
-			if (m_connect_handler)
-				m_connect_handler->handle_connect(error::make_error_code(error::connection_lost), m_io_service);
-			break;
-		case kexinit:			out = process_kexinit(in, ec); 	break;
-		case kexdh_reply:		out = process_kexdhreply(in, ec); break;
-		case newkeys:			out = process_newkeys(in, ec);	break;
-		case service_accept:	out = process_service_accept(in, ec); break;
-		case userauth_success:	out = process_userauth_success(in, ec); break;
-		case userauth_failure:	out = process_userauth_failure(in, ec); break;
-		case userauth_banner:	out = process_userauth_banner(in, ec); break;
-		case userauth_info_request:
-								out = process_userauth_info_request(in, ec); break;
-		case ignore:			break;
-		default:
-			if (m_authenticated and not m_read_handlers.empty())
-			{
-				basic_read_handler* handler = m_read_handlers.front();
-				m_read_handlers.pop_front();
-				
-				handler->receive_and_post(move(m_packet), m_io_service);
+		handled = true;
+		
+		switch ((message_type)m_packet)
+		{
+			case disconnect:
+				if (m_connect_handler)
+					m_connect_handler->handle_connect(error::make_error_code(error::connection_lost), m_io_service);
+				break;
 
-				delete handler;
-			}
-			break;
+			case kexinit:
+				m_host_payload = in;
+				m_key_exchange = key_exchange::create(in, m_host_version, m_session_id, m_my_payload);
+				m_key_exchange->process(in, out, ec);
+				break;
+
+			case newkeys:				process_newkeys(in, out, ec);				break;
+			case service_accept:		process_service_accept(in, out, ec);		break;
+			case userauth_success:		process_userauth_success(in, out, ec);		break;
+			case userauth_failure:		process_userauth_failure(in, out, ec);		break;
+			case userauth_banner:		process_userauth_banner(in, out, ec);		break;
+			case userauth_info_request:	process_userauth_info_request(in, out, ec);	break;
+			case ignore:															break;
+
+			default:
+				if (m_authenticated and not m_read_handlers.empty())
+				{
+					basic_read_handler* handler = m_read_handlers.front();
+					m_read_handlers.pop_front();
+					
+					handler->receive_and_post(move(m_packet), m_io_service);
+	
+					delete handler;
+				}
+				break;
+		}
 	}
 	
 	if (ec and m_connect_handler)
 		m_connect_handler->handle_connect(ec, m_io_service);
-	else if (not out.empty())
+
+	if (not out.empty())
 	{
 		async_write(out, [this](const boost::system::error_code& ec, size_t)
 			{
@@ -273,38 +289,7 @@ void basic_connection::process_packet(ipacket& in)
 	}
 }
 
-opacket basic_connection::process_kexinit(ipacket& in, boost::system::error_code& ec)
-{
-	m_host_payload = in;
-	
-	m_key_exchange = key_exchange::create(in);
-
-	opacket out;
-
-	if (m_key_exchange == nullptr)
-		ec = error::make_error_code(error::key_exchange_failed);
-	else
-		out = m_key_exchange->process_kexinit();
-	
-	return out;
-}
-
-opacket basic_connection::process_kexdhreply(ipacket& in, boost::system::error_code& ec)
-{
-	opacket out;
-	
-	if (m_key_exchange == nullptr)
-		ec = error::make_error_code(error::key_exchange_failed);
-	else
-	{
-		out = m_key_exchange->process_kexdhreply(in, m_host_version, m_session_id,
-				m_my_payload, m_host_payload, ec);
-	}
-	
-	return out;
-}
-
-opacket basic_connection::process_newkeys(ipacket& in, boost::system::error_code& ec)
+void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
 	m_encryptor.reset(m_key_exchange->encryptor());
 	m_decryptor.reset(m_key_exchange->decryptor());
@@ -315,13 +300,14 @@ opacket basic_connection::process_newkeys(ipacket& in, boost::system::error_code
 	m_key_exchange = nullptr;
 
 	if (m_decryptor)
-		m_blocksize = m_decryptor->OptimalBlockSize();
-	
-	opacket out(undefined);
+	{
+		m_iblocksize = m_decryptor->OptimalBlockSize();
+		m_oblocksize = m_encryptor->OptimalBlockSize();
+	}
 	
 	if (not m_authenticated)
 	{
-		out = opacket(service_request);
+		out = service_request;
 		out << "ssh-userauth";
 		
 		// fetch the private keys
@@ -333,33 +319,27 @@ opacket basic_connection::process_newkeys(ipacket& in, boost::system::error_code
 			m_private_keys.push_back(blob);
 		}
 	}
-	
-	return out;
 }
 
-opacket basic_connection::process_service_accept(ipacket& in, boost::system::error_code& ec)
+void basic_connection::process_service_accept(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
-	opacket out(userauth_request);
+	out = userauth_request;
 	out << m_user << "ssh-connection" << "none";
-	return out;
 }
 
-opacket basic_connection::process_userauth_success(ipacket& in, boost::system::error_code& ec)
+void basic_connection::process_userauth_success(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
 	m_authenticated = true;
 	m_connect_handler->handle_connect(boost::system::error_code(), m_io_service);
 
 	delete m_connect_handler;
 	m_connect_handler = nullptr;
-
-	return opacket();
 }
 
-opacket basic_connection::process_userauth_failure(ipacket& in, boost::system::error_code& ec)
+void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
 	string s;
 	bool partial;
-	opacket out;
 	
 	in >> s >> partial;
 	
@@ -373,23 +353,21 @@ opacket basic_connection::process_userauth_failure(ipacket& in, boost::system::e
 	}
 	else if (choose_protocol(s, "password") == "password")
 	{
-//		out << 
+		ec = error::make_error_code(error::ssh_errors::require_password);
+		out = ignore;
 	}
 	else
-		out = opacket(disconnect);
-
-	return out;
+		m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user), m_io_service);
 }
 
-opacket basic_connection::process_userauth_banner(ipacket& in, boost::system::error_code& ec)
+void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
 	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user), m_io_service);
-	return opacket();
 }
 
-opacket basic_connection::process_userauth_info_request(ipacket& in, boost::system::error_code& ec)
+void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
-	opacket out(userauth_request);
+	out = userauth_request;
 
 	if (m_auth_state == auth_state_public_key)
 	{
@@ -408,8 +386,6 @@ opacket basic_connection::process_userauth_info_request(ipacket& in, boost::syst
 
 		out << signature;
 	}
-
-	return out;
 }
 
 void basic_connection::full_stop(const boost::system::error_code& ec)
@@ -503,10 +479,10 @@ void basic_connection::async_write_packet_int(const opacket& p, basic_write_op* 
 		io::filtering_stream<io::output> out;
 	
 		if (m_encryptor)
-			out.push(packet_encryptor(*m_encryptor, *m_signer, m_blocksize, m_out_seq_nr));
+			out.push(packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
 		out.push(*request);
 
-		p.write(out, m_blocksize);
+		p.write(out, m_oblocksize);
 	}
 
 	++m_out_seq_nr;

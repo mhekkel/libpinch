@@ -35,6 +35,8 @@ class ssh_category : public boost::system::error_category
 				return "Failed to open SSH channel";
 			case error::channel_failure:
 				return "SSH channel failure";
+			case error::require_password:
+				return "Password requested";
 			default:
 				return "ssh error";
 		}

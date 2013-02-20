@@ -33,7 +33,7 @@ namespace assh
 static AutoSeededRandomPool	rng;
 
 const string
-	kKeyExchangeAlgorithms("diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
+	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
 	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
 	kEncryptionAlgorithms("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha1,hmac-md5"),
@@ -68,24 +68,71 @@ string choose_protocol(const string& server, const string& client)
 
 // --------------------------------------------------------------------
 	
-key_exchange::key_exchange()
+key_exchange::key_exchange(const string& host_version, vector<uint8>& session_id,
+	const vector<uint8>& my_payload, const vector<uint8>& host_payload)
+	: m_session_id(session_id), m_host_version(host_version)
+	, m_host_payload(host_payload), m_my_payload(my_payload)
 {
 }
 
-opacket key_exchange::process_kexdhreply(ipacket& in,
-	const string& host_version, vector<uint8>& session_id,
-	const vector<uint8>& my_payload, const vector<uint8>& host_payload,
-	boost::system::error_code& ec)
+void key_exchange::init(ipacket& in)
+{
+	bool first_kex_packet_follows;
+	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
+		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c,
+		lang_c2s, lang_s2c;
+
+	in	>> server_host_key_alg
+		>> encryption_alg_c2s
+		>> encryption_alg_s2c
+		>> MAC_alg_c2s
+		>> MAC_alg_s2c
+		>> compression_alg_c2s
+		>> compression_alg_s2c
+		>> lang_c2s
+		>> lang_s2c
+		>> first_kex_packet_follows;
+
+	m_encryption_alg_c2s = choose_protocol(encryption_alg_c2s, kEncryptionAlgorithms);
+	m_encryption_alg_s2c = choose_protocol(encryption_alg_s2c, kEncryptionAlgorithms);
+	m_MAC_alg_c2s = choose_protocol(MAC_alg_c2s, kMacAlgorithms);
+	m_MAC_alg_s2c = choose_protocol(MAC_alg_s2c, kMacAlgorithms);
+	m_compression_alg_c2s = choose_protocol(compression_alg_c2s, kDontUseCompressionAlgorithms);
+	m_compression_alg_s2c = choose_protocol(compression_alg_s2c, kDontUseCompressionAlgorithms);
+	m_lang_c2s = choose_protocol(lang_c2s, "none");
+	m_lang_s2c = choose_protocol(lang_s2c, "none");
+}
+
+bool key_exchange::process(ipacket& in, opacket& out, boost::system::error_code& ec)
+{
+	bool handled = true;
+	
+	switch ((message_type)in)
+	{
+		case kex_dh_reply:
+			process_kex_dh_reply(in, out, ec);
+			break;
+		
+		default:
+			handled = false;
+	}
+	
+	return handled;
+}
+
+void key_exchange::process_kex_dh_reply(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
 	ipacket hostkey, signature;
 	Integer f;
 
 	in >> hostkey >> f >> signature;
 	
-	calculate_hash(hostkey, f, host_version, my_payload, host_payload);
+	m_K = a_exp_b_mod_c(f, m_x, m_p);
 
-	if (session_id.empty())
-		session_id = m_H;
+	calculate_hash(hostkey, f);
+
+	if (m_session_id.empty())
+		m_session_id = m_H;
 
 	unique_ptr<PK_Verifier> h_key;
 
@@ -121,22 +168,33 @@ opacket key_exchange::process_kexdhreply(ipacket& in,
 	if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
 		ec = error::make_error_code(error::host_key_verification_failed);
 
+	derive_keys_with_hash();
+
+	out = newkeys;
+}
+
+void key_exchange::derive_keys_with_hash()
+{
+	derive_keys<SHA1>();
+}
+
+template<typename HashAlgorithm>
+void key_exchange::derive_keys()
+{
 	// derive the keys, 32 bytes should be enough
 	int keylen = 32;
 	for (int i = 0; i < 6; ++i)
 	{
-		vector<uint8> key = (hash<SHA1>() | m_K | m_H | ('A' + i) | session_id).final();
+		vector<uint8> key = (hash<HashAlgorithm>() | m_K | m_H | ('A' + i) | m_session_id).final();
 		
 		for (int k = 20; k < keylen; k += 20)
 		{
-			vector<uint8> k2 = (hash<SHA1>() | m_K | m_H | key).final();
+			vector<uint8> k2 = (hash<HashAlgorithm>() | m_K | m_H | key).final();
 			key.insert(key.end(), k2.begin(), k2.end());
 		}
 		
 		m_keys[i].assign(key.begin(), key.begin() + keylen);
 	}
-
-	return opacket(newkeys);	
 }
 
 StreamTransformation* key_exchange::decryptor()
@@ -220,79 +278,140 @@ MessageAuthenticationCode* key_exchange::verifier()
 	return result;
 }
 
-opacket key_exchange::process_kexdhgexgroup(ipacket& in, boost::system::error_code& ec)
-{
-	return opacket();
-}
-
-opacket key_exchange::process_kexdhgexreply(ipacket& in, boost::system::error_code& ec)
-{
-	return opacket();
-}
-
 // --------------------------------------------------------------------
 	
 class key_exchange_dh_group : public key_exchange
 {
   public:
-							key_exchange_dh_group(const Integer& p)
-								: m_p(p), m_q((p - 1) / 2) {}
-	
-	virtual opacket			process_kexinit();
-	virtual void			calculate_hash(ipacket& hostkey, Integer& f, const string& host_version,
-								const vector<uint8>& my_payload, const vector<uint8>& host_payload);
+							key_exchange_dh_group(const Integer& p,
+								const string& host_version, vector<uint8>& session_id,
+								const vector<uint8>& my_payload, const vector<uint8>& host_payload)
+								: key_exchange(host_version, session_id, my_payload, host_payload)
+							{
+								m_p = p;
+								m_q = (p - 1) / 2;
+							}
 
-	Integer					m_p, m_q;
+	virtual bool			process(ipacket& in, opacket& out, boost::system::error_code& ec);
+	virtual void			calculate_hash(ipacket& hostkey, Integer& f);
 };
 
-opacket key_exchange_dh_group::process_kexinit()
+bool key_exchange_dh_group::process(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
-	do
-	{
-		m_x.Randomize(rng, 2, m_q - 1);
-		m_e = a_exp_b_mod_c(2, m_x, m_p);
-	}
-	while (m_e < 1 or m_e >= m_p - 1);
+	bool handled = true;
 	
-	opacket out(kexdh_init);
-	out << m_e;
-	return out;
+	switch ((message_type)in)
+	{
+		case kex_dh_init:
+			init(in);
+			do
+			{
+				m_x.Randomize(rng, 2, m_q - 1);
+				m_e = a_exp_b_mod_c(2, m_x, m_p);
+			}
+			while (m_e < 1 or m_e >= m_p - 1);
+			
+			out = kex_dh_init;
+			out << m_e;
+			break;
+
+		default:
+			handled = key_exchange::process(in, out, ec);
+			break;
+	}
+	
+	return handled;
 }
 
-void key_exchange_dh_group::calculate_hash(ipacket& hostkey, Integer& f, const string& host_version,
-	const vector<uint8>& my_payload, const vector<uint8>& host_payload)
+void key_exchange_dh_group::calculate_hash(ipacket& hostkey, Integer& f)
 {
-	m_K = a_exp_b_mod_c(f, m_x, m_p);
-
 	opacket hp;
-	hp << kSSHVersionString << host_version << my_payload << host_payload << hostkey << m_e << f << m_K;
+	hp << kSSHVersionString << m_host_version << m_my_payload << m_host_payload << hostkey << m_e << f << m_K;
 
 	m_H = hash<SHA1>().update(hp).final();
 }
 
 // --------------------------------------------------------------------
-	
-//class key_exchange_dh_gex_sha1 : public key_exchange
-//{
-//  public:
-//							key_exchange_dh_gex_sha1(ipacket& in,
-//								const vector<uint8>& my_payload, const vector<uint8>& host_payload)
-//								: key_exchange(in, my_payload, host_payload)
-//							{}
-//};
-//
-//class key_exchange_dh_gex_sha256 : public key_exchange
-//{
-//  public:
-//							key_exchange_dh_gex_sha256(ipacket& in,
-//								const vector<uint8>& my_payload, const vector<uint8>& host_payload)
-//								: key_exchange(in, my_payload, host_payload)
-//							{}
-//};
 
-
-key_exchange* key_exchange::create(ipacket& in)
+template<typename HashAlgorithm>
+class key_exchange_dh_gex : public key_exchange
 {
+  public:
+							key_exchange_dh_gex(const string& host_version, vector<uint8>& session_id,
+								const vector<uint8>& my_payload, const vector<uint8>& host_payload)
+								: key_exchange(host_version, session_id, my_payload, host_payload)
+							{
+							}
+
+	virtual bool			process(ipacket& in, opacket& out, boost::system::error_code& ec);
+	virtual void			calculate_hash(ipacket& hostkey, Integer& f);
+	virtual void			derive_keys_with_hash();
+
+	static const uint32		kMinGroupSize = 1024, kMaxGroupSize = 8192, kPreferredGroupSize = 4096;
+};
+
+template<typename HashAlgorithm>
+bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket& in, opacket& out, boost::system::error_code& ec)
+{
+	bool handled = true;
+	
+	switch ((message_type)in)
+	{
+		case kexinit:
+			init(in);
+			out = kex_dh_gex_request;
+			out << kMinGroupSize << kPreferredGroupSize << kMaxGroupSize;
+			break;
+
+		case kex_dh_gex_group:
+			in >> m_p >> m_g;
+			m_q = (m_p - 1) / 2;
+			
+			do
+			{
+				m_x.Randomize(rng, 2, m_q - 1);
+				m_e = a_exp_b_mod_c(2, m_x, m_p);
+			}
+			while (m_e < 1 or m_e >= m_p - 1);
+			
+			out = kex_dh_gex_init;
+			out << m_e;
+			break;
+
+		case kex_dh_gex_reply:		
+			process_kex_dh_reply(in, out, ec);
+			break;
+
+		default:
+			handled = key_exchange::process(in, out, ec);
+			break;
+	}
+	
+	return handled;
+}
+
+template<typename HashAlgorithm>
+void key_exchange_dh_gex<HashAlgorithm>::calculate_hash(ipacket& hostkey, Integer& f)
+{
+	opacket hp;
+
+	hp	<< kSSHVersionString << m_host_version << m_my_payload << m_host_payload << hostkey
+		<< kMinGroupSize << kPreferredGroupSize << kMaxGroupSize
+		<< m_p << m_g << m_e << f << m_K;
+
+	m_H = hash<HashAlgorithm>().update(hp).final();
+}
+
+template<typename HashAlgorithm>
+void key_exchange_dh_gex<HashAlgorithm>::derive_keys_with_hash()
+{
+	derive_keys<HashAlgorithm>();
+}
+
+key_exchange* key_exchange::create(ipacket& in, const string& host_version,
+	vector<uint8>& session_id, const vector<uint8>& my_payload)
+{
+	// diffie hellman group 1 and group 14 primes
 	const byte
 		p2[] = {
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
@@ -324,51 +443,26 @@ key_exchange* key_exchange::create(ipacket& in)
 		};
 
 	key_exchange* result = nullptr;
+	vector<uint8> host_payload = in;
+	string key_exchange_alg;
 
-	bool first_kex_packet_follows;
 	in.skip(16);
-	
-	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c,
-		lang_c2s, lang_s2c;
-
-	in	>> key_exchange_alg
-		>> server_host_key_alg
-		>> encryption_alg_c2s
-		>> encryption_alg_s2c
-		>> MAC_alg_c2s
-		>> MAC_alg_s2c
-		>> compression_alg_c2s
-		>> compression_alg_s2c
-		>> lang_c2s
-		>> lang_s2c
-		>> first_kex_packet_follows;
+	in	>> key_exchange_alg;
 
 	key_exchange_alg = choose_protocol(key_exchange_alg, kKeyExchangeAlgorithms);
 	
 	if (key_exchange_alg == "diffie-hellman-group1-sha1")
-		result = new key_exchange_dh_group(Integer(p2, sizeof(p2)));
+		result = new key_exchange_dh_group(Integer(p2, sizeof(p2)), host_version,
+			session_id, my_payload, host_payload);
 	else if (key_exchange_alg == "diffie-hellman-group14-sha1")
-		result = new key_exchange_dh_group(Integer(p14, sizeof(p14)));
-//	else if (key_exchange_alg == "diffie-hellman-group-exchange-sha1")
-//		result = new key_exchange_dh_gex_sha1();
-//	else if (key_exchange_alg == "diffie-hellman-group-exchange-sha256")
-//		result = new key_exchange_dh_gex_sha256();
-
-	if (result)
-	{
-		result->m_encryption_alg_c2s = choose_protocol(encryption_alg_c2s, kEncryptionAlgorithms);
-		result->m_encryption_alg_s2c = choose_protocol(encryption_alg_s2c, kEncryptionAlgorithms);
-		result->m_MAC_alg_c2s = choose_protocol(MAC_alg_c2s, kMacAlgorithms);
-		result->m_MAC_alg_s2c = choose_protocol(MAC_alg_s2c, kMacAlgorithms);
-		result->m_compression_alg_c2s = choose_protocol(compression_alg_c2s, kDontUseCompressionAlgorithms);
-		result->m_compression_alg_s2c = choose_protocol(compression_alg_s2c, kDontUseCompressionAlgorithms);
-		result->m_lang_c2s = choose_protocol(lang_c2s, "none");
-		result->m_lang_s2c = choose_protocol(lang_s2c, "none");
-	}
+		result = new key_exchange_dh_group(Integer(p14, sizeof(p14)), host_version,
+			session_id, my_payload, host_payload);
+	else if (key_exchange_alg == "diffie-hellman-group-exchange-sha1")
+		result = new key_exchange_dh_gex<SHA1>(host_version, session_id, my_payload, host_payload);
+	else if (key_exchange_alg == "diffie-hellman-group-exchange-sha256")
+		result = new key_exchange_dh_gex<SHA256>(host_version, session_id, my_payload, host_payload);
 	
 	return result;
 }
-
 
 }

@@ -84,8 +84,6 @@ int main(int argc, char* const argv[])
 
 
 		io_service.run();
-		
-		
 	}
 	catch (exception& e)
 	{

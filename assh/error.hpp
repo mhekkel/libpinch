@@ -61,6 +61,8 @@ enum ssh_errors
 	request_failure = SSH_MSG_REQUEST_FAILURE,
 	channel_open_failure = SSH_MSG_CHANNEL_OPEN_FAILURE,
 	channel_failure = SSH_MSG_CHANNEL_FAILURE,
+	
+	require_password
 };
 
 enum disconnect_errors

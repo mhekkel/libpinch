@@ -34,7 +34,8 @@ enum message_type : uint8
 
 	kexinit = 20, newkeys,
 
-	kexdh_init = 30, kexdh_reply,
+	kex_dh_init = 30, kex_dh_reply,
+	kex_dh_gex_group = 31, kex_dh_gex_init, kex_dh_gex_reply, kex_dh_gex_request,
 
  	userauth_request = 50, userauth_failure, userauth_success, userauth_banner,
 
