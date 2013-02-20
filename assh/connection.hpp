@@ -11,6 +11,7 @@ namespace assh
 {
 
 class key_exchange;
+class channel;
 	
 extern const std::string kSSHVersionString;
 
@@ -25,6 +26,9 @@ class basic_connection
 					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
 				    	start_handshake(new connect_handler<Handler>(std::move(handler)));
 					}
+
+	void			open_channel(channel* ch, uint32 id);
+	void			close_channel(channel* ch, uint32 id);
 
   protected:
 
@@ -77,7 +81,12 @@ class basic_connection
 	void			process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec);
 	void			process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec);
 
+	void			process_channel(ipacket& in, opacket& out, boost::system::error_code& ec);
+
 	void			full_stop(const boost::system::error_code& ec);
+
+	virtual void	process_open_channel(const std::string& type, uint32 channel_id,
+						opacket& out, boost::system::error_code& ec);
 
 	template<class Handler>
 	struct bound_handler
@@ -204,6 +213,8 @@ class basic_connection
 	std::deque<basic_read_handler*>
 								m_read_handlers;
 	std::deque<opacket>			m_private_keys;
+
+	std::list<channel*>			m_channels;
 
   private:
 								basic_connection(const basic_connection&);

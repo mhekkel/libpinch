@@ -64,6 +64,21 @@ basic_connection::~basic_connection()
 	delete m_key_exchange;
 }
 
+void basic_connection::disconnect()
+{
+	m_authenticated = false;
+	
+	m_packet.clear();
+	m_encryptor.reset(nullptr);
+	m_decryptor.reset(nullptr);
+	m_signer.reset(nullptr);
+	m_verifier(nullptr);
+	
+	// copy the list since calling Close will change it
+	list<channel*> channels(m_channels);
+	for_each(channels.begin(), channels.end(), [](channel* c) { c->close(); });
+}
+
 void basic_connection::start_handshake(basic_connect_handler* handler)
 {
     if (m_connect_handler != nullptr)
@@ -244,8 +259,7 @@ void basic_connection::process_packet(ipacket& in)
 		switch ((message_type)m_packet)
 		{
 			case disconnect:
-				if (m_connect_handler)
-					m_connect_handler->handle_connect(error::make_error_code(error::connection_lost), m_io_service);
+				full_stop(error::make_error_code(error::connection_lost));
 				break;
 
 			case kexinit:
@@ -262,17 +276,26 @@ void basic_connection::process_packet(ipacket& in)
 			case userauth_info_request:	process_userauth_info_request(in, out, ec);	break;
 			case ignore:															break;
 
-			default:
-				if (m_authenticated and not m_read_handlers.empty())
-				{
-					basic_read_handler* handler = m_read_handlers.front();
-					m_read_handlers.pop_front();
-					
-					handler->receive_and_post(move(m_packet), m_io_service);
-	
-					delete handler;
-				}
+			// channel
+			case channel_open:
+			{
+				string type;
+				in >> type;
+				process_channel_open(type, out, ec);
 				break;
+			}
+			
+			case channel_open_failure:
+			case channel_window_adjust:
+			case channel_data:
+			case channel_extended_data:
+			case channel_eof:
+			case channel_close:
+			case channel_request:
+			case channel_success:
+			case channel_failure:		process_channel(in, out, etc);				break;
+
+			default:																break;
 		}
 	}
 	
@@ -362,7 +385,10 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 
 void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
-	m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user), m_io_service);
+	string msg, lang;
+	in >> msg >> lang;
+	
+	for_each(m_channels.begin(), m_channels.end(), [msg, lang](channel* c) { c->banner(msg, lang); });
 }
 
 void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -390,6 +416,8 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 
 void basic_connection::full_stop(const boost::system::error_code& ec)
 {
+	disconnect();
+	
 	if (m_connect_handler)
 		m_connect_handler->handle_connect(ec, m_io_service);
 }
@@ -487,6 +515,78 @@ void basic_connection::async_write_packet_int(const opacket& p, basic_write_op* 
 
 	++m_out_seq_nr;
 	async_write_int(request, op);
+}
+
+void basic_connection::open_channel(channel* ch, uint32 channel_id)
+{
+	if (find(m_channels.begin(), m_channels.end(), ch) == m_channels.end())
+	{
+		// some sanity check first
+		assert(find_if(m_channels.begin(), m_channels.end(),
+			[channel_id](const channel* ch) => bool { return ch->my_channel_id() == channel_id; } );
+		assert(not ch->is_open());
+
+		channel->reference();
+		m_channels.push_back(ch);
+	}
+	
+	if (m_authenticated)
+		async_write(opacket(channel_open) << "session" << inChannelID << kWindowSize << kMaxPacketSize);
+}
+
+void basic_connection::close_channel(channel* ch, uint32 channel_id)
+{
+	if (ch->is_open())
+		ch->closed();
+
+	if (m_authenticated)
+		async_write(opacket(channel_close) << channel_id);
+	else if (find(m_channels.begin(), m_channels.end(), ch) != m_channels.end())
+	{
+		m_channels.erase(
+			remove(m_channels.begin(), m_channels.end(), ch),
+			m_channels.end());
+	
+		ch->release();
+	}
+}
+
+void basic_connection::process_channel_openprocess_open_channel(
+	const string& type, uint32 channel_id, opacket& out, boost::system::error_code& ec)
+{
+//	if (type == "x11")
+//	{
+//		MX11Channel* x11(new MX11Channel(*this));
+//		x11->Process(SSH_MSG_CHANNEL_OPEN_CONFIRMATION, in);
+//		mChannels.push_back(x11);
+//	}
+//	else if (type == "auth-agent@openssh.com" and mForwardAgent)
+//	{
+//		MSshAgentChannel* agent(new MSshAgentChannel(*this));
+//		agent->Process(SSH_MSG_CHANNEL_OPEN_CONFIRMATION, in);
+//		mChannels.push_back(agent);
+//	}
+//	else
+//	{
+	const uint32 SSH_OPEN_UNKNOWN_CHANNEL_TYPE = 3;
+		out = channel_open_failure;
+		out << channel_id << SSH_OPEN_UNKNOWN_CHANNEL_TYPE << "unsupported channel type" << "en";
+//	}
+}
+
+void basic_connection::process_channel(ipacket& in, opacket& out, boost::system::error_code& ec)
+{
+	uint32 channel_id;
+	in >> channel_id;
+
+	foreach (channel* c, m_channels)
+	{
+		if (c->my_channel_id() == channel_id)
+		{
+			c->process(in);
+			break;
+		}
+	}
 }
 
 }
