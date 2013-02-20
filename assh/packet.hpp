@@ -76,6 +76,13 @@ class opacket
 	opacket&		operator<<(const opacket& v);
 	opacket&		operator<<(const ipacket& v);
 	
+	// for ranges:
+	opacket&		operator<<(const std::pair<const char*>& v)
+					{
+						operator<<(v.second - v.first);
+						m_data.insert(m_data.end(), v.first, v.second);
+					}
+	
 	std::vector<uint8>
 					hash() const;
 
@@ -114,6 +121,7 @@ class ipacket
 	ipacket&		operator>>(std::vector<byte>& v);
 	ipacket&		operator>>(CryptoPP::Integer& v);
 	ipacket&		operator>>(ipacket& v);
+	ipacket&		operator>>(std::pair<const char*,std::size_t>& v);
 
   protected:
 	message_type	m_message;

@@ -30,6 +30,8 @@ class basic_connection
 	void			open_channel(channel* ch, uint32 id);
 	void			close_channel(channel* ch, uint32 id);
 
+	void			send(const opacket& p);
+	
   protected:
 
 					basic_connection(boost::asio::io_service& io_service, const std::string& user);
@@ -180,6 +182,8 @@ class basic_connection
 	
 	virtual void	async_read_version_string() = 0;
 	virtual void	async_read(uint32 at_least) = 0;
+	
+	void			poll_channels();
 	
 	enum auth_state
 	{

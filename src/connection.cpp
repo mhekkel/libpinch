@@ -589,5 +589,16 @@ void basic_connection::process_channel(ipacket& in, opacket& out, boost::system:
 	}
 }
 
+// data io for channels
+
+void basic_connection::send(opacket&& p)
+{
+	async_write(p, [this](const boost::system::error_code& ec, size_t)
+		{
+			if (ec and m_connect_handler)
+				m_connect_handler->handle_connect(ec, m_io_service);
+		});
+}
+
 }
 

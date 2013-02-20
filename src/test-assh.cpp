@@ -17,53 +17,57 @@
 
 using namespace std;
 
-//void test_packet()
-//{
-//	assh::opacket p(assh::userauth_request);
-//	p << "maarten" << "" << "password" << (uint8)1 << (uint16)2 << (uint32)3 << (uint64)4;
-//	
-//	vector<boost::asio::const_buffer> buffers;
-//	
-//	p.to_buffers(8, buffers);
-//
-//	cout << buffers << endl;
-//
-//	string s1, s2, s3;
-//	uint8 i1;
-//	uint16 i2;
-//	uint32 i3;
-//	uint64 i4;
-//	
-//	p >> s1 >> s2 >> s3 >> i1 >> i2 >> i3 >> i4;
-//	
-//	cout << s1 << endl
-//		 << s2 << endl
-//		 << s3 << endl
-//		 << int(i1) << endl
-//		 << i2 << endl
-//		 << i3 << endl
-//		 << i4 << endl;
-//}
-
-void foo(const boost::system::error_code& ec)
+class client
 {
-	if (ec)
-		cout << ec << endl;
-	else
-		cout << "Yeah!" << endl;
-}
+  public:
+			client(boost::asio::socket& socket, const string& user)
+				: m_connection(socket, user)
+			{
+				m_connection.async_connect([](const boost::system::error_code& ec)
+				{
+					if (ec)
+					{
+						cerr << "Error: " << ec.message() << endl;
+						exit(1);
+					}
+
+					received(ec, 0);	
+				});
+			}
+	
+	void	received(const boost::system::error_code& ec, std::size_t bytes_received)
+			{
+				if (ec)
+				{
+					cerr << endl
+						 << "Error: " << ec.message() << endl
+						 << endl;
+					exit(1);
+				}
+
+				istream in(m_response);
+				io::copy(in, cout);
+				
+				boost::asio::read_some(m_connection, m_response,
+					boost::asio::transfer_at_least(1),
+					boost::bind(&received, this, boost::asio::placeholders::error,
+						boost::asio::placeholders::bytes_received));
+			}
+	
+	connection				m_connection;
+	boost::asio::io_service	m_io_service;
+	boost::asio::streambuf	m_response;
+};
 
 int main(int argc, char* const argv[])
 {
 	try
 	{
-		if (argc != 3)
+		if (argc != 4)
 		{
-			cerr << "usage: test <host> <port>" << endl;
+			cerr << "usage: test <host> <port> <user>" << endl;
 			return 1;
 		}
-		
-		boost::asio::io_service io_service;
 	
 		boost::asio::ip::tcp::resolver resolver(io_service);
 		boost::asio::ip::tcp::resolver::query query(argv[1], argv[2]);
@@ -72,16 +76,7 @@ int main(int argc, char* const argv[])
 		boost::asio::ip::tcp::socket socket(io_service);
 		boost::asio::connect(socket, iterator);
 		
-		assh::connection c(socket, "maarten");
-
-		c.async_connect("maarten", [](const boost::system::error_code& ec)
-		{
-			if (ec)
-				cout << ec.message() << endl;
-			else
-				cout << "Yeah!" << endl;	
-		});
-
+		client ssh(socket, argv[3]);
 
 		io_service.run();
 	}

@@ -88,6 +88,12 @@ void opacket::write(ostream& os, int blocksize) const
 	os.write(reinterpret_cast<const char*>(&padding[0]), padding_size);
 }
 
+void opacket::append(const uint8* data, uint32 size)
+{
+	operator<<(size);
+	m_data.insert(m_data.end(), data, data + size);
+}
+
 opacket& opacket::operator<<(const char* v)
 {
 	assert(v != nullptr);
@@ -260,6 +266,13 @@ void ipacket::append(const vector<uint8>& block)
 	}
 	else
 		m_data.insert(m_data.end(), block.begin(), block.end());
+}
+
+void ipacket::resize(uint32 size)
+{
+	if (size > m_data.size() + m_offset)
+		throw packet_exception();
+	m_data.erase(m_data.begin() + m_offset + size, m_data.end());
 }
 
 ipacket& ipacket::operator>>(string& v)
