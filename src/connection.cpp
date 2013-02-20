@@ -12,7 +12,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/flush.hpp>
-#include <boost/algorithm/string/find_iterator.hpp>
 
 #include <cryptopp/gfpcrypt.h>
 #include <cryptopp/rsa.h>
@@ -30,6 +29,8 @@
 #include <assh/connection.hpp>
 #include <assh/hash.hpp>
 #include <assh/ssh_agent.hpp>
+#include <assh/key_exchange.hpp>
+#include <assh/error.hpp>
 
 using namespace std;
 using namespace CryptoPP;
@@ -45,37 +46,7 @@ namespace assh
 AutoSeededRandomPool	rng;
 
 const string
-	kSSHVersionString("SSH-2.0-libassh"),
-	kKeyExchangeAlgorithms("diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
-	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
-	kEncryptionAlgorithms("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
-	kMacAlgorithms("hmac-sha1,hmac-md5"),
-	kUseCompressionAlgorithms("zlib@openssh.com,zlib,none"),
-	kDontUseCompressionAlgorithms("none,zlib@openssh.com,zlib");
-
-string choose_protocol(const string& server, const string& client)
-{
-	string result;
-	bool found = false;
-
-	typedef ba::split_iterator<string::const_iterator> split_iter_type;
-	split_iter_type c = ba::make_split_iterator(client, ba::first_finder(",", ba::is_equal()));
-	split_iter_type s = ba::make_split_iterator(server, ba::first_finder(",", ba::is_equal()));
-	
-	for (; not found and c != split_iter_type(); ++c)
-	{
-		for (; not found and s != split_iter_type(); ++s)
-		{
-			if (*c == *s)
-			{
-				result = boost::copy_range<string>(*c);
-				found = true;
-			}
-		}
-	}
-
-	return result;
-}
+	kSSHVersionString("SSH-2.0-libassh");
 
 // --------------------------------------------------------------------
 
@@ -193,7 +164,7 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 			vector<uint8> block(m_blocksize);
 			m_response.sgetn(reinterpret_cast<char*>(&block[0]), m_blocksize);
 
-			if (m_decryptor_cipher)
+			if (m_decryptor)
 			{
 				vector<uint8> data(m_blocksize);
 				m_decryptor->ProcessData(&data[0], &block[0], m_blocksize);
@@ -304,7 +275,9 @@ void basic_connection::process_packet(ipacket& in)
 
 opacket basic_connection::process_kexinit(ipacket& in, boost::system::error_code& ec)
 {
-	m_key_exchange = key_exchange::create(in, m_host_version, m_my_payload);
+	m_host_payload = in;
+	
+	m_key_exchange = key_exchange::create(in);
 
 	opacket out;
 
@@ -323,7 +296,10 @@ opacket basic_connection::process_kexdhreply(ipacket& in, boost::system::error_c
 	if (m_key_exchange == nullptr)
 		ec = error::make_error_code(error::key_exchange_failed);
 	else
-		out = m_key_exchange->process_kexdhreply(in, ec);
+	{
+		out = m_key_exchange->process_kexdhreply(in, m_host_version, m_session_id,
+				m_my_payload, m_host_payload, ec);
+	}
 	
 	return out;
 }
@@ -339,7 +315,7 @@ opacket basic_connection::process_newkeys(ipacket& in, boost::system::error_code
 	m_key_exchange = nullptr;
 
 	if (m_decryptor)
-		m_blocksize = m_decryptor_cipher->BlockSize();
+		m_blocksize = m_decryptor->OptimalBlockSize();
 	
 	opacket out(undefined);
 	
@@ -442,75 +418,6 @@ void basic_connection::full_stop(const boost::system::error_code& ec)
 		m_connect_handler->handle_connect(ec, m_io_service);
 }
 
-template<class Handler>
-struct bound_handler
-{
-bound_handler(Handler handler, const boost::system::error_code& ec, ipacket&& packet)
-: m_handler(handler), m_ec(ec), m_packet(move(packet)) {}
-
-bound_handler(bound_handler&& rhs)
-: m_handler(move(rhs.m_handler)), m_ec(rhs.m_ec), m_packet(move(rhs.m_packet)) {}
-
-virtual void operator()()		{ m_handler(m_ec, m_packet); }
-
-Handler							m_handler;
-const boost::system::error_code	m_ec;
-ipacket							m_packet;
-};
-
-struct basic_read_handler
-{
-virtual void receive_and_post(ipacket&& p, boost::asio::io_service& io_service) = 0;
-};
-
-template<typename Handler>
-struct read_handler : public basic_read_handler
-{
-read_handler(Handler&& handler)
-: m_handler(move(handler)) {}
-
-virtual void receive_and_post(ipacket&& p, boost::asio::io_service& io_service)
-{
-io_service.post(bound_handler<Handler>(m_handler, boost::system::error_code(), move(p)));
-}
-
-Handler		m_handler;
-};
-
-//template<typename Handler>
-//struct write_op
-//{
-//write_op(basic_connection& connection, Handler&& hander)
-//	: m_connection(connection), m_handler(move(hander)) {}
-//
-//write_op(basic_connection& connection, streambuf_ptr request, Handler&& hander)
-//	: m_connection(connection), m_handler(move(hander)), m_request(request) {}
-//
-//write_op(const write_op& rhs)
-//	: m_connection(rhs.m_connection), m_handler(rhs.m_handler), m_request(rhs.m_request) {}
-//
-//write_op(write_op&& rhs)
-//	: m_connection(move(rhs.m_connection))
-//	, m_handler(move(rhs.m_handler))
-//	, m_request(move(rhs.m_request)) {}
-//
-//write_op&	operator=(const write_op& rhs);	
-//
-//void		operator()(const boost::system::error_code& ec)
-//{
-//	m_handler(ec);
-//}
-//
-//void		operator()(const boost::system::error_code& ec, size_t bytes_transferred)
-//{
-//	m_handler(ec);
-//}
-//
-//basic_connection&	m_connection;
-//Handler				m_handler;
-//streambuf_ptr		m_request;
-//};
-
 struct packet_encryptor
 {
     typedef char char_type;
@@ -596,7 +503,7 @@ void basic_connection::async_write_packet_int(const opacket& p, basic_write_op* 
 		io::filtering_stream<io::output> out;
 	
 		if (m_encryptor)
-			out.push(packet_encryptor(*m_encryptor, *m_signer, m_encryptor_cipher->BlockSize(), m_out_seq_nr));
+			out.push(packet_encryptor(*m_encryptor, *m_signer, m_blocksize, m_out_seq_nr));
 		out.push(*request);
 
 		p.write(out, m_blocksize);

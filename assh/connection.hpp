@@ -10,9 +10,9 @@
 namespace assh
 {
 
-extern const std::string
-	kSSHVersionString, kKeyExchangeAlgorithms, kServerHostKeyAlgorithms,
-	kEncryptionAlgorithms, kMacAlgorithms, kUseCompressionAlgorithms, kDontUseCompressionAlgorithms;
+class key_exchange;
+	
+extern const std::string kSSHVersionString;
 
 class basic_connection
 {
@@ -187,7 +187,7 @@ class basic_connection
 	std::string					m_user;
 	basic_connect_handler*		m_connect_handler;
 	bool						m_authenticated;
-	std::vector<uint8>			m_my_payload, m_session_id;
+	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;
 	auth_state					m_auth_state;
 	uint32						m_password_attempts;
 	uint32						m_in_seq_nr, m_out_seq_nr;
@@ -195,9 +195,8 @@ class basic_connection
 	uint32						m_blocksize;
 	boost::asio::streambuf		m_response;
 	
-	std::unique_ptr<CryptoPP::BlockCipher>					m_decryptor_cipher;
+	key_exchange*				m_key_exchange;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_decryptor;
-	std::unique_ptr<CryptoPP::BlockCipher>					m_encryptor_cipher;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_encryptor;
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode>	m_signer;
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode>	m_verifier;
@@ -259,8 +258,5 @@ class basic_connection_t : public basic_connection
 
 typedef basic_connection_t<boost::asio::ip::tcp::socket> connection;
 
-std::string choose_protocol(const std::string& server, const std::string& client);
-
-	
 }
 
