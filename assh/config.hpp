@@ -21,6 +21,12 @@ typedef boost::uint64_t		uint64;
 // some VC specific include files to make the standard C++
 // keywords work.
 
+#if DEBUG
+#include <assh/debug.hpp>
+#else
+#error
+#endif
+
 #if defined(_MSC_VER)
 
 #include <SDKDDKVer.h>

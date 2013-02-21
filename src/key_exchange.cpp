@@ -5,6 +5,8 @@
 
 #include <assh/config.hpp>
 
+#include <iostream>
+
 #include <boost/algorithm/string/finder.hpp>
 #include <boost/algorithm/string/find_iterator.hpp>
 
@@ -51,13 +53,13 @@ string choose_protocol(const string& server, const string& client)
 	split_iter_type c = ba::make_split_iterator(client, ba::first_finder(",", ba::is_equal()));
 	split_iter_type s = ba::make_split_iterator(server, ba::first_finder(",", ba::is_equal()));
 	
-	for (; not found and c != split_iter_type(); ++c)
+	for (split_iter_type ci = c; not found and ci != split_iter_type(); ++ci)
 	{
-		for (; not found and s != split_iter_type(); ++s)
+		for (split_iter_type si = s; not found and si != split_iter_type(); ++si)
 		{
-			if (*c == *s)
+			if (*ci == *si)
 			{
-				result = boost::copy_range<string>(*c);
+				result = boost::copy_range<string>(*ci);
 				found = true;
 			}
 		}
@@ -446,6 +448,8 @@ key_exchange* key_exchange::create(ipacket& in, const string& host_version,
 	key_exchange* result = nullptr;
 	vector<uint8> host_payload;
 	string key_exchange_alg;
+
+cerr << endl << in << endl;
 
 	host_payload = in;
 

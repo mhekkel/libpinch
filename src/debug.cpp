@@ -10,10 +10,9 @@
 using namespace std;
 
 // hex dump the packet
-ostream& operator<<(ostream& os, vector<boost::asio::const_buffer>& b)
+void print(ostream& os, const vector<uint8>& b)
 {
-	size_t size = boost::asio::buffer_size(b);
-	os << "dumping buffer of " << size << " bytes" << endl;
+	os << "dumping buffer of " << b.size() << " bytes" << endl;
 
 	const char kHex[] = "0123456789abcdef";
 	char s[] = "xxxxxxxx  cccc cccc cccc cccc  cccc cccc cccc cccc  |................|";
@@ -21,18 +20,12 @@ ostream& operator<<(ostream& os, vector<boost::asio::const_buffer>& b)
 	const int kAsciiOffset = 53;
 	
 	uint32 offset = 0;
-	
-	typedef vector<boost::asio::const_buffer> buffers_type;
-	typedef boost::asio::buffers_iterator<buffers_type, uint8> buffer_iterator;
-	buffer_iterator bi(buffer_iterator::begin(b));
-	buffer_iterator ei(buffer_iterator::end(b));
-	
-	while (bi != ei)
+		
+	while (offset < b.size())
 	{
-		size_t rr = ei - bi;
+		size_t rr = b.size() - offset;
 		if (rr > 16)
 			rr = 16;
-		buffer_iterator e2 = bi + rr;
 		
 		char* t = s + 7;
 		long o = offset;
@@ -45,7 +38,7 @@ ostream& operator<<(ostream& os, vector<boost::asio::const_buffer>& b)
 		
 		for (size_t i = 0; i < rr; ++i)
 		{
-			uint8 byte = *(bi + i);
+			uint8 byte = b[offset + i];
 			
 			s[kHexOffset[i] + 0] = kHex[byte >> 4];
 			s[kHexOffset[i] + 1] = kHex[byte & 0x0f];
@@ -65,9 +58,18 @@ ostream& operator<<(ostream& os, vector<boost::asio::const_buffer>& b)
 		os << s << endl;
 		
 		offset += rr;
-		bi += rr;
 	}
+}
 
+ostream& operator<<(ostream& os, assh::opacket& b)
+{
+	print(os, b);
+	return os;
+}
+
+ostream& operator<<(ostream& os, assh::ipacket& b)
+{
+	print(os, b);
 	return os;
 }
 

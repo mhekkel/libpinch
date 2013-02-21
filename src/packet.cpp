@@ -19,8 +19,6 @@ namespace ba = boost::algorithm;
 namespace assh
 {
 
-r::random_device rng;
-
 opacket::opacket()
 {
 }
@@ -57,6 +55,8 @@ opacket& opacket::operator=(const opacket& rhs)
 
 void opacket::write(ostream& os, int blocksize) const
 {
+	static r::random_device rng;
+
 	assert(blocksize < numeric_limits<uint8>::max());
 
 	uint8 header[5];

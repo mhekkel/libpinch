@@ -5,9 +5,10 @@
 
 #pragma once
 
-#include <vector>
 #include <iostream>
-#include <boost/asio.hpp>
 
-std::ostream& operator<<(std::ostream& os, std::vector<boost::asio::const_buffer>& b);
+#include <assh/packet.hpp>
+
+std::ostream& operator<<(std::ostream& os, assh::ipacket& p);
+std::ostream& operator<<(std::ostream& os, assh::opacket& p);
 
