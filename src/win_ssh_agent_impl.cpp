@@ -421,7 +421,7 @@ ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& inBlob)
 			opacket blob;
 			blob << "ssh-rsa" << e << n;
 			
-			if (static_cast<const vector<uint8>&>(blob) == static_cast<const vector<uint8>&>(inBlob))
+			if (blob == inBlob)
 			{
 				result = new MWinSshPrivateKeyImpl(context, e, n);
 				break;

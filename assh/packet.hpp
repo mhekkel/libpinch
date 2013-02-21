@@ -28,30 +28,34 @@ class packet_exception : public std::exception
 	
 enum message_type : uint8
 {
-	undefined,
+	msg_undefined,
 
-	disconnect = 1, ignore, unimplemented, debug, service_request, service_accept,
+	msg_disconnect = 1, msg_ignore, msg_unimplemented, msg_debug, msg_service_request, msg_service_accept,
 
-	kexinit = 20, newkeys,
+	msg_kexinit = 20, msg_newkeys,
 
-	kex_dh_init = 30, kex_dh_reply,
-	kex_dh_gex_group = 31, kex_dh_gex_init, kex_dh_gex_reply, kex_dh_gex_request,
+	msg_kex_dh_init = 30, msg_kex_dh_reply,
+	msg_kex_dh_gex_group = 31, msg_kex_dh_gex_init, msg_kex_dh_gex_reply, msg_kex_dh_gex_request,
 
- 	userauth_request = 50, userauth_failure, userauth_success, userauth_banner,
+ 	msg_userauth_request = 50, msg_userauth_failure, msg_userauth_success, msg_userauth_banner,
 
-	userauth_info_request = 60, userauth_info_response,
+	msg_userauth_info_request = 60, msg_userauth_info_response,
 
-	global_request = 80, request_success, request_failure,
+	msg_global_request = 80, msg_request_success, msg_request_failure,
 
-	channel_open = 90, channel_open_confirmation, channel_open_failure,
-	channel_window_adjust, channel_data, channel_extended_data,
-	channel_eof, channel_close, channel_request, channel_success,
-	channel_failure,
+	msg_channel_open = 90, msg_channel_open_confirmation, msg_channel_open_failure,
+	msg_channel_window_adjust, msg_channel_data, msg_channel_extended_data,
+	msg_channel_eof, msg_channel_close, msg_channel_request, msg_channel_success,
+	msg_channel_failure,
 };
 
 class opacket
 {
   public:
+
+  	friend bool operator==(const opacket&, const ipacket&);
+	friend bool operator==(const ipacket&, const opacket&);
+
 					opacket();
 					opacket(message_type message);
 					opacket(const opacket& rhs);
@@ -63,7 +67,8 @@ class opacket
 	
 					operator std::vector<uint8>() const	{ return m_data; }
 
-	bool			empty() const						{ return m_data.empty() or static_cast<message_type>(m_data[0]) == undefined; }
+	bool			empty() const						{ return m_data.empty() or static_cast<message_type>(m_data[0]) == msg_undefined; }
+	std::size_t		size() const						{ return m_data.size(); }
 
 	template<typename INT>
 	opacket&		operator<<(INT v);
@@ -77,15 +82,14 @@ class opacket
 	opacket&		operator<<(const ipacket& v);
 	
 	// for ranges:
-	opacket&		operator<<(const std::pair<const char*>& v)
+	opacket&		operator<<(const std::pair<const char*,std::size_t>& v)
 					{
-						operator<<(v.second - v.first);
-						m_data.insert(m_data.end(), v.first, v.second);
+						operator<<(v.second);
+						m_data.insert(m_data.end(), reinterpret_cast<const uint8*>(v.first),
+							reinterpret_cast<const uint8*>(v.first + v.second));
+						return *this;
 					}
 	
-	std::vector<uint8>
-					hash() const;
-
   protected:
 	std::vector<uint8>	m_data;
 };
@@ -93,24 +97,32 @@ class opacket
 class ipacket
 {
   public:
+	friend class opacket;
+  	friend bool operator==(const opacket&, const ipacket&);
+	friend bool operator==(const ipacket&, const opacket&);
+
 					ipacket();
 					ipacket(const ipacket& rhs);
 					ipacket(ipacket&& rhs);
+					~ipacket();
+
 	ipacket&		operator=(const ipacket& rhs);
 	ipacket&		operator=(ipacket&& rhs);
 
-	bool			full();
+	bool			complete();
 	bool			empty();
-
 	void			clear();
 	void			strip_padding();
+	
+	size_t			size() const						{ return m_length; }
 	
 	void			append(const std::vector<uint8>& block);
 
 	message_type	message() const						{ return m_message; }
 					operator message_type() const		{ return m_message; }
 
-					operator std::vector<uint8>() const	{ return m_data; }
+//					operator std::vector<uint8>() const	{ return std::vector<uint8>(m_data, m_data + m_length); }
+	void			copy(std::vector<uint8>& bytes)		{ bytes.assign(m_data, m_data + m_length); }
 
 	void			skip(uint32 bytes)					{ m_offset += bytes; }
 
@@ -124,11 +136,12 @@ class ipacket
 	ipacket&		operator>>(std::pair<const char*,std::size_t>& v);
 
   protected:
-	message_type	m_message;
-	uint8			m_padding;
-	std::vector<uint8>
-					m_data;
-	uint32			m_offset, m_length;
+	message_type		m_message;
+	uint8				m_padding;
+	bool				m_owned;
+	bool				m_complete;
+	uint32				m_offset, m_length;
+	uint8*				m_data;
 };
 
 template<typename INT>
@@ -147,7 +160,7 @@ ipacket& ipacket::operator>>(INT& v)
 {
 	BOOST_STATIC_ASSERT(boost::is_integral<INT>::value);
 	
-	if (m_offset + sizeof(INT) > m_data.size())
+	if (m_offset + sizeof(INT) > m_length)
 		throw packet_exception();
 	
 	for (int i = sizeof(INT) - 1; i >= 0; --i)
@@ -155,5 +168,8 @@ ipacket& ipacket::operator>>(INT& v)
 
 	return *this;
 }
+
+bool operator==(const opacket&, const ipacket&);
+bool operator==(const ipacket&, const opacket&);
 
 }

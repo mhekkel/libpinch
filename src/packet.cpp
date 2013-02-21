@@ -5,13 +5,12 @@
 
 #include <assh/config.hpp>
 
-#include <cryptopp/sha.h>
-
 #include <boost/random/random_device.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 #include <boost/algorithm/string.hpp>
 
 #include <assh/packet.hpp>
+#include <assh/channel.hpp>
 
 using namespace std;
 namespace r = boost::random;
@@ -88,11 +87,11 @@ void opacket::write(ostream& os, int blocksize) const
 	os.write(reinterpret_cast<const char*>(&padding[0]), padding_size);
 }
 
-void opacket::append(const uint8* data, uint32 size)
-{
-	operator<<(size);
-	m_data.insert(m_data.end(), data, data + size);
-}
+//void opacket::append(const uint8* data, uint32 size)
+//{
+//	operator<<(size);
+//	m_data.insert(m_data.end(), data, data + size);
+//}
 
 opacket& opacket::operator<<(const char* v)
 {
@@ -158,8 +157,9 @@ opacket& opacket::operator<<(const vector<uint8>& v)
 
 opacket& opacket::operator<<(const ipacket& v)
 {
-	const vector<uint8>& data(v);
-	return operator<<(data);
+	operator<<(v.m_length);
+	m_data.insert(m_data.end(), v.m_data, v.m_data + v.m_length);
+	return *this;
 }
 
 opacket& opacket::operator<<(const opacket& v)
@@ -168,118 +168,142 @@ opacket& opacket::operator<<(const opacket& v)
 	return operator<<(data);
 }
 
-vector<uint8> opacket::hash() const
-{
-	CryptoPP::SHA1 hash;
-	uint32 dLen = hash.DigestSize();
-	vector<uint8> result(dLen);
-	hash.Update(&m_data[0], m_data.size());
-	hash.Final(&result[0]);
-	return result;
-}
+// --------------------------------------------------------------------
 
 ipacket::ipacket()
-	: m_message(undefined)
+	: m_message(msg_undefined)
 	, m_padding(0)
+	, m_owned(false)
+	, m_complete(false)
 	, m_offset(0)
 	, m_length(0)
+	, m_data(nullptr)
 {
 }
 
 ipacket::ipacket(const ipacket& rhs)
 	: m_message(rhs.m_message)
 	, m_padding(rhs.m_padding)
-	, m_data(rhs.m_data)
+	, m_owned(false)
+	, m_complete(rhs.m_complete)
 	, m_offset(rhs.m_offset)
 	, m_length(rhs.m_length)
+	, m_data(rhs.m_data)
 {
 }
 
 ipacket::ipacket(ipacket&& rhs)
 	: m_message(rhs.m_message)
 	, m_padding(rhs.m_padding)
-	, m_data(move(rhs.m_data))
+	, m_owned(rhs.m_owned)
 	, m_offset(rhs.m_offset)
 	, m_length(rhs.m_length)
+	, m_data(rhs.m_data)
 {
-	rhs.m_message = undefined;
+	rhs.m_message = msg_undefined;
 	rhs.m_padding = 0;
+	rhs.m_owned = false;
 	rhs.m_offset = rhs.m_length = 0;
+	rhs.m_data = nullptr;
+}
+
+ipacket::~ipacket()
+{
+	if (m_owned)
+		delete[] m_data;
 }
 
 ipacket& ipacket::operator=(ipacket&& rhs)
 {
 	if (this != &rhs)
 	{
-		m_message = rhs.m_message;	rhs.m_message = undefined;
+		m_message = rhs.m_message;	rhs.m_message = msg_undefined;
 		m_padding = rhs.m_padding;	rhs.m_padding = 0;
-		m_data = move(rhs.m_data);
+		m_complete = rhs.m_complete;rhs.m_complete = false;
+		m_owned = rhs.m_owned;		rhs.m_owned = false;
 		m_offset = rhs.m_offset;	rhs.m_offset = 0;
 		m_length = rhs.m_length;	rhs.m_length = 0;
+		m_data = rhs.m_data;		rhs.m_data = nullptr;
 	}
 	
 	return *this;
 }
 
-
-bool ipacket::full()
+bool ipacket::complete()
 {
-	return m_data.size() == m_length + sizeof(uint32) - 5;
+	return m_complete;
 }
 
 bool ipacket::empty()
 {
-	return m_message == undefined;
+	return m_message == msg_undefined or m_length == 0 or m_data == nullptr;
 }
 
 void ipacket::clear()
 {
-	m_data.clear();
-	m_message = undefined;
+	m_message = msg_undefined;
 	m_padding = 0;
+	m_owned = true;
+	m_complete = false;
 	m_length = 0;
 	m_offset = 0;
-}
-
-void ipacket::strip_padding()
-{
-	assert(m_padding < m_data.size());
-	m_data.erase(m_data.end() - m_padding, m_data.end());
+	if (m_owned)
+		delete[] m_data;
+	m_data = nullptr;
 }
 
 void ipacket::append(const vector<uint8>& block)
 {
-	if (m_data.size() == 0)
+	if (m_complete)
+		throw packet_exception();
+
+	if (m_data == nullptr)
 	{
 		assert(block.size() >= 8);
 
 		for (int i = 0; i < 4; ++i)
 			m_length = m_length << 8 | static_cast<uint8>(block[i]);
 
-		// that's too much
-		m_data.reserve(m_length + sizeof(uint32));
+		if (m_length > kMaxPacketSize)
+			throw packet_exception();
 		
-		m_padding = block[4];
+		m_length -= 1;	// the padding byte
+
 		m_message = static_cast<message_type>(block[5]);
+		m_padding = block[4];
+		m_owned = true;
 		m_offset = 1;
-		m_data.assign(block.begin() + 5, block.end());
+		m_data = new uint8[m_length];
+		
+		if (block.size() > m_length + 5)
+			throw packet_exception();
+			
+		std::copy(block.begin() + 5, block.end(), m_data);
+		m_offset = block.size() - 5;
 	}
 	else
-		m_data.insert(m_data.end(), block.begin(), block.end());
-}
+	{
+		size_t n = m_length - m_offset;
+		if (n > block.size())
+			n = block.size();
 
-void ipacket::resize(uint32 size)
-{
-	if (size > m_data.size() + m_offset)
-		throw packet_exception();
-	m_data.erase(m_data.begin() + m_offset + size, m_data.end());
+		for (size_t i = 0; i < n; ++i, ++m_offset)
+			m_data[m_offset] = block[i];
+	}
+
+	if (m_offset == m_length)	// this was the last block
+	{
+		m_complete = true;
+		m_length -= m_padding;
+		m_offset = 1;
+	}
 }
 
 ipacket& ipacket::operator>>(string& v)
 {
 	uint32 len;
 	this->operator>>(len);
-	if (m_offset + len > m_data.size())
+	if (m_offset + len > m_length)
 		throw packet_exception();
 	
 	const char* s = reinterpret_cast<const char*>(&m_data[m_offset]);
@@ -302,7 +326,7 @@ ipacket& ipacket::operator>>(CryptoPP::Integer& v)
 	uint32 l;
 	operator>>(l);
 	
-	if (l > m_data.size())
+	if (l > m_length)
 		throw packet_exception();
 
 	v.Decode(&m_data[m_offset], l, CryptoPP::Integer::SIGNED);
@@ -316,13 +340,49 @@ ipacket& ipacket::operator>>(ipacket& v)
 	uint32 l;
 	operator>>(l);
 	
-	if (l > m_data.size())
+	if (l > m_length)
 		throw packet_exception();
+	
+	if (v.m_owned)
+		delete[] v.m_data;
 
-	v.m_data.assign(m_data.begin() + m_offset, m_data.begin() + m_offset + l);
+	v.m_message = msg_undefined;
+	v.m_padding = 0;
+	v.m_owned = false;
+	v.m_complete = true;
+	v.m_data = m_data + m_offset;
+	v.m_length = l;
+
 	m_offset += l;
 
 	return *this;
 }
+
+ipacket& ipacket::operator>>(pair<const char*,size_t>& v)
+{
+	uint32 l;
+	operator>>(l);
+	
+	if (l > m_length)
+		throw packet_exception();
+	
+	v.first = reinterpret_cast<const char*>(&m_data[m_offset]);
+	v.second = l;
+
+	m_offset += l;
+
+	return *this;
+}
+
+bool operator==(const opacket& lhs, const ipacket& rhs)
+{
+	return lhs.m_data.size() == rhs.m_length and memcmp(&lhs.m_data[0], rhs.m_data, rhs.m_length) == 0;
+}
+
+bool operator==(const ipacket& lhs, const opacket& rhs)
+{
+	return rhs.m_data.size() == lhs.m_length and memcmp(&rhs.m_data[0], lhs.m_data, lhs.m_length) == 0;
+}
+
 
 }

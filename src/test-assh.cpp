@@ -5,8 +5,10 @@
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
 #include <boost/bind.hpp>
+#include <boost/iostreams/copy.hpp>
 
 #include <assh/connection.hpp>
+#include <assh/terminal_channel.hpp>
 #include <assh/debug.hpp>
 
 #if defined(_MSC_VER)
@@ -16,22 +18,39 @@
 #endif
 
 using namespace std;
+namespace io = boost::iostreams;
 
 class client
 {
   public:
-			client(boost::asio::socket& socket, const string& user)
+			client(boost::asio::ip::tcp::socket& socket, const string& user)
 				: m_connection(socket, user)
+				, m_channel(nullptr)
 			{
-				m_connection.async_connect([](const boost::system::error_code& ec)
+				m_connection.async_connect(user, [this](const boost::system::error_code& ec)
 				{
 					if (ec)
 					{
-						cerr << "Error: " << ec.message() << endl;
+						cerr << "error connecting: " << ec.message() << endl;
 						exit(1);
 					}
 
-					received(ec, 0);	
+					this->open_terminal();
+				});
+			}
+	
+	void	open_terminal()
+			{
+				m_channel = new assh::terminal_channel(m_connection);
+				m_channel->open([this](const boost::system::error_code& ec)
+				{
+					if (ec)
+					{
+						cerr << "error opening channel: " << ec.message() << endl;
+						exit(1);
+					}
+					
+					this->received(ec, 0);
 				});
 			}
 	
@@ -40,21 +59,24 @@ class client
 				if (ec)
 				{
 					cerr << endl
-						 << "Error: " << ec.message() << endl
+						 << "error reading channel: " << ec.message() << endl
 						 << endl;
 					exit(1);
 				}
 
-				istream in(m_response);
+				istream in(&m_response);
 				io::copy(in, cout);
 				
-				boost::asio::read_some(m_connection, m_response,
-					boost::asio::transfer_at_least(1),
-					boost::bind(&received, this, boost::asio::placeholders::error,
-						boost::asio::placeholders::bytes_received));
+				auto cb = [this](const boost::system::error_code& ec, size_t bytes_transferred)
+				{
+					this->received(ec, bytes_transferred);
+				};
+
+				boost::asio::async_read(*m_channel, m_response, cb);
 			}
 	
-	connection				m_connection;
+	assh::connection		m_connection;
+	assh::terminal_channel*	m_channel;
 	boost::asio::io_service	m_io_service;
 	boost::asio::streambuf	m_response;
 };
@@ -69,6 +91,7 @@ int main(int argc, char* const argv[])
 			return 1;
 		}
 	
+		boost::asio::io_service io_service;
 		boost::asio::ip::tcp::resolver resolver(io_service);
 		boost::asio::ip::tcp::resolver::query query(argv[1], argv[2]);
 		boost::asio::ip::tcp::resolver::iterator iterator = resolver.resolve(query);

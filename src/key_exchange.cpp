@@ -109,7 +109,7 @@ bool key_exchange::process(ipacket& in, opacket& out, boost::system::error_code&
 	
 	switch ((message_type)in)
 	{
-		case kex_dh_reply:
+		case msg_kex_dh_reply:
 			process_kex_dh_reply(in, out, ec);
 			break;
 		
@@ -164,13 +164,14 @@ void key_exchange::process_kex_dh_reply(ipacket& in, opacket& out, boost::system
 		h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
 	}
 
-	const vector<uint8>& pk_rs_d(pk_rs);
+	vector<uint8> pk_rs_d;
+	pk_rs.copy(pk_rs_d);
 	if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
 		ec = error::make_error_code(error::host_key_verification_failed);
 
 	derive_keys_with_hash();
 
-	out = newkeys;
+	out = msg_newkeys;
 }
 
 void key_exchange::derive_keys_with_hash()
@@ -302,7 +303,7 @@ bool key_exchange_dh_group::process(ipacket& in, opacket& out, boost::system::er
 	
 	switch ((message_type)in)
 	{
-		case kex_dh_init:
+		case msg_kex_dh_init:
 			init(in);
 			do
 			{
@@ -311,7 +312,7 @@ bool key_exchange_dh_group::process(ipacket& in, opacket& out, boost::system::er
 			}
 			while (m_e < 1 or m_e >= m_p - 1);
 			
-			out = kex_dh_init;
+			out = msg_kex_dh_init;
 			out << m_e;
 			break;
 
@@ -357,13 +358,13 @@ bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket& in, opacket& out, boos
 	
 	switch ((message_type)in)
 	{
-		case kexinit:
+		case msg_kexinit:
 			init(in);
-			out = kex_dh_gex_request;
+			out = msg_kex_dh_gex_request;
 			out << kMinGroupSize << kPreferredGroupSize << kMaxGroupSize;
 			break;
 
-		case kex_dh_gex_group:
+		case msg_kex_dh_gex_group:
 			in >> m_p >> m_g;
 			m_q = (m_p - 1) / 2;
 			
@@ -374,11 +375,11 @@ bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket& in, opacket& out, boos
 			}
 			while (m_e < 1 or m_e >= m_p - 1);
 			
-			out = kex_dh_gex_init;
+			out = msg_kex_dh_gex_init;
 			out << m_e;
 			break;
 
-		case kex_dh_gex_reply:		
+		case msg_kex_dh_gex_reply:		
 			process_kex_dh_reply(in, out, ec);
 			break;
 
@@ -443,11 +444,12 @@ key_exchange* key_exchange::create(ipacket& in, const string& host_version,
 		};
 
 	key_exchange* result = nullptr;
-	vector<uint8> host_payload = in;
+	vector<uint8> host_payload;
 	string key_exchange_alg;
 
+	in.copy(host_payload);
 	in.skip(16);
-	in	>> key_exchange_alg;
+	in >> key_exchange_alg;
 
 	key_exchange_alg = choose_protocol(key_exchange_alg, kKeyExchangeAlgorithms);
 	

@@ -18,8 +18,10 @@ uint32 channel::s_next_channel_id = 1;
 
 channel::channel(basic_connection& inConnection)
 	: m_connection(inConnection)
+	, m_open_handler(nullptr)
 	, m_refcount(1), m_max_send_packet_size(0)
 	, m_channel_open(false)
+	, m_send_pending(false)
 	, m_my_channel_id(s_next_channel_id++)
 	, m_host_channel_id(0)
 	, m_my_window_size(kWindowSize)
@@ -32,6 +34,12 @@ channel::~channel()
 #if DEBUG
 	assert(m_refcount == 0);
 #endif
+	delete m_open_handler;
+}
+
+boost::asio::io_service& channel::get_io_service()
+{
+	return m_connection.get_io_service();
 }
 
 void channel::reference()
@@ -69,6 +77,12 @@ void channel::open()
 
 void channel::opened()
 {
+	if (m_open_handler)
+	{
+		(*m_open_handler)(boost::system::error_code());
+		delete m_open_handler;
+		m_open_handler = nullptr;
+	}
 }
 
 void channel::close()
@@ -80,62 +94,84 @@ void channel::close()
 void channel::closed()
 {
 	m_channel_open = false;
+	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
+	{
+		op->written(error::make_error_code(error::connection_lost));
+		delete op;
+	});
+	m_pending.clear();
+	
+	for_each(m_read_handlers.begin(), m_read_handlers.end(), [this](basic_read_handler* handler)
+	{
+		handler->post_error(error::make_error_code(error::connection_lost), get_io_service());
+		delete handler;
+	});
+	m_read_handlers.clear();
 }
 
-void channel::open_pty(uint32 with, uint32 height,
+void channel::init(ipacket& in, opacket& out)
+{
+	in >> m_host_window_size >> m_max_send_packet_size;
+}
+
+void channel::open_pty(uint32 width, uint32 height,
 	const string& terminal_type, bool forward_agent, bool forward_x11)
 {
 	if (forward_x11)
 	{
-		send(opacket(channel_request)
-			<< m_host_channel_id
+		opacket out(msg_channel_request);
+		out	<< m_host_channel_id
 			<< "x11-req"
 			<< false << false
 			<< "MIT-MAGIC-COOKIE-1"
 			<< "0000000000000000"
-			<< uint32(0));
+			<< uint32(0);
+		send(move(out));
 	}
 
 	if (forward_agent)
 	{
-//		m_connection.SetForwardAgent(true);
+		m_connection.forward_agent(true);
 		
-		m_connection.Send(opacket(channel_request)
-			<< m_host_channel_id
+		opacket out(msg_channel_request);
+		out	<< m_host_channel_id
 			<< "auth-agent-req@openssh.com"
-			<< false);
+			<< false;
+		send(move(out));
 	}
 	
-	m_connection.send(opacket(channel_request)
-		<< m_host_channel_id
+	opacket out(msg_channel_request);
+	out	<< m_host_channel_id
 		<< "pty-req"
 		<< true				// confirmation, ignore it?
-		<< inTerminalType
-		<< inWidth << inHeight
+		<< terminal_type
+		<< width << height
 		<< uint32(0) << uint32(0)
-		<< "");
+		<< "";
+	send(move(out));
 }
 
 void channel::send_request_and_command(
 	const string& request, const string& command)
 {
-	m_connection.send(opacket(channel_request)
-		<< m_host_channel_id
-		<< inRequest
+	opacket out(msg_channel_request);
+	out	<< m_host_channel_id
+		<< request
 		<< true
-		<< inCommand);
+		<< command;
+	send(move(out));
 }
 
 void channel::process(ipacket& in)
 {
-	switch ((message_type)inMessage)
+	switch ((message_type)in)
 	{
-		case channel_open_confirmation:
+		case msg_channel_open_confirmation:
 			in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
-			Setup(in);
+			setup(in);
 			break;
 
-		case channel_open_failure:
+		case msg_channel_open_failure:
 		{
 			uint32 reasonCode;
 			string reason;
@@ -144,23 +180,32 @@ void channel::process(ipacket& in)
 			
 //			ChannelError(FormatString("Opening channel failed: ^0", reason));
 			m_connection.close_channel(this, 0);
+			
+			if (m_open_handler)
+			{
+				(*m_open_handler)(error::make_error_code(error::connection_lost));
+				delete m_open_handler;
+				m_open_handler = nullptr;
+			}
+
 			break;
 		}
 
-		case channel_close:
+		case msg_channel_close:
 			m_channel_open = false;
 			m_connection.close_channel(this, 0);
 			break;
 
-		case channel_window_adjust:
+		case msg_channel_window_adjust:
 		{
 			int32 extra;
 			in >> extra;
 			m_host_window_size += extra;
+			send_pending();
 			break;
 		}
 		
-		case channel_success:
+		case msg_channel_success:
 			if (not m_channel_open)
 			{
 				m_channel_open = true;
@@ -168,29 +213,26 @@ void channel::process(ipacket& in)
 			}
 			break;
 
-		case channel_data:
-		{
-			uint32 l;
-			in >> l;
-			m_my_window_size -= l;
-			in.resize(l);
-			
+		case msg_channel_data:
 			if (m_channel_open)
-				received_data(in);
+			{
+				ipacket data;
+				in >> data;
+				m_my_window_size -= data.size();
+				receive_data(in);
+			}
 			break;
-		}
 
-		case SSH_MSG_CHANNEL_EXTENDED_DATA:
-		{
-			uint32 l;
-			in >> l;
-			m_my_window_size -= l;
-			in.resize(l);
-
+		case msg_channel_extended_data:
 			if (m_channel_open)
-				ReceiveExtendedData(in, type);
+			{
+				uint32 type;
+				ipacket data;
+				in >> type >> data;
+				m_my_window_size -= data.size();
+				receive_extended_data(in, type);
+			}
 			break;
-		}
 		
 		//case SSH_MSG_CHANNEL_SUCCESS:
 		//	HandleChannelEvent(SSH_CHANNEL_SUCCESS);
@@ -200,7 +242,7 @@ void channel::process(ipacket& in)
 		//	HandleChannelEvent(SSH_CHANNEL_FAILURE);
 		//	break;
 
-		case SSH_MSG_CHANNEL_REQUEST:
+		case msg_channel_request:
 		{
 			string request;
 			bool want_reply;
@@ -213,8 +255,8 @@ void channel::process(ipacket& in)
 			if (want_reply)
 			{
 				if (out.empty())
-					out = opacket(channel_failure) << m_host_channel_id;
-				m_connection.send(out);
+					out = opacket(msg_channel_failure) << m_host_channel_id;
+				send(move(out));
 			}
 			break;
 		}
@@ -228,43 +270,22 @@ void channel::process(ipacket& in)
 	{
 		uint32 adjust = kWindowSize - m_my_window_size;
 		m_my_window_size += adjust;
-		m_connection.send(out(channel_window_adjust)
-			<< m_host_channel_id << adjust);
+
+		opacket out(msg_channel_window_adjust);
+		out	<< m_host_channel_id << adjust;
+		send(move(out));
 	}
 }
 
-void channel::send(opacket& p)
-{
-	m_connection.send(p);
-}
-
-void channel::send_data(const char* data, size_t size)
-{
-	assert(data.size() <= m_max_send_packet_size);
-	push(opacket(channel_data) << m_host_channel_id << make_pair(data, size));
-}
-
-void channel::send_data(opacket& data)
-{
-	assert(data.size() <= m_max_send_packet_size);
-	push(opacket(channel_data) << m_host_channel_id << data);
-}
-
-void channel::send_extended_data(opacket& data, uint32 type)
-{
-	assert(data.size() < m_max_send_packet_size);
-	push(opacket(channel_extended_data) << m_host_channel_id << type << data);
-}
-
-void channel::banner(const string& msg)
+void channel::banner(const string& msg, const string& lang)
 {
 }
 
-void channel::message(const string& msg)
+void channel::message(const string& msg, const string& lang)
 {
 }
 
-void channel::error(const string& msg)
+void channel::error(const string& msg, const string& lang)
 {
 }
 
@@ -272,21 +293,21 @@ void channel::handle_channel_request(const string& request, ipacket& in, opacket
 {
 }
 
-void channel::received_data(ipacket& in)
+void channel::receive_data(ipacket& in)
 {
 	pair<const char*, size_t> data;
 	in >> data;
-	received_data(data.first, data.second);
+	receive_data(data.first, data.second);
 }
 
 void channel::receive_extended_data(ipacket& in, uint32 type)
 {
 	pair<const char*, size_t> data;
 	in >> data;
-	receive_extended_data(data.first, data.second);
+	receive_extended_data(data.first, data.second, type);
 }
 
-void channel::received_data(const char* data, size_t size)
+void channel::receive_data(const char* data, size_t size)
 {
 	m_received.insert(m_received.end(), data, data + size);
 	push_received();
@@ -296,33 +317,52 @@ void channel::receive_extended_data(const char* data, size_t size, uint32 type)
 {
 }
 
-opacket channel::pop()
+void channel::send_pending()
 {
-	opacket result;
-	
-	if (not m_pending.empty() and m_pending.front().size() < m_host_window_size)
+	while (not m_pending.empty() and not m_send_pending)
 	{
-		result = true;
-		result = move(m_pending.front());
-		m_pending.pop_front();
-		m_host_window_size -= result.size();
+		basic_write_op* op = m_pending.front();
+		
+		if (op->m_packets.empty())
+		{
+			m_pending.pop_front();
+			delete op;
+			continue;
+		}
+		
+		size_t size = op->m_packets.front().size();
+		if (size > m_host_window_size)
+			break;
+		
+		m_host_window_size -= size;
+		m_send_pending = true;
+
+		m_connection.async_write(op->m_packets.front(),
+			[this, op](const boost::system::error_code& ec, size_t bytes_transferred)
+		{
+			this->m_send_pending = false;
+			op->m_packets.pop_front();
+			if (op->m_packets.empty() or ec)
+				op->written(ec);
+			this->send_pending();
+		});
+		
+		break;
 	}
-	
-	return result;
 }
-	
-void channel::push(opacket& data)
-{
-	// see if we can send this packet right away instead of 
-	// having to queue it.
-	if (m_pending.empty() and data.size() < m_host_window_size)
-	{
-		m_connection.send(data);
-		m_host_window_size -= data.size();
-	}
-	else
-		m_pending.push_back(data);
-}
+
+//void channel::push(opacket& data)
+//{
+//	// see if we can send this packet right away instead of 
+//	// having to queue it.
+//	if (m_pending.empty() and data.size() < m_host_window_size)
+//	{
+//		m_connection.send(data);
+//		m_host_window_size -= data.size();
+//	}
+//	else
+//		m_pending.push_back(data);
+//}
 
 void channel::push_received()
 {

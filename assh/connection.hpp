@@ -26,11 +26,22 @@ class basic_connection
 					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
 				    	start_handshake(new connect_handler<Handler>(std::move(handler)));
 					}
+	
+	void			disconnect();
 
 	void			open_channel(channel* ch, uint32 id);
 	void			close_channel(channel* ch, uint32 id);
 
-	void			send(const opacket& p);
+	template<typename Handler>
+	void			async_write(const opacket& p, Handler&& handler)
+					{
+						async_write_packet_int(p, new write_op<Handler>(std::move(handler)));
+					}
+	
+	void			forward_agent(bool forward);
+
+	virtual boost::asio::io_service&
+					get_io_service() = 0;
 	
   protected:
 
@@ -83,12 +94,10 @@ class basic_connection
 	void			process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec);
 	void			process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec);
 
+	void			process_channel_open(ipacket& in, opacket& out);
 	void			process_channel(ipacket& in, opacket& out, boost::system::error_code& ec);
 
 	void			full_stop(const boost::system::error_code& ec);
-
-	virtual void	process_open_channel(const std::string& type, uint32 channel_id,
-						opacket& out, boost::system::error_code& ec);
 
 	template<class Handler>
 	struct bound_handler
@@ -171,10 +180,9 @@ class basic_connection
 						async_write_int(request, new write_op<Handler>(std::move(handler)));
 					}
 
-	template<typename Handler>
-	void			async_write(const opacket& p, Handler&& handler)
+	void			async_write(const opacket& p)
 					{
-						async_write_packet_int(p, new write_op<Handler>(std::move(handler)));
+						async_write(p, [](const boost::system::error_code&, std::size_t) {});
 					}
 
 	void			async_write_packet_int(const opacket& p, basic_write_op* handler);
@@ -219,6 +227,7 @@ class basic_connection
 	std::deque<opacket>			m_private_keys;
 
 	std::list<channel*>			m_channels;
+	bool						m_forward_agent;
 
   private:
 								basic_connection(const basic_connection&);
@@ -233,6 +242,12 @@ class basic_connection_t : public basic_connection
 
 						basic_connection_t(socket_type& socket, const std::string& user)
 							: basic_connection(socket.get_io_service(), user), m_socket(socket) {}
+
+	virtual boost::asio::io_service&
+						get_io_service()
+						{
+							return m_socket.get_io_service();
+						}
 
   protected:
 	virtual void		async_write_int(boost::asio::streambuf* request, basic_write_op* op)
