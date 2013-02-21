@@ -36,7 +36,8 @@ static AutoSeededRandomPool	rng;
 
 const string
 	//kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
-	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
+	//kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
+	kKeyExchangeAlgorithms("diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
 	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
 	kEncryptionAlgorithms("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha1,hmac-md5"),

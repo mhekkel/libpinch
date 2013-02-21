@@ -34,6 +34,11 @@ class basic_connection
 	void			open_channel(channel* ch, uint32 id);
 	void			close_channel(channel* ch, uint32 id);
 
+	void			async_write(const opacket& p)
+					{
+						async_write(p, [](const boost::system::error_code&, std::size_t) {});
+					}
+
 	template<typename Handler>
 	void			async_write(const opacket& p, Handler&& handler)
 					{
@@ -180,11 +185,6 @@ class basic_connection
 	void			async_write(boost::asio::streambuf* request, Handler&& handler)
 					{
 						async_write_int(request, new write_op<Handler>(std::move(handler)));
-					}
-
-	void			async_write(const opacket& p)
-					{
-						async_write(p, [](const boost::system::error_code&, std::size_t) {});
 					}
 
 	void			async_write_packet_int(const opacket& p, basic_write_op* handler);

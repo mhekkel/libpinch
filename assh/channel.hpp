@@ -160,12 +160,14 @@ class channel
 	void			make_write_op(std::list<opacket>&& p, Handler&& h)
 					{
 						m_pending.push_back(new write_op<Handler>(std::move(p), std::move(h)));
+						send_pending();
 					}
 
 	template<typename Handler>
 	void			make_write_op(opacket&& p, Handler&& h)
 					{
 						m_pending.push_back(new write_op<Handler>(std::move(p), std::move(h)));
+						send_pending();
 					}
 
 	template <typename ConstBufferSequence, typename Handler>

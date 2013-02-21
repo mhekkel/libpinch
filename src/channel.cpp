@@ -126,7 +126,7 @@ void channel::open_pty(uint32 width, uint32 height,
 			<< "MIT-MAGIC-COOKIE-1"
 			<< "0000000000000000"
 			<< uint32(0);
-		send(move(out));
+		m_connection.async_write(move(out));
 	}
 
 	if (forward_agent)
@@ -137,7 +137,7 @@ void channel::open_pty(uint32 width, uint32 height,
 		out	<< m_host_channel_id
 			<< "auth-agent-req@openssh.com"
 			<< false;
-		send(move(out));
+		m_connection.async_write(move(out));
 	}
 	
 	opacket out(msg_channel_request);
@@ -148,7 +148,7 @@ void channel::open_pty(uint32 width, uint32 height,
 		<< width << height
 		<< uint32(0) << uint32(0)
 		<< "";
-	send(move(out));
+	m_connection.async_write(move(out));
 }
 
 void channel::send_request_and_command(
@@ -159,11 +159,13 @@ void channel::send_request_and_command(
 		<< request
 		<< true
 		<< command;
-	send(move(out));
+	m_connection.async_write(move(out));
 }
 
 void channel::process(ipacket& in)
 {
+	cerr << endl << in << endl;
+
 	switch ((message_type)in)
 	{
 		case msg_channel_open_confirmation:
@@ -256,7 +258,7 @@ void channel::process(ipacket& in)
 			{
 				if (out.empty())
 					out = opacket(msg_channel_failure) << m_host_channel_id;
-				send(move(out));
+				m_connection.async_write(move(out));
 			}
 			break;
 		}
@@ -273,7 +275,7 @@ void channel::process(ipacket& in)
 
 		opacket out(msg_channel_window_adjust);
 		out	<< m_host_channel_id << adjust;
-		send(move(out));
+		m_connection.async_write(move(out));
 	}
 }
 
