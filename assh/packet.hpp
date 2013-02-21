@@ -121,8 +121,7 @@ class ipacket
 	message_type	message() const						{ return m_message; }
 					operator message_type() const		{ return m_message; }
 
-//					operator std::vector<uint8>() const	{ return std::vector<uint8>(m_data, m_data + m_length); }
-	void			copy(std::vector<uint8>& bytes)		{ bytes.assign(m_data, m_data + m_length); }
+					operator std::vector<uint8>() const	{ return std::vector<uint8>(m_data, m_data + m_length); }
 
 	void			skip(uint32 bytes)					{ m_offset += bytes; }
 

@@ -164,8 +164,7 @@ void key_exchange::process_kex_dh_reply(ipacket& in, opacket& out, boost::system
 		h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
 	}
 
-	vector<uint8> pk_rs_d;
-	pk_rs.copy(pk_rs_d);
+	vector<uint8> pk_rs_d = pk_rs;
 	if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
 		ec = error::make_error_code(error::host_key_verification_failed);
 
@@ -447,7 +446,8 @@ key_exchange* key_exchange::create(ipacket& in, const string& host_version,
 	vector<uint8> host_payload;
 	string key_exchange_alg;
 
-	in.copy(host_payload);
+	host_payload = in;
+
 	in.skip(16);
 	in >> key_exchange_alg;
 

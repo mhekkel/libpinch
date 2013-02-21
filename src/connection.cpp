@@ -263,14 +263,14 @@ void basic_connection::process_packet(ipacket& in)
 	{
 		handled = true;
 		
-		switch ((message_type)m_packet)
+		switch ((message_type)in)
 		{
 			case msg_disconnect:
 				full_stop(error::make_error_code(error::connection_lost));
 				break;
 
 			case msg_kexinit:
-				in.copy(m_host_payload);
+				m_host_payload = in;
 				m_key_exchange = key_exchange::create(in, m_host_version, m_session_id, m_my_payload);
 				m_key_exchange->process(in, out, ec);
 				break;
@@ -287,6 +287,7 @@ void basic_connection::process_packet(ipacket& in)
 				if (m_authenticated)
 					process_channel_open(in, out);
 				break;
+			case msg_channel_open_confirmation:
 			case msg_channel_open_failure:
 			case msg_channel_window_adjust:
 			case msg_channel_data:
