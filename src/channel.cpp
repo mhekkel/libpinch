@@ -157,8 +157,9 @@ void channel::send_request_and_command(
 	opacket out(msg_channel_request);
 	out	<< m_host_channel_id
 		<< request
-		<< true
-		<< command;
+		<< true;
+	if (not command.empty())
+		out	<< command;
 	m_connection.async_write(move(out));
 }
 
@@ -218,10 +219,10 @@ void channel::process(ipacket& in)
 		case msg_channel_data:
 			if (m_channel_open)
 			{
-				ipacket data;
+				pair<const char*,size_t> data;
 				in >> data;
-				m_my_window_size -= data.size();
-				receive_data(in);
+				m_my_window_size -= data.second;
+				receive_data(data.first, data.second);
 			}
 			break;
 
@@ -229,10 +230,10 @@ void channel::process(ipacket& in)
 			if (m_channel_open)
 			{
 				uint32 type;
-				ipacket data;
+				pair<const char*,size_t> data;
 				in >> type >> data;
-				m_my_window_size -= data.size();
-				receive_extended_data(in, type);
+				m_my_window_size -= data.second;
+				receive_extended_data(data.first, data.second, type);
 			}
 			break;
 		

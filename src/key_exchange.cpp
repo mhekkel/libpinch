@@ -307,7 +307,7 @@ bool key_exchange_dh_group::process(ipacket& in, opacket& out, boost::system::er
 	
 	switch ((message_type)in)
 	{
-		case msg_kex_dh_init:
+		case msg_kexinit:
 			init(in);
 			do
 			{
