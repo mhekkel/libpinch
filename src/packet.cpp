@@ -209,8 +209,16 @@ ipacket::ipacket(ipacket&& rhs)
 
 ipacket::~ipacket()
 {
+#if DEBUG
+	if (m_owned and m_data != nullptr)
+	{
+		memset(m_data, 0xcc, m_length);
+		delete[] m_data;
+	}
+#else
 	if (m_owned)
 		delete[] m_data;
+#endif
 }
 
 ipacket& ipacket::operator=(ipacket&& rhs)
@@ -241,12 +249,18 @@ bool ipacket::empty()
 
 void ipacket::clear()
 {
+#if DEBUG
+	if (m_owned and m_data != nullptr)
+		memset(m_data, 0xcc, m_length);
+#endif
+
 	m_message = msg_undefined;
 	m_padding = 0;
 	m_owned = true;
 	m_complete = false;
 	m_length = 0;
 	m_offset = 0;
+
 	if (m_owned)
 		delete[] m_data;
 	m_data = nullptr;
@@ -337,6 +351,11 @@ ipacket& ipacket::operator>>(CryptoPP::Integer& v)
 
 ipacket& ipacket::operator>>(ipacket& v)
 {
+#if DEBUG
+	if (v.m_owned and v.m_data != nullptr)
+		memset(v.m_data, 0xcc, v.m_length);
+#endif
+
 	uint32 l;
 	operator>>(l);
 	

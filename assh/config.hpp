@@ -5,6 +5,8 @@
 
 #pragma once
 
+#define BOOST_ASIO_HAS_MOVE 1
+
 #ifndef LIBASSH_DOXYGEN_INVOKED
 
 #include <boost/cstdint.hpp>
@@ -20,12 +22,6 @@ typedef boost::uint64_t		uint64;
 // see if we're using Visual C++, if so we have to include
 // some VC specific include files to make the standard C++
 // keywords work.
-
-#if DEBUG
-#include <assh/debug.hpp>
-#else
-#error
-#endif
 
 #if defined(_MSC_VER)
 
@@ -96,3 +92,13 @@ inline speed_t cfgetospeed(const struct termios *tp)
 //////////////// FIX ENDS HERE
 #endif
 #endif
+
+// set DEBUG flag
+
+#if DEBUG || _DEBUG || DEBUG_
+#define DEBUG 1
+#undef NDEBUG
+#include <assh/debug.hpp>
+#endif
+
+

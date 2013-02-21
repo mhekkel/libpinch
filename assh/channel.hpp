@@ -94,13 +94,13 @@ class channel
 	template<class Handler>
 	struct bound_handler
 	{
+		//bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
+		//	: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
+		//{
+		//}
+
 		bound_handler(const Handler& handler, const boost::system::error_code& ec, std::size_t s)
 			: m_handler(handler), m_ec(ec), m_transferred(s)
-		{
-		}
-
-		bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
-			: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
 		{
 		}
 
