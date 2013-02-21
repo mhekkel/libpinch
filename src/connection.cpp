@@ -76,7 +76,7 @@ void basic_connection::disconnect()
 	m_encryptor.reset(nullptr);
 	m_decryptor.reset(nullptr);
 	m_signer.reset(nullptr);
-	m_verifier(nullptr);
+	m_verifier.reset(nullptr);
 	
 	// copy the list since calling Close will change it
 	list<channel*> channels(m_channels);

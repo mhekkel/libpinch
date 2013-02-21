@@ -185,11 +185,12 @@ void key_exchange::derive_keys()
 	int keylen = 32;
 	for (int i = 0; i < 6; ++i)
 	{
-		vector<uint8> key = (hash<HashAlgorithm>() | m_K | m_H | ('A' + i) | m_session_id).final();
+		hash<HashAlgorithm> ha;
+		vector<uint8> key = (ha | m_K | m_H | ('A' + i) | m_session_id).final();
 		
 		for (int k = 20; k < keylen; k += 20)
 		{
-			vector<uint8> k2 = (hash<HashAlgorithm>() | m_K | m_H | key).final();
+			vector<uint8> k2 = (ha | m_K | m_H | key).final();
 			key.insert(key.end(), k2.begin(), k2.end());
 		}
 		

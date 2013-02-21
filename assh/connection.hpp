@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <list>
+
 #include <assh/packet.hpp>
 
 namespace assh
@@ -140,9 +142,9 @@ class basic_connection
 					{
 						typedef read_handler<Handler> handler_type;
 						
-						if (not m_socket.is_open())
-							m_socket.get_io_service().post(bound_handler<Handler>(handler, error::connection_lost, ipacket()));
-						else
+//						if (not is_open())
+//							m_socket.get_io_service().post(bound_handler<Handler>(handler, error::connection_lost, ipacket()));
+//						else
 							m_read_handlers.push_back(new handler_type(std::move(handler)));
 					}
 

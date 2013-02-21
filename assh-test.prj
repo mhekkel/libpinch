@@ -11,7 +11,14 @@
   <libpaths/>
   <files>
     <group name="assh">
+      <file>channel.cpp</file>
+      <file>connection.cpp</file>
+      <file>debug.cpp</file>
+      <file>error.cpp</file>
+      <file>key_exchange.cpp</file>
       <file>packet.cpp</file>
+      <file>ssh_agent.cpp</file>
+      <file>terminal_channel.cpp</file>
     </group>
     <group name="Sources">
       <file>test-assh.cpp</file>
@@ -51,6 +58,7 @@
       <cflags>
         <cflag>-gdwarf-2</cflag>
         <cflag>-O3</cflag>
+        <cflag>-std=c++0x</cflag>
       </cflags>
       <ldflags>
         <ldflag>-static-libgcc</ldflag>

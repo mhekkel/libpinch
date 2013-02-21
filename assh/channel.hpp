@@ -5,18 +5,21 @@
 
 #pragma once
 
+#include <cassert>
+
+#include <list>
 #include <string>
 #include <deque>
 
+#include <boost/type_traits.hpp>
 #include <boost/asio.hpp>
 
 #include <assh/error.hpp>
+#include <assh/packet.hpp>
 
 namespace assh
 {
 
-class ipacket;
-class opacket;
 class basic_connection;
 
 const uint32
@@ -91,6 +94,11 @@ class channel
 	template<class Handler>
 	struct bound_handler
 	{
+		bound_handler(const Handler& handler, const boost::system::error_code& ec, std::size_t s)
+			: m_handler(handler), m_ec(ec), m_transferred(s)
+		{
+		}
+
 		bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
 			: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
 		{
@@ -98,7 +106,7 @@ class channel
 
 		virtual void operator()()
 		{
-//			m_handler(m_ec, m_transferred);
+			m_handler(m_ec, m_transferred);
 		}
 
 		Handler							m_handler;
@@ -177,7 +185,7 @@ class channel
 						{
 							std::list<opacket> packets;
 							
-							foreach (const boost::asio::const_buffer& buffer, buffers)
+							for (auto& buffer = buffers.begin(); buffer != buffers.end(); ++buffer)
 							{
 								const char* b = boost::asio::buffer_cast<const char*>(buffer);
 								const char* e = b + n;
@@ -188,7 +196,7 @@ class channel
 									if (k > m_max_send_packet_size)
 										k = m_max_send_packet_size;
 								
-									packets.push_back(opacket(channel_data) << m_host_channel_id << std::make_pair(b, b + k));
+									packets.push_back(opacket(msg_channel_data) << m_host_channel_id << std::make_pair(b, b + k));
 								
 									b += k;
 								}
@@ -279,9 +287,8 @@ class channel
 	template<typename Handler>
 	void 					send_data(const char* data, size_t size, Handler&& handler)
 							{
-								std::assert(data.size() <= m_max_send_packet_size);
 								make_write_op(
-									opacket(channel_data) << m_host_channel_id << make_pair(data, size),
+									opacket(msg_channel_data) << m_host_channel_id << std::make_pair(data, size),
 									std::move(handler));
 							}
 	
@@ -289,7 +296,7 @@ class channel
 	void					send_data(opacket& data, Handler&& handler)
 							{
 								make_write_op(
-									opacket(channel_data) << m_host_channel_id << data,
+									opacket(msg_channel_data) << m_host_channel_id << data,
 									std::move(handler));
 							}
 							
@@ -298,7 +305,7 @@ class channel
 							{
 								make_write_op(
 									m_connection,
-									opacket(channel_extended_data) << m_host_channel_id << type << data,
+									opacket(msg_channel_extended_data) << m_host_channel_id << type << data,
 									std::move(handler));
 							}
 
