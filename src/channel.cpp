@@ -101,12 +101,12 @@ void channel::closed()
 	});
 	m_pending.clear();
 	
-	for_each(m_read_handlers.begin(), m_read_handlers.end(), [this](basic_read_handler* handler)
+	for_each(m_read_ops.begin(), m_read_ops.end(), [this](basic_read_op* handler)
 	{
 		handler->post_error(error::make_error_code(error::connection_lost), get_io_service());
 		delete handler;
 	});
-	m_read_handlers.clear();
+	m_read_ops.clear();
 }
 
 void channel::init(ipacket& in, opacket& out)
@@ -358,10 +358,10 @@ void channel::push_received()
 
 	deque<char>::iterator b = m_received.begin();
 
-	while (b != m_received.end() and not m_read_handlers.empty())
+	while (b != m_received.end() and not m_read_ops.empty())
 	{
-		basic_read_handler* handler = m_read_handlers.front();
-		m_read_handlers.pop_front();
+		basic_read_op* handler = m_read_ops.front();
+		m_read_ops.pop_front();
 
 		b = handler->receive_and_post(b, m_received.end(), io_service);
 
