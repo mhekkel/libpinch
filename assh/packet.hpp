@@ -104,6 +104,7 @@ class ipacket
 					ipacket();
 					ipacket(const ipacket& rhs);
 					ipacket(ipacket&& rhs);
+					ipacket(const uint8* data, std::size_t size);
 					~ipacket();
 
 	ipacket&		operator=(const ipacket& rhs);

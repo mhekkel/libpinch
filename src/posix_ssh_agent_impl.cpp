@@ -5,6 +5,11 @@
 
 #include <assh/config.hpp>
 
+#include <sys/un.h>
+#include <sys/socket.h>
+#include <cerrno>
+#include <fcntl.h>
+
 #include <assh/ssh_agent.hpp>
 #include <assh/detail/ssh_agent_impl.hpp>
 #include <assh/packet.hpp>
@@ -19,348 +24,239 @@ using namespace std;
 
 namespace assh
 {
+	
+enum
+{
+	/* Messages for the authentication agent connection. */
+	SSH_AGENTC_REQUEST_RSA_IDENTITIES =	1,
+	SSH_AGENT_RSA_IDENTITIES_ANSWER,
+	SSH_AGENTC_RSA_CHALLENGE,
+	SSH_AGENT_RSA_RESPONSE,
+	SSH_AGENT_FAILURE,
+	SSH_AGENT_SUCCESS,
+	SSH_AGENTC_ADD_RSA_IDENTITY,
+	SSH_AGENTC_REMOVE_RSA_IDENTITY,
+	SSH_AGENTC_REMOVE_ALL_RSA_IDENTITIES,
+	
+	/* private OpenSSH extensions for SSH2 */
+	SSH2_AGENTC_REQUEST_IDENTITIES = 11,
+	SSH2_AGENT_IDENTITIES_ANSWER,
+	SSH2_AGENTC_SIGN_REQUEST,
+	SSH2_AGENT_SIGN_RESPONSE,
+	SSH2_AGENTC_ADD_IDENTITY = 17,
+	SSH2_AGENTC_REMOVE_IDENTITY,
+	SSH2_AGENTC_REMOVE_ALL_IDENTITIES,
+	
+	/* smartcard */
+	SSH_AGENTC_ADD_SMARTCARD_KEY,
+	SSH_AGENTC_REMOVE_SMARTCARD_KEY,
+	
+	/* lock/unlock the agent */
+	SSH_AGENTC_LOCK,
+	SSH_AGENTC_UNLOCK,
+	
+	/* add key with constraints */
+	SSH_AGENTC_ADD_RSA_ID_CONSTRAINED,
+	SSH2_AGENTC_ADD_ID_CONSTRAINED,
+	SSH_AGENTC_ADD_SMARTCARD_KEY_CONSTRAINED,
+	
+	SSH_AGENT_CONSTRAIN_LIFETIME = 1,
+	SSH_AGENT_CONSTRAIN_CONFIRM,
+	
+	/* extended failure messages */
+	SSH2_AGENT_FAILURE = 30,
+	
+	/* additional error code for ssh.com's ssh-agent2 */
+	SSH_COM_AGENT2_FAILURE = 102,
+	
+	SSH_AGENT_OLD_SIGNATURE = 0x01
+};
 
-//// --------------------------------------------------------------------
-//// We support Pageant compatible signing.
-//
-//const wchar_t kPageantName[] = L"Pageant";
-//const uint32 AGENT_COPYDATA_ID = 0x804e50ba;   /* random goop */
-//
-//class MCertificateStore
-//{
-//  public:
-//	
-//	static MCertificateStore&	Instance();
-//	
-//				operator HCERTSTORE ()			{ return mCertificateStore; }
-//
-//	bool		GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer& n);
-//
-//  private:
-//				MCertificateStore();
-//				~MCertificateStore();
-//
-//	void		Check();
-//
-//	static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
-//	static void CALLBACK Timer(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
-//
-//	HCERTSTORE	mCertificateStore;
-//	HWND		mPageant;
-//	HANDLE		mEvent;
-//};
-//
-//MCertificateStore::MCertificateStore()
-//	: mPageant(nullptr)
-//	, mCertificateStore(::CertOpenSystemStoreW(0, L"MY"))
-//	, mEvent(::CreateEvent(nullptr, false, false, nullptr))
-//{
-//	::CertControlStore(mCertificateStore, 0, CERT_STORE_CTRL_NOTIFY_CHANGE, &mEvent);
-//	::SetTimer(nullptr, 0, 1000, &MCertificateStore::Timer);
-//	
-//	//if (Preferences::GetBoolean("act-as-pageant", true))
-//	//{
-//	//	try
-//	//	{
-//	//		HINSTANCE inst = MWinApplicationImpl::GetInstance()->GetHInstance();
-//	//
-//	//		WNDCLASS lWndClass = { sizeof(WNDCLASS) };
-//	//		lWndClass.lpszClassName = kPageantName;
-//	//
-//	//		if (not ::GetClassInfo(inst, lWndClass.lpszClassName, &lWndClass))
-//	//		{
-//	//			lWndClass.lpfnWndProc = &MCertificateStore::WndProc;
-//	//			lWndClass.hInstance = inst;
-//	//			::RegisterClass(&lWndClass);
-//	//		}
-//	//
-//	//		mPageant = ::CreateWindow(kPageantName, kPageantName,
-//	//				0, 0, 0, 0, 0, HWND_MESSAGE, NULL, inst, NULL);
-//	//	}
-//	//	catch (...)
-//	//	{
-//	//		mPageant = nullptr;
-//	//	}
-//	//}
-//}
-//
-//MCertificateStore::~MCertificateStore()
-//{
-//	if (mEvent != nullptr)
-//		::CloseHandle(mEvent);
-//
-//	if (mCertificateStore != nullptr)
-//		(void)::CertCloseStore(mCertificateStore, CERT_CLOSE_STORE_CHECK_FLAG);
-//}
-//
-//void MCertificateStore::Check()
-//{
-//	if (::WaitForSingleObjectEx(mEvent, 0, false) == WAIT_OBJECT_0)
-//	{
-//		::CertControlStore(mCertificateStore, 0, CERT_STORE_CTRL_RESYNC, &mEvent);
-//
-//		ssh_agent::instance().update();
-//	}
-//}
-//
-//MCertificateStore& MCertificateStore::Instance()
-//{
-//	static MCertificateStore sInstance;
-//	return sInstance;
-//}
-//
-//bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer& n)
-//{
-//	bool result = false;
-//	DWORD cbPublicKeyStruc = 0;
-//	PCERT_PUBLIC_KEY_INFO pk = &context->pCertInfo->SubjectPublicKeyInfo;
-//	
-//	if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-//		RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
-//	    0, nullptr, &cbPublicKeyStruc))
-//	{
-//		vector<uint8> b(cbPublicKeyStruc);
-//		
-//		if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-//			RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
-//		    0, &b[0], &cbPublicKeyStruc))
-//		{
-//			PUBLICKEYSTRUC* pks = reinterpret_cast<PUBLICKEYSTRUC*>(&b[0]);
-//			
-//			if ((pks->aiKeyAlg & ALG_TYPE_RSA) != 0)
-//			{
-//				RSAPUBKEY* pkd = reinterpret_cast<RSAPUBKEY*>(&b[0] + sizeof(PUBLICKEYSTRUC));
-//				byte* data = reinterpret_cast<byte*>(&b[0] + sizeof(RSAPUBKEY) + sizeof(PUBLICKEYSTRUC));
-//				
-//				// public key is in little endian format
-//				uint32 len = pkd->bitlen / 8;
-//				reverse(data, data + len);
-//
-//				e = pkd->pubexp;
-//				n = Integer(data, len);
-//				
-//				result = true;
-//			}
-//		}
-//	}
-//	
-//	return result;
-//}
-//
-//LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
-//{
-//	LRESULT result = 0;
-//	
-//	try
-//	{
-//		switch (message)
-//		{
-//			case WM_COPYDATA:
-//			{
-//				//uint8* p = nullptr;
-//				//HANDLE mapFile = nullptr;
-//				//
-//				//do
-//				//{
-//				//	COPYDATASTRUCT *cds = reinterpret_cast<COPYDATASTRUCT*>(lParam);
-//				//	if (cds == nullptr or cds->dwData != AGENT_COPYDATA_ID)
-//				//		break;
-//				//	
-//				//	char* fileName = reinterpret_cast<char*>(cds->lpData);
-//				//	if (fileName == nullptr or fileName[cds->cbData - 1] != 0)
-//				//		break;
-//				//	
-//				//	mapFile = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, false,
-//				//		fileName);
-//				//	if (mapFile == nullptr or mapFile == INVALID_HANDLE_VALUE)
-//				//		break;
-//				//	
-//				//	p = reinterpret_cast<uint8*>(::MapViewOfFile(mapFile, FILE_MAP_WRITE, 0, 0, 0));
-//				//	if (p == nullptr)
-//				//		break;
-//				//	
-//				//	HANDLE proc = ::OpenProcess(MAXIMUM_ALLOWED, false, ::GetCurrentProcessId());
-//				//	if (proc == nullptr)
-//				//		break;
-//				//	
-//				//	PSECURITY_DESCRIPTOR procSD = nullptr, mapSD = nullptr;
-//				//	PSID mapOwner, procOwner;
-//				//	
-//				//	if (::GetSecurityInfo(proc, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-//				//			&procOwner, nullptr, nullptr, nullptr, &procSD) != ERROR_SUCCESS)
-//				//	{
-//				//		if (procSD != nullptr)
-//				//			::LocalFree(procSD);
-//				//		procSD = nullptr;
-//				//	}
-//				//	::CloseHandle(proc);
-//				//	
-//				//	if (::GetSecurityInfo(mapFile, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-//				//		&mapOwner, nullptr, nullptr, nullptr, &mapSD) != ERROR_SUCCESS)
-//				//	{
-//				//		if (mapSD != nullptr)
-//				//			::LocalFree(mapSD);
-//				//		mapSD = nullptr;
-//				//	}
-//				//	
-//				//	if (::EqualSid(mapOwner, procOwner))
-//				//	{
-//				//		uint32 len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
-//				//		if (len < 10240)
-//				//		{
-//				//			MSshPacket in(p + 4, len);
-//				//			MSshPacket out;
-//				//			
-//				//			MSshAgent::Instance().ProcessAgentRequest(in, out);
-//				//			
-//				//			MSshPacket wrapped;
-//				//			wrapped << out;
-//	
-//				//			copy(wrapped.peek(), wrapped.peek() + wrapped.size(), p);
-//				//			result = 1;
-//				//		}
-//				//	}
-//				//	
-//				//	if (procSD != nullptr)
-//				//		::LocalFree(procSD);
-//				//	
-//				//	if (mapSD != nullptr)
-//				//		::LocalFree(mapSD);
-//				//}
-//				//while (false);
-//
-//				//if (p != nullptr)
-//				//	::UnmapViewOfFile(p);
-//				//
-//				//if (mapFile != nullptr and mapFile != INVALID_HANDLE_VALUE)
-//				//	::CloseHandle(mapFile);
-//
-//				break;
-//			}
-//
-//			default:
-//				result = ::DefWindowProc(hwnd, message, wParam, lParam);
-//				break;
-//		}
-//	}
-//	catch (...)
-//	{
-//	}
-//	
-//	return result;
-//}
-//
-//void MCertificateStore::Timer(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
-//{
-//	MCertificateStore::Instance().Check();
-//}
-//
-//// --------------------------------------------------------------------
-//
-//class MWinSshPrivateKeyImpl : public ssh_private_key_impl
-//{
-//  public:
-//		  					MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext,
-//		  						Integer& e, Integer& n);
-//	virtual					~MWinSshPrivateKeyImpl();
-//
-//	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
-//
-//	virtual string			get_hash() const;
-//	virtual string			get_comment() const;
-//
-//  private:
-//	PCCERT_CONTEXT			mCertificateContext;
-//};
-//
-//MWinSshPrivateKeyImpl::MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext, Integer& e, Integer& n)
-//	: mCertificateContext(inCertificateContext)
-//{
-//	m_e = e;
-//	m_n = n;
-//}
-//
-//MWinSshPrivateKeyImpl::~MWinSshPrivateKeyImpl()
-//{
-//	if (mCertificateContext != nullptr)
-//		::CertFreeCertificateContext(mCertificateContext);
-//}
-//
-//vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const opacket& inData)
-//{
-//	BOOL freeKey = false;
-//	DWORD keySpec, cb;
-//	HCRYPTPROV key;
-//	
-//	vector<uint8> result;
-//	
-//	if (::CryptAcquireCertificatePrivateKey(mCertificateContext, 0, nullptr, &key, &keySpec, &freeKey))
-//	{
-//		HCRYPTHASH hash;
-//
-//		if (::CryptCreateHash(key, CALG_SHA1, 0, 0, &hash))
-//		{
-//			const vector<uint8>& data(inData);
-//			
-//			if (::CryptHashData(hash, &session_id[0], session_id.size(), 0) and
-//				::CryptHashData(hash, &data[0], data.size(), 0))
-//			{
-//				cb = 0;
-//				::CryptSignHash(hash, keySpec, nullptr, 0, nullptr, &cb);
-//				
-//				if (cb > 0)
-//				{
-//					result = vector<uint8>(cb);
-//					
-//					if (::CryptSignHash(hash, keySpec, nullptr, 0, &result[0], &cb))
-//					{
-//						// data is in little endian format
-//						reverse(result.begin(), result.end());
-//					}
-//				}
-//			}
-//			
-//			::CryptDestroyHash(hash);
-//		}
-//		
-//		if (freeKey)
-//			::CryptReleaseContext(key, 0);
-//	}
-//	
-//	return result;
-//}
-//
-//string MWinSshPrivateKeyImpl::get_comment() const
-//{
-//	string comment;
-//
-//	// now we have a public key, try to fetch a comment as well
-//	DWORD types[] = { CERT_NAME_UPN_TYPE, CERT_NAME_FRIENDLY_DISPLAY_TYPE,
-//		CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_NAME_EMAIL_TYPE, CERT_NAME_ATTR_TYPE };
-//
-//	foreach (DWORD type, types)
-//	{
-//		DWORD cb = ::CertGetNameString(mCertificateContext, type,
-//			CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, nullptr, 0);
-//		if (cb > 1)
-//		{
-//			vector<wchar_t> b(cb);
-//			::CertGetNameString(mCertificateContext, type,
-//				CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, &b[0], cb);
-////			comment = w2c(&b[0]);
-//
-//			if (not comment.empty())
-//				break;
-//		}
-//	}
-//
-//	return comment;
-//}
-//
-//string MWinSshPrivateKeyImpl::get_hash() const
-//{
-//	string hash;
-//
+class ssh_agent_impl
+{
+  public:
+	static ssh_agent_impl&	instance();
+
+	void			get_identities(vector<tr1::tuple<Integer,Integer,string>>& identities);
+	vector<uint8>	sign(const vector<uint8>& blob, const vector<uint8>& data);
+	
+  private:
+					ssh_agent_impl();
+					~ssh_agent_impl();
+
+	bool			process(opacket& request, ipacket& reply);
+
+	int				m_fd;
+};
+
+ssh_agent_impl::ssh_agent_impl()
+	: m_fd(-1)
+{
+	const char* authSock = getenv("SSH_AUTH_SOCK");
+	
+	if (authSock != nullptr)
+	{
+		struct sockaddr_un addr = {};
+		addr.sun_family = AF_LOCAL;
+		strcpy(addr.sun_path, authSock);
+		
+		int sock = socket(AF_LOCAL, SOCK_STREAM, 0);
+		if (sock >= 0)
+		{
+			if (fcntl(sock, F_SETFD, 1) < 0)
+				close(sock);
+			else if (connect(sock, (const sockaddr*)&addr, sizeof(addr)) < 0)
+				close(sock);
+			else
+				m_fd = sock;
+		}
+	}
+}
+
+ssh_agent_impl::~ssh_agent_impl()
+{
+	if (m_fd >= 0)
+		close(m_fd);
+}
+
+void ssh_agent_impl::get_identities(vector<tr1::tuple<Integer,Integer,string>>& identities)
+{
+	if (m_fd > 0)
+	{
+		ipacket reply;
+		if (process(opacket((message_type)SSH2_AGENTC_REQUEST_IDENTITIES), reply) and
+			reply == (message_type)SSH2_AGENT_IDENTITIES_ANSWER)
+		{
+			uint32 count;
+			reply >> count;
+
+			while (count-- > 0)
+			{
+				ipacket blob;
+				string comment;
+				
+				reply >> blob >> comment;
+				
+				string type;
+				reply >> type;
+				
+				if (type != "ssh-rsa")
+					continue;
+				
+				Integer e, n;
+				reply >> e >> n;
+				
+				identities.push_back(tr1::make_tuple(e, n, comment));
+			}
+		}
+	}
+}
+
+vector<uint8> ssh_agent_impl::sign(const vector<uint8>& blob, const vector<uint8>& data)
+{
+	vector<uint8> digest;
+	
+	uint32 flags = 0;
+	opacket request((message_type)SSH2_AGENTC_SIGN_REQUEST);
+	request << blob << data << flags;
+	
+	ipacket reply;
+	if (RequestReply(request, reply) and reply == (message_type)SSH2_AGENT_SIGN_RESPONSE)
+		reply >> digest;
+	
+	return digest;
+}
+
+bool ssh_agent_impl::process(opacket& request, ipacket& reply)
+{
+	bool result = false;
+	
+	uint32 l = htonl(out.size());
+	
+	const vector<uint8>& req(request);
+	vector<uint8> rep;
+	
+	if (write(m_fd, &l, sizeof(l)) == sizeof(l) and
+		write(m_fd, &req[0], req.size()) == int32(req.size()) and
+		read(m_fd, &l, sizeof(l)) == sizeof(l))
+	{
+		l = ntohl(l);
+		
+		if (l < 256 * 1024)	// sanity check
+		{
+			char b[1024];
+
+			uint32 k = l;
+			if (k > sizeof(b))
+				k = sizeof(b);
+			
+			while (l > 0)
+			{
+				if (read(m_fd, b, k) != k)
+					break;
+				
+				rep.append(b, k);
+				
+				l -= k;
+			}
+			
+			result = (l == 0);
+		}
+	}
+	
+	if (result)
+		reply = ipacket(&rep[0], rep.size());
+	
+	return result;
+}
+
+// --------------------------------------------------------------------
+
+class ssh_private_key_impl : public ssh_private_key_impl
+{
+  public:
+		  					ssh_private_key_impl(Integer& e, Integer& n, const string& comment);
+	virtual					~ssh_private_key_impl();
+
+	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
+
+	virtual string			get_hash() const;
+	virtual string			get_comment() const				{ return m_comment; }
+
+  private:
+	vector<uint8>			m_blob;
+	string					m_comment;
+};
+
+ssh_private_key_impl::ssh_private_key_impl(Integer& e, Integer& n,
+		const string& comment, const vector<uint8>& blob)
+	: m_comment(comment)
+{
+	m_e = e;
+	m_n = n;
+	
+	opacket blob;
+	blob << "ssh-rsa" << m_e << m_n;
+	m_blob = blob;
+}
+
+ssh_private_key_impl::~ssh_private_key_impl()
+{
+}
+
+vector<uint8> ssh_private_key_impl::sign(const vector<uint8>& session_id, const opacket& inData)
+{
+	const vector<uint8>& in_data(inData);
+	vector<uint8> data(session_id);
+	data.insert(data.end(), in_data.begin(), in_data.end());
+	
+	return ssh_agent_impl::instance().sign(m_blob, data);
+}
+
+string ssh_private_key_impl::get_hash() const
+{
+	string hash;
+
 //	// and create a hash for this key
 //	byte sha1[20];	// SHA1 hash is always 20 bytes
 //	DWORD cbHash = sizeof(sha1);
@@ -372,9 +268,9 @@ namespace assh
 //		enc.Put(sha1, cbHash);
 //		enc.MessageEnd(true);
 //	}
-//
-//	return hash;
-//}
+
+	return hash;
+}
 
 // --------------------------------------------------------------------
 
@@ -394,49 +290,41 @@ ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash
 ////		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
 ////		0, CERT_FIND_SHA1_HASH, &k, nullptr);
 ////	
-////	return new MWinSshPrivateKeyImpl(context);
+////	return new ssh_private_key_impl(context);
 
 	return nullptr;
 }
 
-ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& inBlob)
+ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& blob)
 {
 	ssh_private_key_impl* result = nullptr;
-//	PCCERT_CONTEXT context = nullptr;
-//	MCertificateStore& store(MCertificateStore::Instance());
-//	
-//	while (context = ::CertEnumCertificatesInStore(store, context))
-//	{
-//		Integer e, n;
-//		
-//		if (store.GetPublicKey(context, e, n))
-//		{
-//			opacket blob;
-//			blob << "ssh-rsa" << e << n;
-//			
-//			if (blob == inBlob)
-//			{
-//				result = new MWinSshPrivateKeyImpl(context, e, n);
-//				break;
-//			}
-//		}
-//	}
-//	
+
+	string type;
+	blob >> type;
+	
+	if (type == "ssh-rsa")
+	{
+		Integer e, n;
+		blob >> e >> n;
+		
+		result = new ssh_private_key_impl(e, n, "");
+	}
+
 	return result;
 }
 
-void ssh_private_key_impl::create_list(vector<ssh_private_key>& outKeys)
+void ssh_private_key_impl::create_list(vector<ssh_private_key>& keys)
 {
-//	MCertificateStore& store(MCertificateStore::Instance());
-//	PCCERT_CONTEXT context = nullptr;
-//	
-//	while (context = ::CertEnumCertificatesInStore(store, context))
-//	{
-//		Integer e, n;
-//		
-//		if (store.GetPublicKey(context, e, n))
-//			outKeys.push_back(ssh_private_key(new MWinSshPrivateKeyImpl(::CertDuplicateCertificateContext(context), e, n)));
-//	}
+	vector<tr1::tuple<Integer,Integer,string>> identities;
+	
+	ssh_agent_impl::instance().get_identities(identities);
+	
+	for_each(identities.begin(), identities.end(),
+		[&keys](tr1::tuple<Integer,Integer,string>& identity)
+		{
+			keys.push_back(new ssh_private_key_impl(tr1::get<0>(identity),
+				tr1::get<1>(identity), tr1::get<2>(identity)));
+		});
 }
 
 }

@@ -96,7 +96,7 @@ void channel::closed()
 	m_channel_open = false;
 	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
 	{
-		op->written(error::make_error_code(error::connection_lost));
+		op->written(error::make_error_code(error::connection_lost), 0);
 		delete op;
 	});
 	m_pending.clear();
@@ -165,8 +165,6 @@ void channel::send_request_and_command(
 
 void channel::process(ipacket& in)
 {
-	cerr << endl << in << endl;
-
 	switch ((message_type)in)
 	{
 		case msg_channel_open_confirmation:
@@ -346,26 +344,13 @@ void channel::send_pending()
 			this->m_send_pending = false;
 			op->m_packets.pop_front();
 			if (op->m_packets.empty() or ec)
-				op->written(ec);
+				op->written(ec, bytes_transferred);
 			this->send_pending();
 		});
 		
 		break;
 	}
 }
-
-//void channel::push(opacket& data)
-//{
-//	// see if we can send this packet right away instead of 
-//	// having to queue it.
-//	if (m_pending.empty() and data.size() < m_host_window_size)
-//	{
-//		m_connection.send(data);
-//		m_host_window_size -= data.size();
-//	}
-//	else
-//		m_pending.push_back(data);
-//}
 
 void channel::push_received()
 {

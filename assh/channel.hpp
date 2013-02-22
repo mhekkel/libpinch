@@ -76,6 +76,7 @@ class channel
 
 	uint32			my_channel_id() const		{ return m_my_channel_id; }
 	bool			is_open() const				{ return m_channel_open; }
+
 //	std::string		GetEncryptionParams() const;
 //	std::string		GetHostVersion() const;
 
@@ -87,17 +88,18 @@ class channel
 	virtual void	process(ipacket& in);
 
 	// boost::asio AsyncWriteStream interface
-	
 	boost::asio::io_service&
 					get_io_service();
 
 	template<class Handler>
 	struct bound_handler
 	{
-		//bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
-		//	: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
-		//{
-		//}
+#if not defined(_MSC_VER)		// this is weird, MSVC does not compile this
+		bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
+			: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
+		{
+		}
+#endif
 
 		bound_handler(const Handler& handler, const boost::system::error_code& ec, std::size_t s)
 			: m_handler(handler), m_ec(ec), m_transferred(s)
@@ -117,7 +119,7 @@ class channel
 	struct basic_io_op
 	{
 		virtual				~basic_io_op() {}
-		virtual void		written(const boost::system::error_code& ec) = 0;
+		virtual void		written(const boost::system::error_code& ec, std::size_t bytes_transferred) = 0;
 	};
 	
 	struct basic_write_op : public basic_io_op
@@ -148,9 +150,9 @@ class channel
 							{
 							}
 				
-		virtual void		written(const boost::system::error_code& ec)
+		virtual void		written(const boost::system::error_code& ec, std::size_t bytes_transferred)
 							{
-								try { m_handler(ec); } catch(...) {}
+								try { m_handler(ec, bytes_transferred); } catch(...) {}
 							}
 		
 		Handler				m_handler;
@@ -173,7 +175,8 @@ class channel
 	template <typename ConstBufferSequence, typename Handler>
 	void			async_write_some(const ConstBufferSequence& buffers, Handler&& handler)
 					{
-						typedef read_handler<ConstBufferSequence,Handler> handler_type;
+						typedef ConstBufferSequence							buffer_type;
+						typedef read_op<ConstBufferSequence,Handler>	handler_type;
 						boost::asio::io_service& io_service(get_io_service());
 
 						size_t n = boost::asio::buffer_size(buffers); 
@@ -187,9 +190,9 @@ class channel
 						{
 							std::list<opacket> packets;
 							
-							for (auto& buffer = buffers.begin(); buffer != buffers.end(); ++buffer)
+							for (buffer_type::const_iterator buffer = buffers.begin(); buffer != buffers.end(); ++buffer)
 							{
-								const char* b = boost::asio::buffer_cast<const char*>(buffer);
+								const char* b = boost::asio::buffer_cast<const char*>(*buffer);
 								const char* e = b + n;
 							
 								while (b != e)
@@ -198,32 +201,32 @@ class channel
 									if (k > m_max_send_packet_size)
 										k = m_max_send_packet_size;
 								
-									packets.push_back(opacket(msg_channel_data) << m_host_channel_id << std::make_pair(b, b + k));
+									packets.push_back(opacket(msg_channel_data) << m_host_channel_id << std::make_pair(b, k));
 								
 									b += k;
 								}
 							}
 							
-							make_write_op(packets, std::move(handler));
+							make_write_op(std::move(packets), std::move(handler));
 						}
 					}
 
-	struct basic_read_handler
+	struct basic_read_op
 	{
 		typedef std::deque<char>::iterator	iterator;
 		
-		virtual				~basic_read_handler() {}
+		virtual				~basic_read_op() {}
 		virtual iterator	receive_and_post(iterator begin, iterator end, boost::asio::io_service& io_service) = 0;
 		virtual void		post_error(const boost::system::error_code& ec, boost::asio::io_service& io_service) = 0;
 	};
 
 	template<class MutableBufferSequence, class Handler>
-	struct read_handler : public basic_read_handler
+	struct read_op : public basic_read_op
 	{
-							read_handler(read_handler&& rhs)
+							read_op(read_op&& rhs)
 								: m_buffer(std::move(rhs.m_buffer)), m_handler(std::move(rhs.m_handler)) {}
 
-							read_handler(const MutableBufferSequence& buffer, Handler&& handler)
+							read_op(const MutableBufferSequence& buffer, Handler&& handler)
 								: m_buffer(buffer), m_handler(std::move(handler)) {}
 
 		virtual iterator	receive_and_post(iterator begin, iterator end, boost::asio::io_service& io_service)
@@ -255,7 +258,7 @@ class channel
 					{
 						BOOST_STATIC_ASSERT(boost::is_const<Handler>::value == false);
 
-						typedef read_handler<MutableBufferSequence,Handler> handler_type;
+						typedef read_op<MutableBufferSequence,Handler> handler_type;
 						boost::asio::io_service& io_service(get_io_service());
 
 						if (not is_open())
@@ -264,7 +267,7 @@ class channel
 							io_service.post(bound_handler<Handler>(std::move(handler), boost::system::error_code(), 0));
 						else
 						{
-							m_read_handlers.push_back(new handler_type(buffers, std::move(handler)));
+							m_read_ops.push_back(new handler_type(buffers, std::move(handler)));
 							
 							if (not m_received.empty())
 								push_received();
@@ -283,7 +286,7 @@ class channel
 
 	void					send(opacket&& data)
 							{
-								make_write_op(std::move(data), [](const boost::system::error_code& ec) {});
+								make_write_op(std::move(data), [](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
 							}
 
 	template<typename Handler>
@@ -335,9 +338,9 @@ class channel
 	uint32					m_my_window_size;
 	uint32					m_host_window_size;
 
-	std::deque<basic_write_op*>		m_pending;
-	std::deque<char>				m_received;
-	std::deque<basic_read_handler*>	m_read_handlers;
+	std::deque<basic_write_op*>	m_pending;
+	std::deque<char>			m_received;
+	std::deque<basic_read_op*>	m_read_ops;
 
   private:
 

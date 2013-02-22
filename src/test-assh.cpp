@@ -26,6 +26,7 @@ class client
 			client(boost::asio::ip::tcp::socket& socket, const string& user)
 				: m_connection(socket, user)
 				, m_channel(nullptr)
+				, m_first(true)
 			{
 				m_connection.async_connect(user, [this](const boost::system::error_code& ec)
 				{
@@ -54,6 +55,15 @@ class client
 				});
 			}
 	
+	void	written(const boost::system::error_code& ec, std::size_t bytes_received)
+			{
+				if (ec)
+				{
+					cerr << "error writing channel: " << ec.message() << endl;
+					exit(1);
+				}
+			}
+	
 	void	received(const boost::system::error_code& ec, std::size_t bytes_received)
 			{
 				if (ec)
@@ -63,22 +73,36 @@ class client
 						 << endl;
 					exit(1);
 				}
+				
+				if (bytes_received > 0 and m_first)
+				{
+					const char k_cmd[] = "ls -lrth\n";
+					boost::asio::const_buffers_1 b(k_cmd, strlen(k_cmd));
+					
+					boost::asio::async_write(*m_channel, b, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+					{
+						this->written(ec, bytes_transferred);
+					});
+					
+					m_first = false;
+				}
 
 				istream in(&m_response);
 				io::copy(in, cout);
 				
-				auto cb = [this](const boost::system::error_code& ec, size_t bytes_transferred)
+				boost::asio::async_read(*m_channel, m_response,
+					boost::asio::transfer_at_least(1),
+					[this](const boost::system::error_code& ec, size_t bytes_transferred)
 				{
 					this->received(ec, bytes_transferred);
-				};
-
-				boost::asio::async_read(*m_channel, m_response, cb);
+				});
 			}
 	
 	assh::connection		m_connection;
 	assh::terminal_channel*	m_channel;
 	boost::asio::io_service	m_io_service;
 	boost::asio::streambuf	m_response;
+	bool					m_first;
 };
 
 int main(int argc, char* const argv[])

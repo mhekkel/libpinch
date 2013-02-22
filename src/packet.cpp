@@ -207,6 +207,17 @@ ipacket::ipacket(ipacket&& rhs)
 	rhs.m_data = nullptr;
 }
 
+ipacket::ipacket(const uint8* data, size_t size)
+{
+	m_data = new uint8[size];
+	memcpy(m_data, data, size);
+	m_owned = true;
+	m_length = size;
+	m_padding = 0;
+	m_message = (message_type)m_data[0];
+	m_offset = 1;
+}
+
 ipacket::~ipacket()
 {
 #if DEBUG
