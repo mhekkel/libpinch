@@ -29,9 +29,6 @@ const uint32
 class channel
 {
   public:
-	void			reference();
-	void			release();
-
 	struct basic_open_handler
 	{
 		virtual			~basic_open_handler() {}
@@ -63,7 +60,6 @@ class channel
 	void			open();
 	void			close();
 
-	virtual void	setup(ipacket& in) = 0;
 	virtual void	opened();
 	virtual void	closed();
 
@@ -277,54 +273,53 @@ class channel
 
 
   protected:
-							channel(basic_connection& connection);
-	virtual					~channel();
+					channel(basic_connection& connection);
+	virtual			~channel();
 
-	virtual void			delete_this();
+	virtual void	setup(ipacket& in) = 0;
 
 	// To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-
-	void					send(opacket&& data)
-							{
-								make_write_op(std::move(data), [](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
-							}
+	void			send(opacket&& data)
+					{
+						make_write_op(std::move(data), [](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
+					}
 
 	template<typename Handler>
-	void 					send_data(const char* data, size_t size, Handler&& handler)
-							{
-								make_write_op(
-									opacket(msg_channel_data) << m_host_channel_id << std::make_pair(data, size),
-									std::move(handler));
-							}
+	void 			send_data(const char* data, size_t size, Handler&& handler)
+					{
+						make_write_op(
+							opacket(msg_channel_data) << m_host_channel_id << std::make_pair(data, size),
+							std::move(handler));
+					}
 	
 	template<typename Handler>
-	void					send_data(opacket& data, Handler&& handler)
-							{
-								make_write_op(
-									opacket(msg_channel_data) << m_host_channel_id << data,
-									std::move(handler));
-							}
+	void			send_data(opacket& data, Handler&& handler)
+					{
+						make_write_op(
+							opacket(msg_channel_data) << m_host_channel_id << data,
+							std::move(handler));
+					}
 							
 	template<typename Handler>
-	void					send_extended_data(opacket& data, uint32 type, Handler&& handler)
-							{
-								make_write_op(
-									m_connection,
-									opacket(msg_channel_extended_data) << m_host_channel_id << type << data,
-									std::move(handler));
-							}
+	void			send_extended_data(opacket& data, uint32 type, Handler&& handler)
+					{
+						make_write_op(
+							m_connection,
+							opacket(msg_channel_extended_data) << m_host_channel_id << type << data,
+							std::move(handler));
+					}
 
 	// low level
-	void					send_pending();
-	void					push_received();
+	void			send_pending();
+	void			push_received();
 
-	virtual void			receive_data(ipacket& data);
-	virtual void			receive_extended_data(ipacket& data, uint32 inType);
+	virtual void	receive_data(ipacket& data);
+	virtual void	receive_extended_data(ipacket& data, uint32 inType);
 
-	virtual void			receive_data(const char* data, std::size_t size);
-	virtual void			receive_extended_data(const char* data, std::size_t size, uint32 type);
+	virtual void	receive_data(const char* data, std::size_t size);
+	virtual void	receive_extended_data(const char* data, std::size_t size, uint32 type);
 
-	virtual void			handle_channel_request(const std::string& request, ipacket& in, opacket& out);
+	virtual void	handle_channel_request(const std::string& request, ipacket& in, opacket& out);
 
   protected:
 
@@ -344,7 +339,6 @@ class channel
 
   private:
 
-	uint32					m_refcount;
 	static uint32			s_next_channel_id;
 };
 

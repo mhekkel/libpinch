@@ -19,7 +19,7 @@ uint32 channel::s_next_channel_id = 1;
 channel::channel(basic_connection& inConnection)
 	: m_connection(inConnection)
 	, m_open_handler(nullptr)
-	, m_refcount(1), m_max_send_packet_size(0)
+	, m_max_send_packet_size(0)
 	, m_channel_open(false)
 	, m_send_pending(false)
 	, m_my_channel_id(s_next_channel_id++)
@@ -31,31 +31,23 @@ channel::channel(basic_connection& inConnection)
 
 channel::~channel()
 {
-#if DEBUG
-	assert(m_refcount == 0);
-#endif
+	assert(not is_open());
+	
+	if (is_open())
+	{
+		try
+		{
+			close();
+		}
+		catch (...) {}
+	}
+	
 	delete m_open_handler;
 }
 
 boost::asio::io_service& channel::get_io_service()
 {
 	return m_connection.get_io_service();
-}
-
-void channel::reference()
-{
-	++m_refcount;
-}
-
-void channel::release()
-{
-	if (--m_refcount == 0)
-		delete_this();
-}
-
-void channel::delete_this()
-{
-	delete this;
 }
 
 //string channel::GetEncryptionParams() const

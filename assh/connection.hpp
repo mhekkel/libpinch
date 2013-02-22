@@ -23,7 +23,7 @@ class basic_connection
 	virtual			~basic_connection();
 
 	template<typename Handler>
-	void			async_connect(const std::string& user, Handler&& handler)
+	void			async_connect(Handler&& handler)
 					{
 					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
 				    	start_handshake(new connect_handler<Handler>(std::move(handler)));

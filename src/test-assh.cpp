@@ -23,35 +23,19 @@ namespace io = boost::iostreams;
 class client
 {
   public:
-			client(boost::asio::ip::tcp::socket& socket, const string& user)
-				: m_connection(socket, user)
-				, m_channel(nullptr)
+			client(assh::connection& connection)
+				: m_channel(connection)
 				, m_first(true)
 			{
-				m_connection.async_connect(user, [this](const boost::system::error_code& ec)
-				{
-					if (ec)
-					{
-						cerr << "error connecting: " << ec.message() << endl;
-						exit(1);
-					}
-
-					this->open_terminal();
-				});
-			}
-	
-	void	open_terminal()
-			{
-				m_channel = new assh::terminal_channel(m_connection);
-				m_channel->open([this](const boost::system::error_code& ec)
+				m_channel.open([this](const boost::system::error_code& ec)
 				{
 					if (ec)
 					{
 						cerr << "error opening channel: " << ec.message() << endl;
-						exit(1);
+						m_channel.close();
 					}
-					
-					this->received(ec, 0);
+					else
+						this->received(ec, 0);
 				});
 			}
 	
@@ -60,7 +44,7 @@ class client
 				if (ec)
 				{
 					cerr << "error writing channel: " << ec.message() << endl;
-					exit(1);
+					m_channel.close();
 				}
 			}
 	
@@ -71,36 +55,36 @@ class client
 					cerr << endl
 						 << "error reading channel: " << ec.message() << endl
 						 << endl;
-					exit(1);
+					m_channel.close();
 				}
-				
-				if (bytes_received > 0 and m_first)
+				else
 				{
-					const char k_cmd[] = "ls -lrth\n";
-					boost::asio::const_buffers_1 b(k_cmd, strlen(k_cmd));
-					
-					boost::asio::async_write(*m_channel, b, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+					if (bytes_received > 0 and m_first)
 					{
-						this->written(ec, bytes_transferred);
-					});
+						const char k_cmd[] = "ls -lrth\n";
+						boost::asio::const_buffers_1 b(k_cmd, strlen(k_cmd));
 					
-					m_first = false;
-				}
+						boost::asio::async_write(m_channel, b, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+						{
+							this->written(ec, bytes_transferred);
+						});
+					
+						m_first = false;
+					}
 
-				istream in(&m_response);
-				io::copy(in, cout);
+					istream in(&m_response);
+					io::copy(in, cout);
 				
-				boost::asio::async_read(*m_channel, m_response,
-					boost::asio::transfer_at_least(1),
-					[this](const boost::system::error_code& ec, size_t bytes_transferred)
-				{
-					this->received(ec, bytes_transferred);
-				});
+					boost::asio::async_read(m_channel, m_response,
+						boost::asio::transfer_at_least(1),
+						[this](const boost::system::error_code& ec, size_t bytes_transferred)
+					{
+						this->received(ec, bytes_transferred);
+					});
+				}
 			}
 	
-	assh::connection		m_connection;
-	assh::terminal_channel*	m_channel;
-	boost::asio::io_service	m_io_service;
+	assh::terminal_channel	m_channel;
 	boost::asio::streambuf	m_response;
 	bool					m_first;
 };
@@ -122,10 +106,27 @@ int main(int argc, char* const argv[])
 		
 		boost::asio::ip::tcp::socket socket(io_service);
 		boost::asio::connect(socket, iterator);
-		
-		client ssh(socket, argv[3]);
 
+		string user = argv[3];
+		
+		assh::connection connection(socket, user);
+		
+		client* c = nullptr;
+		
+		connection.async_connect([&c, &connection](const boost::system::error_code& ec)
+		{
+			if (ec)
+			{
+				cerr << "error connecting: " << ec.message() << endl;
+				exit(1);
+			}
+
+			c = new client(connection);
+		});
+				
 		io_service.run();
+		
+		delete c;
 	}
 	catch (exception& e)
 	{

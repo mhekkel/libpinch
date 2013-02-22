@@ -531,7 +531,6 @@ void basic_connection::open_channel(channel* ch, uint32 channel_id)
 			[channel_id](const channel* ch) -> bool { return ch->my_channel_id() == channel_id; } ) == m_channels.end());
 		assert(not ch->is_open());
 
-		ch->reference();
 		m_channels.push_back(ch);
 	}
 	
@@ -559,8 +558,6 @@ void basic_connection::close_channel(channel* ch, uint32 channel_id)
 		m_channels.erase(
 			remove(m_channels.begin(), m_channels.end(), ch),
 			m_channels.end());
-	
-		ch->release();
 	}
 }
 
