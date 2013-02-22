@@ -190,7 +190,7 @@ class channel
 						{
 							std::list<opacket> packets;
 							
-							for (buffer_type::const_iterator buffer = buffers.begin(); buffer != buffers.end(); ++buffer)
+							for (typename buffer_type::const_iterator buffer = buffers.begin(); buffer != buffers.end(); ++buffer)
 							{
 								const char* b = boost::asio::buffer_cast<const char*>(*buffer);
 								const char* e = b + n;

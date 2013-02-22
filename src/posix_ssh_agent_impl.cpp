@@ -84,10 +84,16 @@ class ssh_agent_impl
 					ssh_agent_impl();
 					~ssh_agent_impl();
 
-	bool			process(opacket& request, ipacket& reply);
+	bool			process(const opacket& request, ipacket& reply);
 
 	int				m_fd;
 };
+
+ssh_agent_impl&	ssh_agent_impl::instance()
+{
+	static ssh_agent_impl s_instance;
+	return s_instance;
+}
 
 ssh_agent_impl::ssh_agent_impl()
 	: m_fd(-1)
@@ -125,7 +131,7 @@ void ssh_agent_impl::get_identities(vector<tr1::tuple<Integer,Integer,string>>& 
 	{
 		ipacket reply;
 		if (process(opacket((message_type)SSH2_AGENTC_REQUEST_IDENTITIES), reply) and
-			reply == (message_type)SSH2_AGENT_IDENTITIES_ANSWER)
+			reply.message() == (message_type)SSH2_AGENT_IDENTITIES_ANSWER)
 		{
 			uint32 count;
 			reply >> count;
@@ -138,13 +144,13 @@ void ssh_agent_impl::get_identities(vector<tr1::tuple<Integer,Integer,string>>& 
 				reply >> blob >> comment;
 				
 				string type;
-				reply >> type;
+				blob >> type;
 				
 				if (type != "ssh-rsa")
 					continue;
 				
 				Integer e, n;
-				reply >> e >> n;
+				blob >> e >> n;
 				
 				identities.push_back(tr1::make_tuple(e, n, comment));
 			}
@@ -161,20 +167,20 @@ vector<uint8> ssh_agent_impl::sign(const vector<uint8>& blob, const vector<uint8
 	request << blob << data << flags;
 	
 	ipacket reply;
-	if (RequestReply(request, reply) and reply == (message_type)SSH2_AGENT_SIGN_RESPONSE)
+	if (process(request, reply) and reply.message() == (message_type)SSH2_AGENT_SIGN_RESPONSE)
 		reply >> digest;
 	
 	return digest;
 }
 
-bool ssh_agent_impl::process(opacket& request, ipacket& reply)
+bool ssh_agent_impl::process(const opacket& request, ipacket& reply)
 {
 	bool result = false;
 	
-	uint32 l = htonl(out.size());
-	
 	const vector<uint8>& req(request);
 	vector<uint8> rep;
+
+	uint32 l = htonl(req.size());
 	
 	if (write(m_fd, &l, sizeof(l)) == sizeof(l) and
 		write(m_fd, &req[0], req.size()) == int32(req.size()) and
@@ -195,7 +201,7 @@ bool ssh_agent_impl::process(opacket& request, ipacket& reply)
 				if (read(m_fd, b, k) != k)
 					break;
 				
-				rep.append(b, k);
+				rep.insert(rep.end(), b, b + k);
 				
 				l -= k;
 			}
@@ -212,11 +218,11 @@ bool ssh_agent_impl::process(opacket& request, ipacket& reply)
 
 // --------------------------------------------------------------------
 
-class ssh_private_key_impl : public ssh_private_key_impl
+class posix_ssh_private_key_impl : public ssh_private_key_impl
 {
   public:
-		  					ssh_private_key_impl(Integer& e, Integer& n, const string& comment);
-	virtual					~ssh_private_key_impl();
+		  					posix_ssh_private_key_impl(Integer& e, Integer& n, const string& comment);
+	virtual					~posix_ssh_private_key_impl();
 
 	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
 
@@ -228,8 +234,7 @@ class ssh_private_key_impl : public ssh_private_key_impl
 	string					m_comment;
 };
 
-ssh_private_key_impl::ssh_private_key_impl(Integer& e, Integer& n,
-		const string& comment, const vector<uint8>& blob)
+posix_ssh_private_key_impl::posix_ssh_private_key_impl(Integer& e, Integer& n, const string& comment)
 	: m_comment(comment)
 {
 	m_e = e;
@@ -240,11 +245,11 @@ ssh_private_key_impl::ssh_private_key_impl(Integer& e, Integer& n,
 	m_blob = blob;
 }
 
-ssh_private_key_impl::~ssh_private_key_impl()
+posix_ssh_private_key_impl::~posix_ssh_private_key_impl()
 {
 }
 
-vector<uint8> ssh_private_key_impl::sign(const vector<uint8>& session_id, const opacket& inData)
+vector<uint8> posix_ssh_private_key_impl::sign(const vector<uint8>& session_id, const opacket& inData)
 {
 	const vector<uint8>& in_data(inData);
 	vector<uint8> data(session_id);
@@ -253,7 +258,7 @@ vector<uint8> ssh_private_key_impl::sign(const vector<uint8>& session_id, const 
 	return ssh_agent_impl::instance().sign(m_blob, data);
 }
 
-string ssh_private_key_impl::get_hash() const
+string posix_ssh_private_key_impl::get_hash() const
 {
 	string hash;
 
@@ -307,7 +312,7 @@ ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& blob)
 		Integer e, n;
 		blob >> e >> n;
 		
-		result = new ssh_private_key_impl(e, n, "");
+		result = new posix_ssh_private_key_impl(e, n, "");
 	}
 
 	return result;
@@ -322,7 +327,7 @@ void ssh_private_key_impl::create_list(vector<ssh_private_key>& keys)
 	for_each(identities.begin(), identities.end(),
 		[&keys](tr1::tuple<Integer,Integer,string>& identity)
 		{
-			keys.push_back(new ssh_private_key_impl(tr1::get<0>(identity),
+			keys.push_back(new posix_ssh_private_key_impl(tr1::get<0>(identity),
 				tr1::get<1>(identity), tr1::get<2>(identity)));
 		});
 }

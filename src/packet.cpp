@@ -404,6 +404,21 @@ ipacket& ipacket::operator>>(pair<const char*,size_t>& v)
 	return *this;
 }
 
+ipacket& ipacket::operator>>(vector<uint8>& v)
+{
+	uint32 l;
+	operator>>(l);
+	
+	if (l > m_length)
+		throw packet_exception();
+	
+	v.assign(&m_data[m_offset], &m_data[m_offset + l]);
+
+	m_offset += l;
+
+	return *this;
+}
+
 bool operator==(const opacket& lhs, const ipacket& rhs)
 {
 	return lhs.m_data.size() == rhs.m_length and memcmp(&lhs.m_data[0], rhs.m_data, rhs.m_length) == 0;
