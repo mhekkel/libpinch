@@ -414,11 +414,8 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 	
 		opacket session_id;
 		session_id << m_session_id;
-
-		opacket signature;
-		signature << "ssh-rsa" << ssh_private_key(blob).sign(session_id, out);
-
-		out << signature;
+		
+		out << ssh_private_key(blob).sign(session_id, out);
 	}
 }
 

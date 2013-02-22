@@ -299,7 +299,7 @@ vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const
 	DWORD keySpec, cb;
 	HCRYPTPROV key;
 	
-	vector<uint8> result;
+	vector<uint8> digest;
 	
 	if (::CryptAcquireCertificatePrivateKey(mCertificateContext, 0, nullptr, &key, &keySpec, &freeKey))
 	{
@@ -317,12 +317,12 @@ vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const
 				
 				if (cb > 0)
 				{
-					result = vector<uint8>(cb);
+					digest = vector<uint8>(cb);
 					
-					if (::CryptSignHash(hash, keySpec, nullptr, 0, &result[0], &cb))
+					if (::CryptSignHash(hash, keySpec, nullptr, 0, &digest[0], &cb))
 					{
 						// data is in little endian format
-						reverse(result.begin(), result.end());
+						reverse(digest.begin(), digest.end());
 					}
 				}
 			}
@@ -334,7 +334,9 @@ vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const
 			::CryptReleaseContext(key, 0);
 	}
 	
-	return result;
+	opacket signature;
+	signature << "ssh-rsa" << digest;
+	return signature;
 }
 
 string MWinSshPrivateKeyImpl::get_comment() const
