@@ -54,6 +54,7 @@ class key_exchange
 							m_MAC_alg_c2s, m_MAC_alg_s2c,
 							m_compression_alg_c2s, m_compression_alg_s2c,
 							m_lang_c2s, m_lang_s2c;
+	bool					m_first_kex_packet_follows;
 	std::vector<uint8>		m_H, m_keys[6];
 };
 

@@ -35,9 +35,7 @@ namespace assh
 static AutoSeededRandomPool	rng;
 
 const string
-	//kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
-	//kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
-	kKeyExchangeAlgorithms("diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
+	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
 	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
 	kEncryptionAlgorithms("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha1,hmac-md5"),
@@ -81,8 +79,7 @@ key_exchange::key_exchange(const string& host_version, vector<uint8>& session_id
 
 void key_exchange::init(ipacket& in)
 {
-	bool first_kex_packet_follows;
-	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
+	string server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
 		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c,
 		lang_c2s, lang_s2c;
 
@@ -95,7 +92,7 @@ void key_exchange::init(ipacket& in)
 		>> compression_alg_s2c
 		>> lang_c2s
 		>> lang_s2c
-		>> first_kex_packet_follows;
+		>> m_first_kex_packet_follows;
 
 	m_encryption_alg_c2s = choose_protocol(encryption_alg_c2s, kEncryptionAlgorithms);
 	m_encryption_alg_s2c = choose_protocol(encryption_alg_s2c, kEncryptionAlgorithms);
@@ -171,10 +168,10 @@ void key_exchange::process_kex_dh_reply(ipacket& in, opacket& out, boost::system
 	vector<uint8> pk_rs_d = pk_rs;
 	if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
 		ec = error::make_error_code(error::host_key_verification_failed);
+	else
+		out = msg_newkeys;
 
-	derive_keys_with_hash();
-
-	out = msg_newkeys;
+	derive_keys_with_hash();		// to avoid problems
 }
 
 void key_exchange::derive_keys_with_hash()
@@ -295,6 +292,7 @@ class key_exchange_dh_group : public key_exchange
 							{
 								m_p = p;
 								m_q = (p - 1) / 2;
+								m_g = 2;
 							}
 
 	virtual bool			process(ipacket& in, opacket& out, boost::system::error_code& ec);
@@ -311,8 +309,8 @@ bool key_exchange_dh_group::process(ipacket& in, opacket& out, boost::system::er
 			init(in);
 			do
 			{
-				m_x.Randomize(rng, 2, m_q - 1);
-				m_e = a_exp_b_mod_c(2, m_x, m_p);
+				m_x.Randomize(rng, m_g, m_q - 1);
+				m_e = a_exp_b_mod_c(m_g, m_x, m_p);
 			}
 			while (m_e < 1 or m_e >= m_p - 1);
 			
@@ -352,7 +350,9 @@ class key_exchange_dh_gex : public key_exchange
 	virtual void			calculate_hash(ipacket& hostkey, Integer& f);
 	virtual void			derive_keys_with_hash();
 
-	static const uint32		kMinGroupSize = 1024, kMaxGroupSize = 8192, kPreferredGroupSize = 4096;
+	static const uint32		kMinGroupSize = 1024,
+							kPreferredGroupSize = 2048,
+							kMaxGroupSize = 8192;
 };
 
 template<typename HashAlgorithm>
@@ -374,8 +374,8 @@ bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket& in, opacket& out, boos
 			
 			do
 			{
-				m_x.Randomize(rng, 2, m_q - 1);
-				m_e = a_exp_b_mod_c(2, m_x, m_p);
+				m_x.Randomize(rng, m_g, m_q - 1);
+				m_e = a_exp_b_mod_c(m_g, m_x, m_p);
 			}
 			while (m_e < 1 or m_e >= m_p - 1);
 			
