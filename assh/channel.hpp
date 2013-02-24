@@ -279,9 +279,12 @@ class channel
 	virtual void	setup(ipacket& in) = 0;
 
 	// To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-	void			send(opacket&& data)
+	void			send(const opacket& data)
 					{
-						make_write_op(std::move(data), [](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
+						opacket out(msg_channel_data);
+						out << data;
+						make_write_op(std::move(out),
+							[](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
 					}
 
 	template<typename Handler>
@@ -312,9 +315,6 @@ class channel
 	// low level
 	void			send_pending();
 	void			push_received();
-
-	virtual void	receive_data(ipacket& data);
-	virtual void	receive_extended_data(ipacket& data, uint32 inType);
 
 	virtual void	receive_data(const char* data, std::size_t size);
 	virtual void	receive_extended_data(const char* data, std::size_t size, uint32 type);

@@ -27,7 +27,7 @@ class client
 				: m_channel(connection)
 				, m_first(true)
 			{
-				m_channel.open([this](const boost::system::error_code& ec)
+				m_channel.open_with_pty(80, 24, "vt220", true, true, [this](const boost::system::error_code& ec)
 				{
 					if (ec)
 					{
@@ -61,7 +61,7 @@ class client
 				{
 					if (bytes_received > 0 and m_first)
 					{
-						const char k_cmd[] = "ls -lrth\n";
+						const char k_cmd[] = "ssh-add -L\n";
 						boost::asio::const_buffers_1 b(k_cmd, strlen(k_cmd));
 					
 						boost::asio::async_write(m_channel, b, [this](const boost::system::error_code& ec, size_t bytes_transferred)

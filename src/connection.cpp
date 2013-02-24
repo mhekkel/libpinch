@@ -266,16 +266,18 @@ void basic_connection::process_packet(ipacket& in)
 		switch ((message_type)in)
 		{
 			case msg_disconnect:
-				full_stop(error::make_error_code(error::connection_lost));
+				full_stop(error::make_error_code(error::disconnect_by_host));
 				break;
 
 			case msg_kexinit:
 				m_host_payload = in;
 				m_key_exchange = key_exchange::create(in, m_host_version, m_session_id, m_my_payload);
-				m_key_exchange->process(in, out, ec);
+				if (m_key_exchange)
+					m_key_exchange->process(in, out, ec);
 				break;
 
 			case msg_newkeys:				process_newkeys(in, out, ec);				break;
+
 			case msg_service_accept:		process_service_accept(in, out, ec);		break;
 			case msg_userauth_success:		process_userauth_success(in, out, ec);		break;
 			case msg_userauth_failure:		process_userauth_failure(in, out, ec);		break;
@@ -566,26 +568,30 @@ void basic_connection::process_channel_open(ipacket& in, opacket& out)
 	channel* c = nullptr;
 	
 	string type;
-	uint32 host_channel_id;
 
-	in >> type >> host_channel_id;
+	in >> type;
 
 	try
 	{
 		//if (type == "x11")
 		//	c = new x11_channel(*this);
-		//else if (type == "auth-agent@openssh.com" and mForwardAgent)
-		//	c = new ssh_agent_channel(*this);
+		//else
+		if (type == "auth-agent@openssh.com" and m_forward_agent)
+			c = new ssh_agent_channel(*this);
 	}
 	catch (...) {}
 	
 	if (c != nullptr)
 	{
-		c->init(in, out);
+		in.message(msg_channel_open_confirmation);
+		c->process(in);
 		m_channels.push_back(c);
 	}
 	else
 	{
+		uint32 host_channel_id;
+		in >> host_channel_id;
+
 		const uint32 SSH_OPEN_UNKNOWN_CHANNEL_TYPE = 3;
 		out = msg_channel_open_failure;
 		out << host_channel_id << SSH_OPEN_UNKNOWN_CHANNEL_TYPE << "unsupported channel type" << "en";
@@ -610,17 +616,6 @@ void basic_connection::process_channel(ipacket& in, opacket& out, boost::system:
 	}
 	catch (...) {}
 }
-
-//// data io for channels
-//
-//void basic_connection::send(opacket&& p)
-//{
-//	async_write(p, [this](const boost::system::error_code& ec, size_t)
-//		{
-//			if (ec and m_connect_handler)
-//				m_connect_handler->handle_connect(ec, m_io_service);
-//		});
-//}
 
 }
 

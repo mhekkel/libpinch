@@ -286,19 +286,19 @@ void channel::handle_channel_request(const string& request, ipacket& in, opacket
 {
 }
 
-void channel::receive_data(ipacket& in)
-{
-	pair<const char*, size_t> data;
-	in >> data;
-	receive_data(data.first, data.second);
-}
-
-void channel::receive_extended_data(ipacket& in, uint32 type)
-{
-	pair<const char*, size_t> data;
-	in >> data;
-	receive_extended_data(data.first, data.second, type);
-}
+//void channel::receive_data(ipacket& in)
+//{
+//	pair<const char*, size_t> data;
+//	in >> data;
+//	receive_data(data.first, data.second);
+//}
+//
+//void channel::receive_extended_data(ipacket& in, uint32 type)
+//{
+//	pair<const char*, size_t> data;
+//	in >> data;
+//	receive_extended_data(data.first, data.second, type);
+//}
 
 void channel::receive_data(const char* data, size_t size)
 {

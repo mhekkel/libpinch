@@ -83,7 +83,8 @@ enum disconnect_errors
 	auth_cancelled_by_user,
 	no_more_auth_methods_available,
 	illegal_user_name,
-	not_authenticated
+	not_authenticated,
+	disconnect_by_host
 };
 
 boost::system::error_category& ssh_category();

@@ -47,6 +47,41 @@ enum message_type : uint8
 	msg_channel_window_adjust, msg_channel_data, msg_channel_extended_data,
 	msg_channel_eof, msg_channel_close, msg_channel_request, msg_channel_success,
 	msg_channel_failure,
+	
+	// ssh_agent messages
+
+/*
+ * SSH1 agent messages.
+ */
+	SSH_AGENTC_REQUEST_RSA_IDENTITIES = 1,
+	SSH_AGENT_RSA_IDENTITIES_ANSWER,
+	SSH_AGENTC_RSA_CHALLENGE,
+	SSH_AGENT_RSA_RESPONSE,
+/*
+ * Messages common to SSH1 and OpenSSH's SSH2.
+ */
+	SSH_AGENT_FAILURE,
+	SSH_AGENT_SUCCESS,
+
+/*
+ * SSH1 agent messages.
+ */
+
+	SSH_AGENTC_ADD_RSA_IDENTITY,
+	SSH_AGENTC_REMOVE_RSA_IDENTITY,
+	SSH_AGENTC_REMOVE_ALL_RSA_IDENTITIES,	/* openssh private? */
+
+/*
+ * OpenSSH's SSH2 agent messages.
+ */
+	SSH_AGENTC_REQUEST_IDENTITIES = 11,
+	SSH_AGENT_IDENTITIES_ANSWER,
+	SSH_AGENTC_SIGN_REQUEST,
+	SSH_AGENT_SIGN_RESPONSE,
+	SSH_AGENTC_ADD_IDENTITY = 17,
+	SSH_AGENTC_REMOVE_IDENTITY,
+	SSH_AGENTC_REMOVE_ALL_IDENTITIES
+
 };
 
 class opacket
@@ -118,7 +153,9 @@ class ipacket
 	size_t			size() const						{ return m_length; }
 	
 	void			append(const std::vector<uint8>& block);
+	std::size_t		read(const char* data, std::size_t size);
 
+	void			message(message_type msg)			{ m_message = msg; }
 	message_type	message() const						{ return m_message; }
 					operator message_type() const		{ return m_message; }
 

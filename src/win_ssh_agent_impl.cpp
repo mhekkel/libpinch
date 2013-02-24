@@ -309,8 +309,8 @@ vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const
 		{
 			const vector<uint8>& data(inData);
 			
-			if (::CryptHashData(hash, &session_id[0], session_id.size(), 0) and
-				::CryptHashData(hash, &data[0], data.size(), 0))
+			if ((session_id.size() == 0 or ::CryptHashData(hash, &session_id[0], session_id.size(), 0)) and
+				(data.size() == 0 or ::CryptHashData(hash, &data[0], data.size(), 0)))
 			{
 				cb = 0;
 				::CryptSignHash(hash, keySpec, nullptr, 0, nullptr, &cb);

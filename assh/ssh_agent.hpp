@@ -13,7 +13,7 @@
 
 #include <cryptopp/integer.h>
 
-// #include "MSshChannel.h"
+ #include <assh/channel.hpp>
 
 namespace assh
 {
@@ -61,7 +61,7 @@ class ssh_agent
 
 	static ssh_agent&	instance();
 	
-//	void				process_agent_request(opacket& in, opacket& out);
+	void				process_agent_request(ipacket& in, opacket& out);
 	void				update();
 
 	typedef std::vector<ssh_private_key>	ssh_private_key_list;
@@ -69,8 +69,6 @@ class ssh_agent
 
 	uint32				size() const				{ return m_private_keys.size(); }
 	bool				empty() const				{ return m_private_keys.empty(); }
-
-//	ssh_private_key		operator[](uint32 inIndex)	{ return m_private_keys[inIndex]; }
 
 	iterator			begin()						{ return m_private_keys.begin(); }
 	iterator			end()						{ return m_private_keys.end(); }
@@ -85,21 +83,20 @@ class ssh_agent
 	ssh_private_key_list m_private_keys;
 };
 
-//// --------------------------------------------------------------------
-//// ssh_agent_channel is used for forwarding the ssh-agent over a connection
-//
-//class ssh_agent_channel : public MSshChannel
-//{
-//  public:
-//						ssh_agent_channel(MSshConnection& inConnection);
-//	virtual				~ssh_agent_channel();
-//	
-//	virtual void		Setup(opacket& in);
-//	virtual void		ReceiveData(opacket& in);
-//
-//  private:
-//	std::deque<uint8>	mPacket;
-//	uint32				mPacketLength;
-//};
+// --------------------------------------------------------------------
+// ssh_agent_channel is used for forwarding the ssh-agent over a connection
+
+class ssh_agent_channel : public channel
+{
+  public:
+						ssh_agent_channel(basic_connection& connection);
+	virtual				~ssh_agent_channel();
+	
+	virtual void		setup(ipacket& in);
+	virtual void		receive_data(const char* data, std::size_t size);
+
+  private:
+	ipacket				m_packet;
+};
 
 }

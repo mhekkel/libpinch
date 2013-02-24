@@ -13,6 +13,7 @@
 #include <assh/ssh_agent.hpp>
 #include <assh/detail/ssh_agent_impl.hpp>
 #include <assh/packet.hpp>
+#include <assh/connection.hpp>
 
 using namespace std;
 using namespace CryptoPP;
@@ -85,9 +86,9 @@ ssh_private_key& ssh_private_key::operator=(const ssh_private_key& inKey)
 	return *this;
 }
 
-vector<uint8> ssh_private_key::sign(const vector<uint8>& session_id, const opacket& p)
+vector<uint8> ssh_private_key::sign(const vector<uint8>& session_id, const opacket& data)
 {
-	return m_impl->sign(session_id, p);
+	return m_impl->sign(session_id, data);
 }
 
 string ssh_private_key::get_hash() const
@@ -124,52 +125,46 @@ ssh_agent::~ssh_agent()
 	m_private_keys.clear();
 }
 
-//void ssh_agent::process_agent_request(opacket& in, opacket& out)
-//{
-//	uint8 msg;
-//	in >> msg;
-//
-//	switch (msg)
-//	{
-//		case SSH_AGENTC_REQUEST_IDENTITIES:
-//		{
-//			out << uint8(SSH_AGENT_IDENTITIES_ANSWER) << uint32(m_private_keys.size());
-//			
-//			for (ssh_private_keyList::iterator key = m_private_keys.begin(); key != m_private_keys.end(); ++key)
-//			{
-//				opacket blob;
-//				blob << *key;
-//				out << blob << key->get_comment();
-//			}
-//			break;
-//		}
-//		
-//		case SSH_AGENTC_SIGN_REQUEST:
-//		{
-//			ipacket blob, data;
-//			in >> blob >> data;
-//			
-//			ssh_private_key key(blob);
-//			
-//			if (key)
-//			{
-//				vector<uint8> sigdata;
-//				key.SignData(data, sigdata);
-//		
-//				opacket signature;
-//				signature << "ssh-rsa" << sigdata;
-//				out << uint8(SSH_AGENT_SIGN_RESPONSE) << signature;
-//			}
-//			else
-//				out << uint8(SSH_AGENT_FAILURE);
-//			break;
-//		}
-//		
-//		default:
-//			out << uint8(SSH_AGENT_FAILURE);
-//			break;
-//	}
-//}
+void ssh_agent::process_agent_request(ipacket& in, opacket& out)
+{
+	switch ((message_type)in)
+	{
+		case SSH_AGENTC_REQUEST_RSA_IDENTITIES:
+			out = opacket(SSH_AGENT_RSA_IDENTITIES_ANSWER) << uint32(0);
+			break;
+
+		case SSH_AGENTC_REQUEST_IDENTITIES:
+		{
+			out = opacket(SSH_AGENT_IDENTITIES_ANSWER) << uint32(m_private_keys.size());
+			
+			foreach (auto& key, m_private_keys)
+			{
+				opacket blob;
+				blob << key;
+				out << blob << key.get_comment();
+			}
+			break;
+		}
+		
+		case SSH_AGENTC_SIGN_REQUEST:
+		{
+			ipacket blob, data;
+			in >> blob >> data;
+			
+			ssh_private_key key(blob);
+			
+			if (key)
+				out = opacket(SSH_AGENT_SIGN_RESPONSE) << key.sign(data, opacket());
+			else
+				out = opacket(SSH_AGENT_FAILURE);
+			break;
+		}
+		
+		default:
+			out = opacket(SSH_AGENT_FAILURE);
+			break;
+	}
+}
 
 void ssh_agent::update()
 {
@@ -177,62 +172,50 @@ void ssh_agent::update()
 	ssh_private_key_impl::create_list(m_private_keys);
 }
 
-//// --------------------------------------------------------------------
-//
-//ssh_agentChannel::ssh_agentChannel(MSshConnection& inConnection)
-//	: MSshChannel(inConnection)
-//	, mPacketLength(0)
-//{
-//}
-//
-//ssh_agentChannel::~ssh_agentChannel()
-//{
-//}
-//
-//void ssh_agentChannel::Setup(opacket& in)
-//{
-//	mChannelOpen = true;
-//
-//	opacket out;
-//	out << uint8(SSH_MSG_CHANNEL_OPEN_CONFIRMATION) << mHostChannelID
-//		<< mMyChannelID << mMyWindowSize << kMaxPacketSize;
-//	Send(out);
-//}
-//
-//void ssh_agentChannel::ReceiveData(opacket& inData)
-//{
-//	copy(inData.peek(), inData.peek() + inData.size(), back_inserter(mPacket));
-//
-//	while (not mPacket.empty())
-//	{
-//		if (mPacketLength > 0 and mPacketLength <= mPacket.size())
-//		{
-//			opacket in(mPacket, mPacketLength), out;
-//
-//			mPacket.erase(mPacket.begin(), mPacket.begin() + mPacketLength);
-//			mPacketLength = 0;
-//
-//			ssh_agent::Instance().ProcessAgentRequest(in, out);
-//			
-//			opacket d2;
-//			d2 << out;
-//			MSshChannel::SendData(d2);
-//			continue;
-//		}
-//		
-//		if (mPacketLength == 0 and mPacket.size() >= sizeof(uint32))
-//		{
-//			for (uint32 i = 0; i < 4; ++i)
-//			{
-//				mPacketLength = mPacketLength << 8 | mPacket.front();
-//				mPacket.pop_front();
-//			}
-//			
-//			continue;
-//		}
-//		
-//		break;
-//	}
-//}
+// --------------------------------------------------------------------
+
+ssh_agent_channel::ssh_agent_channel(basic_connection& connection)
+	: channel(connection)
+{
+}
+
+ssh_agent_channel::~ssh_agent_channel()
+{
+}
+
+void ssh_agent_channel::setup(ipacket& in)
+{
+	m_channel_open = true;
+
+	m_connection.async_write(opacket(msg_channel_open_confirmation)
+		<< m_host_channel_id << m_my_channel_id << m_my_window_size << kMaxPacketSize);
+}
+
+void ssh_agent_channel::receive_data(const char* data, size_t size)
+{
+	while (size > 0)
+	{
+		if (m_packet.empty() and size < 4)
+		{
+			close();	// we have an empty packet and less than 4 bytes... 
+			break;		// simply fail this agent. I guess this should never happen
+		}
+		
+		size_t r = m_packet.read(data, size);
+		
+		if (m_packet.complete())
+		{
+			opacket out;
+			ssh_agent::instance().process_agent_request(m_packet, out);
+			//out = (opacket() << out);
+			send(out);
+			
+			m_packet.clear();
+		}
+		
+		data += r;
+		size -= r;
+	}
+}
 
 }

@@ -324,6 +324,55 @@ void ipacket::append(const vector<uint8>& block)
 	}
 }
 
+size_t ipacket::read(const char* data, size_t size)
+{
+	size_t result = 0;
+	
+	if (m_complete)
+		throw packet_exception();
+
+	if (m_data == nullptr)
+	{
+		assert(size >= 4);
+
+		for (int i = 0; i < 4; ++i)
+			m_length = m_length << 8 | static_cast<uint8>(data[i]);
+
+		if (m_length > kMaxPacketSize)
+			throw packet_exception();
+		
+		m_message = static_cast<message_type>(data[4]);
+		m_padding = 0;
+		m_owned = true;
+		m_offset = 1;
+		m_data = new uint8[m_length];
+		
+		result = size;
+		if (result > m_length + 4)
+			result = m_length + 4;
+		
+		std::copy(data + 4, data + result, m_data);
+		m_offset = size - 4;
+	}
+	else
+	{
+		result = m_length - m_offset;
+		if (result > size)
+			result = size;
+
+		for (size_t i = 0; i < result; ++i, ++m_offset)
+			m_data[m_offset] = data[i];
+	}
+
+	if (m_offset == m_length)	// this was the last block
+	{
+		m_complete = true;
+		m_offset = 1;
+	}
+
+	return result;
+}
+
 ipacket& ipacket::operator>>(string& v)
 {
 	uint32 len;

@@ -90,6 +90,8 @@ class disconnect_category : public boost::system::error_category
 				return "Illegal user name";
 			case error::not_authenticated:
 				return "session not authenticated yet";
+			case error::disconnect_by_host:
+				return "connection closed by host";
 			default:
 				return "ssh disconnected with error";
 		}
