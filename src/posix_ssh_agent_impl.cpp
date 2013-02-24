@@ -190,14 +190,14 @@ bool ssh_agent_impl::process(const opacket& request, ipacket& reply)
 		
 		if (l < 256 * 1024)	// sanity check
 		{
-			char b[1024];
-
-			uint32 k = l;
-			if (k > sizeof(b))
-				k = sizeof(b);
-			
 			while (l > 0)
 			{
+				char b[1024];
+
+				uint32 k = l;
+				if (k > sizeof(b))
+					k = sizeof(b);
+				
 				if (read(m_fd, b, k) != k)
 					break;
 				
