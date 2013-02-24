@@ -84,7 +84,7 @@ class opacket
 	// for ranges:
 	opacket&		operator<<(const std::pair<const char*,std::size_t>& v)
 					{
-						operator<<(v.second);
+						operator<<(uint32(v.second));
 						m_data.insert(m_data.end(), reinterpret_cast<const uint8*>(v.first),
 							reinterpret_cast<const uint8*>(v.first + v.second));
 						return *this;
