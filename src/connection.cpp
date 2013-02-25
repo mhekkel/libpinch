@@ -14,6 +14,7 @@
 #include <boost/iostreams/flush.hpp>
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
+#include <boost/lexical_cast.hpp>
 
 #include <cryptopp/gfpcrypt.h>
 #include <cryptopp/rsa.h>
@@ -609,6 +610,98 @@ void basic_connection::process_channel(ipacket& in, opacket& out, boost::system:
 		}
 	}
 	catch (...) {}
+}
+
+// --------------------------------------------------------------------
+
+connection::connection(boost::asio::io_service& io_service,
+		const string& user, const string& host, uint16 port)
+	: basic_connection(io_service, user)
+	, m_socket(io_service), m_resolver(io_service), m_host(host), m_port(port)
+{
+}
+
+void connection::disconnect()
+{
+	basic_connection::disconnect();
+	
+	m_socket.close();
+}
+
+void connection::start_handshake(basic_connect_handler* handler)
+{
+	m_connect_handler = handler;
+	
+	if (not m_socket.is_open())
+	{
+		boost::asio::ip::tcp::resolver resolver(get_io_service());
+		boost::asio::ip::tcp::resolver::query query(m_host, boost::lexical_cast<string>(m_port));
+		
+		m_resolver.async_resolve(query,
+			boost::bind(&connection::handle_resolve, this,
+				boost::asio::placeholders::error, boost::asio::placeholders::iterator));
+	}
+	else
+		basic_connection::start_handshake(m_connect_handler);
+}
+
+void connection::handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
+{
+	if (ec)
+		m_connect_handler->handle_connect(ec, get_io_service());
+	else
+	{
+		boost::asio::ip::tcp::endpoint endpoint = *endpoint_iterator;
+		m_socket.async_connect(endpoint,
+			boost::bind(&connection::handle_connect, this,
+				boost::asio::placeholders::error, ++endpoint_iterator));
+	}
+}
+
+void connection::handle_connect(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
+{
+	if (endpoint_iterator != boost::asio::ip::tcp::resolver::iterator())
+    {
+      // The connection failed. Try the next endpoint in the list.
+      m_socket.close();
+      boost::asio::ip::tcp::endpoint endpoint = *endpoint_iterator;
+      m_socket.async_connect(endpoint,
+          boost::bind(&connection::handle_connect, this,
+            boost::asio::placeholders::error, ++endpoint_iterator));
+    }
+    else if (ec)
+    	m_connect_handler->handle_connect(ec, get_io_service());
+    else
+    	start_handshake(m_connect_handler);
+}
+
+void connection::async_write_int(boost::asio::streambuf* request, basic_write_op* op)
+{
+	boost::asio::async_write(m_socket, *request,
+		[op, request](const boost::system::error_code& ec, size_t bytes_transferred)
+		{
+			delete request;
+			(*op)(ec, bytes_transferred);
+			delete op;
+		});
+}
+
+void connection::async_read_version_string()
+{
+	boost::asio::async_read_until(m_socket, m_response, "\n",
+		[this](const boost::system::error_code& ec, size_t bytes_transferred)
+	{
+		handle_protocol_version_response(ec, bytes_transferred);
+	});
+}
+
+void connection::async_read(uint32 at_least)
+{
+	boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
+		[this](const boost::system::error_code& ec, size_t bytes_transferred)
+		{
+			this->received_data(ec);
+		});
 }
 
 }

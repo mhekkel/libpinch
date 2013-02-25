@@ -101,19 +101,17 @@ int main(int argc, char* const argv[])
 			cerr << "usage: test <host> <port> <user>" << endl;
 			return 1;
 		}
+		
+		string host = argv[1];
+		string proxy_host = "www";
+		string port = argv[2];
+		string user = argv[3];
 	
 		boost::asio::io_service io_service;
-		boost::asio::ip::tcp::resolver resolver(io_service);
-		boost::asio::ip::tcp::resolver::query query(argv[1], argv[2]);
-		boost::asio::ip::tcp::resolver::iterator iterator = resolver.resolve(query);
 		
-		boost::asio::ip::tcp::socket socket(io_service);
-		boost::asio::connect(socket, iterator);
+		assh::connection proxy(io_service, user, proxy_host, 22);
+		assh::proxied_connection connection(proxy, user, host);
 
-		string user = argv[3];
-		
-		assh::connection proxy(socket, user);
-		assh::proxied_connection connection(proxy, user, "www");
 		client* c = nullptr;
 		
 		connection.async_connect([&connection, &c](const boost::system::error_code& ec)

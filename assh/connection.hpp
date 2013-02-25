@@ -29,7 +29,7 @@ class basic_connection
 				    	start_handshake(new connect_handler<Handler>(std::move(handler)));
 					}
 	
-	void			disconnect();
+	virtual void	disconnect();
 
 	void			open_channel(channel* ch, uint32 id);
 	void			close_channel(channel* ch, uint32 id);
@@ -50,7 +50,7 @@ class basic_connection
 	virtual boost::asio::io_service&
 					get_io_service() = 0;
 	
-	bool			is_connected() const									{ return m_authenticated; }
+	virtual bool	is_connected() const									{ return m_authenticated; }
 	
   protected:
 
@@ -238,56 +238,37 @@ class basic_connection
 	basic_connection&			operator=(const basic_connection&);
 };
 
-template<typename SOCKET>
-class basic_connection_t : public basic_connection
+// --------------------------------------------------------------------
+
+class connection : public basic_connection
 {
   public:
-	typedef SOCKET		socket_type;
+					connection(boost::asio::io_service& io_service,
+						const std::string& user, const std::string& host, uint16 port);
 
-						basic_connection_t(socket_type& socket, const std::string& user)
-							: basic_connection(socket.get_io_service(), user), m_socket(socket) {}
+	boost::asio::io_service&
+					get_io_service() 		{ return m_socket.get_io_service(); }
 
-	virtual boost::asio::io_service&
-						get_io_service()
-						{
-							return m_socket.get_io_service();
-						}
+	virtual void	disconnect();
+	virtual bool	is_connected() const	{ return m_socket.is_open() and basic_connection::is_connected(); }
 
   protected:
-	virtual void		async_write_int(boost::asio::streambuf* request, basic_write_op* op)
-						{
-							boost::asio::async_write(m_socket, *request,
-								[op, request](const boost::system::error_code& ec, size_t bytes_transferred)
-								{
-									delete request;
-									(*op)(ec, bytes_transferred);
-									delete op;
-								});
-						}
 
-	virtual void		async_read_version_string()
-						{
-							boost::asio::async_read_until(m_socket, m_response, "\n",
-								[this](const boost::system::error_code& ec, size_t bytes_transferred)
-							{
-								handle_protocol_version_response(ec, bytes_transferred);
-							});
-						}
-						
-	virtual void		async_read(uint32 at_least)
-						{
-							boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
-								[this](const boost::system::error_code& ec, size_t bytes_transferred)
-								{
-									this->received_data(ec);
-								});
-						}
+	virtual void	start_handshake(basic_connect_handler* handler);
+
+	void			handle_resolve(const boost::system::error_code& err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);
+	void			handle_connect(const boost::system::error_code& err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);
+	
+	virtual void	async_write_int(boost::asio::streambuf* request, basic_write_op* op);
+	virtual void	async_read_version_string();
+	virtual void	async_read(uint32 at_least);
 
   private:
-	socket_type&		m_socket;
+	boost::asio::ip::tcp::socket	m_socket;
+	boost::asio::ip::tcp::resolver	m_resolver;
+	std::string						m_host;
+	uint16							m_port;
 };
-
-typedef basic_connection_t<boost::asio::ip::tcp::socket> connection;
 
 }
 
