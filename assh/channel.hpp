@@ -289,9 +289,8 @@ class channel
 	template<typename Handler>
 	void 			send_data(const char* data, size_t size, Handler&& handler)
 					{
-						make_write_op(
-							opacket(msg_channel_data) << m_host_channel_id << std::make_pair(data, size),
-							std::move(handler));
+						opacket out = opacket(msg_channel_data) << m_host_channel_id << std::make_pair(data, size);
+						make_write_op(std::move(out), std::move(handler));
 					}
 	
 	template<typename Handler>

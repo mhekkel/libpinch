@@ -21,7 +21,7 @@ class x11_channel : public channel
 {
   public:
 
-					x11_channel(MSshConnection& inConnection);
+					x11_channel(basic_connection& inConnection);
 					~x11_channel();
 
   protected:
@@ -40,7 +40,7 @@ class x11_channel : public channel
 	boost::asio::ip::tcp::socket		m_socket;
 	bool								m_verified;
 	std::string							m_auth_protocol, m_auth_data;
-	ipacket								m_packet;
+	std::vector<uint8>					m_packet;
 };
 
 }

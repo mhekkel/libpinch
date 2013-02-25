@@ -32,6 +32,7 @@
 #include <assh/channel.hpp>
 #include <assh/hash.hpp>
 #include <assh/ssh_agent.hpp>
+#include <assh/x11_channel.hpp>
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
 
@@ -573,10 +574,9 @@ void basic_connection::process_channel_open(ipacket& in, opacket& out)
 
 	try
 	{
-		//if (type == "x11")
-		//	c = new x11_channel(*this);
-		//else
-		if (type == "auth-agent@openssh.com" and m_forward_agent)
+		if (type == "x11")
+			c = new x11_channel(*this);
+		else if (type == "auth-agent@openssh.com" and m_forward_agent)
 			c = new ssh_agent_channel(*this);
 	}
 	catch (...) {}

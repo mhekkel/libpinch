@@ -10,6 +10,7 @@
 #define foreach BOOST_FOREACH
 
 #include <assh/x11_channel.hpp>
+#include <assh/connection.hpp>
 
 using namespace std;
 
@@ -18,7 +19,7 @@ namespace assh
 
 x11_channel::x11_channel(basic_connection& connection)
 	: channel(connection)
-	, m_socket(connection::get_io_service())
+	, m_socket(get_io_service())
 	, m_verified(false)
 {
 }
@@ -28,10 +29,10 @@ x11_channel::~x11_channel()
 	if (m_socket.is_open())
 		m_socket.close();
 
-	foreach (boost::asio::streambuf* buffer, mRequests)
+	foreach (boost::asio::streambuf* buffer, m_requests)
 		delete buffer;
 
-	mRequests.clear();
+	m_requests.clear();
 }
 
 void x11_channel::setup(ipacket& in)
@@ -59,19 +60,19 @@ void x11_channel::setup(ipacket& in)
 			boost::bind(&x11_channel::receive_raw, this,
 			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 		
-		m_connection.send(opacket(msg_channel_open_confirmation) << m_host_channel_id
+		m_connection.async_write(opacket(msg_channel_open_confirmation) << m_host_channel_id
 			<< m_my_channel_id << m_my_window_size << kMaxPacketSize);
 		
 		m_channel_open = true;
 	}
 	catch (...)
 	{
-		m_connection.send(opacket(msg_channel_failure) << m_host_channel_id
+		m_connection.async_write(opacket(msg_channel_failure) << m_host_channel_id
 			<< 2 << "Failed to open connection to X-server" << "en");
 	}
 }
 
-void x11_channel::Closed()
+void x11_channel::closed()
 {
 	if (m_socket.is_open())
 		m_socket.close();
@@ -79,21 +80,18 @@ void x11_channel::Closed()
 	channel::closed();
 }
 
-void x11_channel::ReceiveData(MSshPacket& inData)
+void x11_channel::receive_data(const char* data, size_t size)
 {
-	mRequests.push_back(new boost::asio::streambuf);
-	ostream out(mRequests.back());
+	m_requests.push_back(new boost::asio::streambuf);
+	ostream out(m_requests.back());
 	
 	if (m_verified)
-		out.write(reinterpret_cast<const char*>(inData.peek()), inData.size());
+		out.write(data, size);
 	else
 	{
-		const uint8* data = inData.peek();
-		uint32 size = inData.size();
-		
 		m_packet.insert(m_packet.end(), data, data + size);
 		
-		m_verified = CheckValidation();
+		m_verified = check_validation();
 		
 		if (m_verified and not m_packet.empty())
 		{
@@ -102,23 +100,15 @@ void x11_channel::ReceiveData(MSshPacket& inData)
 		}
 	}
 	
-	boost::asio::async_write(m_socket, *mRequests.back(),
-		boost::bind(&x11_channel::PacketSent, this, boost::asio::placeholders::error));
+	boost::asio::async_write(m_socket, *m_requests.back(),
+		[this](const boost::system::error_code& ec, size_t)
+		{
+			if (ec)
+				close();
+		});
 }
 
-void x11_channel::PacketSent(const boost::system::error_code& err)
-{
-	if (not mRequests.empty())
-	{
-		delete mRequests.front();
-		mRequests.pop_front();
-	}
-	
-	if (err)
-		Close();
-}
-
-bool x11_channel::CheckValidation()
+bool x11_channel::check_validation()
 {
 	bool result = false;
 	
@@ -161,32 +151,33 @@ bool x11_channel::CheckValidation()
 	return result;
 }
 
-void x11_channel::receive_raw(const boost::system::error_code& err, size_t)
+void x11_channel::receive_raw(const boost::system::error_code& ec, size_t)
 {
-	if (err)
+	if (ec)
+		close();
+	else
 	{
-		Close();
-		Release();
-		return;
-	}
+		istream in(&m_response);
 	
-	istream in(&mResponse);
-
-	for (;;)
-	{
-		char buffer[1024];
-
-		size_t k = in.readsome(buffer, sizeof(buffer));
-		if (k == 0)
-			break;
-
-		MSshPacket p;
-		p << uint8(SSH_MSG_CHANNEL_DATA) << mHostChannelID << string(buffer, buffer + k);
-		PushPending(p);
-	}
+		for (;;)
+		{
+			char buffer[8192];
 	
-	boost::asio::async_read(m_socket, mResponse, boost::asio::transfer_at_least(1),
-		boost::bind(&x11_channel::ReceiveRaw, this, boost::asio::placeholders::error));
+			size_t k = in.readsome(buffer, sizeof(buffer));
+			if (k == 0)
+				break;
+			
+			send_data(buffer, k,
+				[this](const boost::system::error_code& ec, size_t)
+				{
+					if (ec)
+						close();
+				});
+		}
+		
+		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
+			boost::bind(&x11_channel::receive_raw, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+	}
 }
 
 }
