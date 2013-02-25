@@ -8,6 +8,7 @@
 #include <boost/iostreams/copy.hpp>
 
 #include <assh/connection.hpp>
+#include <assh/proxy_cmd.hpp>
 #include <assh/terminal_channel.hpp>
 #include <assh/debug.hpp>
 
@@ -23,7 +24,7 @@ namespace io = boost::iostreams;
 class client
 {
   public:
-			client(assh::connection& connection)
+			client(assh::basic_connection& connection)
 				: m_channel(connection)
 				, m_first(true)
 			{
@@ -111,24 +112,22 @@ int main(int argc, char* const argv[])
 
 		string user = argv[3];
 		
-		assh::connection connection(socket, user);
-		
+		assh::connection proxy(socket, user);
+		assh::proxied_connection connection(proxy, user, "www");
 		client* c = nullptr;
 		
-		connection.async_connect([&c, &connection](const boost::system::error_code& ec)
+		connection.async_connect([&connection, &c](const boost::system::error_code& ec)
 		{
 			if (ec)
 			{
 				cerr << "error connecting: " << ec.message() << endl;
 				exit(1);
 			}
-
+			
 			c = new client(connection);
 		});
 				
 		io_service.run();
-		
-		delete c;
 	}
 	catch (exception& e)
 	{

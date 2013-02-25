@@ -363,38 +363,22 @@ void channel::push_received()
 	m_received.erase(m_received.begin(), b);
 }
 
-//// --------------------------------------------------------------------
-//
-//MSshExecChannel::MSshExecChannel(const string& inHost, const string& inUser,
-//	uint16 inPort, const string& inCommand, ResultHandler inResultHandler)
-//	: channel(*basic_connection::Get(inHost, inUser, inPort))
-//	, mCommand(inCommand)
-//	, mHandler(inResultHandler)
-//{
-//}
-//
-//MSshExecChannel::MSshExecChannel(basic_connection* inConnection,
-//		const string& inCommand, ResultHandler inResultHandler)
-//	: channel(*inConnection)
-//	, mCommand(inCommand)
-//	, mHandler(inResultHandler)
-//{
-//}
-//
-//void MSshExecChannel::Setup(MSshPacket& in)
-//{
-//	SendRequestAndCommand("exec", mCommand);
-//}
-//
-//void MSshExecChannel::HandleChannelRequest(const string& inRequest, MSshPacket& in, MSshPacket& out)
-//{
-//	uint32 status = 1;
-//	
-//	if (inRequest == "exit-status")
-//		in >> status;
-//	
-//	mHandler(inRequest, status);
-//}
+// --------------------------------------------------------------------
+
+void exec_channel::setup(ipacket& in)
+{
+	send_request_and_command("exec", m_command);
+}
+
+void exec_channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
+{
+	int32 status = 1;
+	
+	if (request == "exit-status")
+		in >> status;
+	
+	m_handler->post_result(request, status);
+}
 
 
 }

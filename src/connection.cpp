@@ -58,6 +58,7 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	: m_io_service(io_service)
 	, m_user(user)
 	, m_connect_handler(nullptr)
+	, m_authenticated(false)
 	, m_key_exchange(nullptr)
 	, m_forward_agent(false)
 {
@@ -91,29 +92,22 @@ void basic_connection::forward_agent(bool forward)
 
 void basic_connection::start_handshake(basic_connect_handler* handler)
 {
-    if (m_connect_handler != nullptr)
-    {
-    	handler->handle_connect(error::make_error_code(error::protocol_error), m_io_service);
-    }
-    else
+	m_connect_handler = handler;
+
+	m_authenticated = false;
+	m_auth_state = auth_state_none;
+	m_password_attempts = 0;
+	m_in_seq_nr = m_out_seq_nr = 0;
+	m_iblocksize = m_oblocksize = 8;
+	
+	boost::asio::streambuf* request(new boost::asio::streambuf);
+	ostream out(request);
+	out << kSSHVersionString << "\r\n";
+
+	async_write(request, [this](const boost::system::error_code& ec, size_t bytes_transferred)
 	{
-		m_connect_handler = handler;
-	
-		m_authenticated = false;
-		m_auth_state = auth_state_none;
-		m_password_attempts = 0;
-		m_in_seq_nr = m_out_seq_nr = 0;
-		m_iblocksize = m_oblocksize = 8;
-		
-		boost::asio::streambuf* request(new boost::asio::streambuf);
-		ostream out(request);
-		out << kSSHVersionString << "\r\n";
-	
-		async_write(request, [this](const boost::system::error_code& ec, size_t bytes_transferred)
-		{
-			handle_protocol_version_request(ec, bytes_transferred);
-		});
-	}
+		handle_protocol_version_request(ec, bytes_transferred);
+	});
 }
 
 void basic_connection::handle_protocol_version_request(const boost::system::error_code& ec, size_t)

@@ -50,6 +50,8 @@ class basic_connection
 	virtual boost::asio::io_service&
 					get_io_service() = 0;
 	
+	bool			is_connected() const									{ return m_authenticated; }
+	
   protected:
 
 					basic_connection(boost::asio::io_service& io_service, const std::string& user);
@@ -85,7 +87,7 @@ class basic_connection
 
 
 
-	void			start_handshake(basic_connect_handler* handler);
+	virtual void	start_handshake(basic_connect_handler* handler);
 	void			handle_protocol_version_request(const boost::system::error_code& ec, std::size_t);
 	void			handle_protocol_version_response(const boost::system::error_code& ec, std::size_t);
 	

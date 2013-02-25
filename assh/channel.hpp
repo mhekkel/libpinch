@@ -340,4 +340,52 @@ class channel
 	static uint32			s_next_channel_id;
 };
 
+// --------------------------------------------------------------------
+
+class exec_channel : public channel
+{
+  public:
+	struct basic_result_handler
+	{
+		virtual			~basic_result_handler() {}
+		virtual void	post_result(const std::string& message, int32 result_code) = 0;
+	};
+	
+	template<typename Handler>
+	struct result_handler : public basic_result_handler
+	{
+						result_handler(Handler&& handler)
+							: m_handler(std::move(handler)) {}
+		
+		virtual void	post_result(const std::string& message, int32 result_code)
+						{
+							m_handler(message, result_code);
+						}
+		
+		Handler			m_handler;
+	};
+
+	template<typename Handler>
+							exec_channel(basic_connection& connection,
+								const std::string& cmd, Handler&& handler)
+								: m_result_handler(new result_handler<Handler>(std::move(handler)))
+								, m_command(cmd)
+							{
+							}
+
+							~exec_channel()
+							{
+								delete m_handler;
+							}
+
+	virtual void			setup(ipacket& in);
+
+  protected:
+	virtual void			handle_channel_request(const std::string& request, ipacket& in, opacket& out);
+
+  private:
+	std::string				m_command;
+	basic_result_handler*	m_handler;
+};
+
 }
