@@ -281,8 +281,7 @@ class channel
 	// To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	void			send(const opacket& data)
 					{
-						opacket out(msg_channel_data);
-						out << m_host_channel_id << data;
+						opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
 						make_write_op(std::move(out),
 							[](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
 					}

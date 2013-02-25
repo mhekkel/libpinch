@@ -61,7 +61,8 @@ class client
 				{
 					if (bytes_received > 0 and m_first)
 					{
-						const char k_cmd[] = "ssh-add -L\n";
+//						const char k_cmd[] = "ssh-add -L\n";
+						const char k_cmd[] = "ssh www\n";
 						boost::asio::const_buffers_1 b(k_cmd, strlen(k_cmd));
 					
 						boost::asio::async_write(m_channel, b, [this](const boost::system::error_code& ec, size_t bytes_transferred)
