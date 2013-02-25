@@ -282,7 +282,7 @@ class channel
 	void			send(const opacket& data)
 					{
 						opacket out(msg_channel_data);
-						out << data;
+						out << m_host_channel_id << data;
 						make_write_op(std::move(out),
 							[](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
 					}

@@ -207,7 +207,7 @@ void ssh_agent_channel::receive_data(const char* data, size_t size)
 		{
 			opacket out;
 			ssh_agent::instance().process_agent_request(m_packet, out);
-			//out = (opacket() << out);
+			out = (opacket() << out);
 			send(out);
 			
 			m_packet.clear();
