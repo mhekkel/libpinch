@@ -46,7 +46,7 @@ void terminal_channel::send_window_resize(uint32 width, uint32 height)
 	opacket out(msg_channel_request);
 	out << m_host_channel_id
 		<< "window-change" << width << height << uint32(0) << uint32(0);
-	send(move(out));
+	send_data(move(out));
 }
 	
 }

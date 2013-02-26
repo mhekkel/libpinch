@@ -96,6 +96,7 @@ inline speed_t cfgetospeed(const struct termios *tp)
 // set DEBUG flag
 
 #if DEBUG || _DEBUG || DEBUG_
+#undef DEBUG
 #define DEBUG 1
 #undef NDEBUG
 #include <assh/debug.hpp>

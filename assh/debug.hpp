@@ -7,7 +7,13 @@
 
 #include <iostream>
 
-#include <assh/packet.hpp>
+namespace assh
+{
+
+class ipacket;
+class opacket;
+
+}
 
 std::ostream& operator<<(std::ostream& os, assh::ipacket& p);
 std::ostream& operator<<(std::ostream& os, assh::opacket& p);

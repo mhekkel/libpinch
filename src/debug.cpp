@@ -5,6 +5,7 @@
 
 #include <assh/config.hpp>
 
+#include <assh/packet.hpp>
 #include <assh/debug.hpp>
 
 using namespace std;

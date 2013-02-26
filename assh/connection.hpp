@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <assh/config.hpp>
+
 #include <list>
 
 #include <assh/packet.hpp>
@@ -56,11 +58,15 @@ class basic_connection
 
 					basic_connection(boost::asio::io_service& io_service, const std::string& user);
 
+	void			handle_connect_result(const boost::system::error_code& ec);
+
 	struct basic_connect_handler
 	{
 		virtual				~basic_connect_handler() {}
 		virtual void		handle_connect(const boost::system::error_code& ec, boost::asio::io_service& io_service) = 0;
 	};
+	
+	typedef std::list<basic_connect_handler*>	connect_handler_list;
 
 	template<class Handler>
 	struct connect_handler : public basic_connect_handler
@@ -200,15 +206,17 @@ class basic_connection
 	enum auth_state
 	{
 		auth_state_none,
+		auth_state_connecting,
 		auth_state_public_key,
 		auth_state_keyboard_interactive,
-		auth_state_password
+		auth_state_password,
+		auth_state_connected
 	};
 
 	boost::asio::io_service&	m_io_service;
 	std::string					m_user;
-	basic_connect_handler*		m_connect_handler;
 	bool						m_authenticated;
+	connect_handler_list		m_connect_handlers;
 	std::string					m_host_version;
 	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;
 	auth_state					m_auth_state;

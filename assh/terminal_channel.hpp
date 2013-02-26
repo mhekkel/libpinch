@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <assh/config.hpp>
 #include <assh/channel.hpp>
 
 namespace assh

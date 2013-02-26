@@ -6,8 +6,10 @@
 #define foreach BOOST_FOREACH
 #include <boost/bind.hpp>
 #include <boost/iostreams/copy.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <assh/connection.hpp>
+#include <assh/connection_pool.hpp>
 #include <assh/proxy_cmd.hpp>
 #include <assh/terminal_channel.hpp>
 #include <assh/debug.hpp>
@@ -103,14 +105,15 @@ int main(int argc, char* const argv[])
 		}
 		
 		string host = argv[1];
-		string proxy_host = "www";
 		string port = argv[2];
 		string user = argv[3];
 	
+		assh::connection_pool::instance().register_proxy("newcmbi2", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
+		assh::connection_pool::instance().register_proxy("newcmbi2.cmbi.ru.nl", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
+	
 		boost::asio::io_service io_service;
 		
-		assh::connection proxy(io_service, user, proxy_host, 22);
-		assh::proxied_connection connection(proxy, user, host);
+		assh::basic_connection& connection(assh::connection_pool::instance().get(io_service, user, host, boost::lexical_cast<uint16>(port)));
 
 		client* c = nullptr;
 		

@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <assh/config.hpp>
+
 #include <cassert>
 
 #include <list>
@@ -32,7 +34,7 @@ class channel
 	struct basic_open_handler
 	{
 		virtual			~basic_open_handler() {}
-		virtual void	operator()(const boost::system::error_code& ec) = 0;
+		virtual void	handle_open_result(const boost::system::error_code& ec) = 0;
 	};
 	
 	template<typename Handler>
@@ -40,10 +42,8 @@ class channel
 	{
 						open_handler(Handler&& handler) : m_handler(std::move(handler)) {}
 		
-		virtual void	operator()(const boost::system::error_code& ec)
+		virtual void	handle_open_result(const boost::system::error_code& ec)
 						{
-							BOOST_STATIC_ASSERT(boost::is_const<Handler>::value == false);
-
 							m_handler(ec);
 						}
 		
@@ -90,12 +90,20 @@ class channel
 	template<class Handler>
 	struct bound_handler
 	{
-#if not defined(_MSC_VER)		// this is weird, MSVC does not compile this
+		bound_handler(const bound_handler& rhs)
+			: m_handler(rhs.m_handler), m_ec(rhs.m_ec), m_transferred(rhs.m_transferred)
+		{
+		}
+
+		bound_handler(bound_handler&& rhs)
+			: m_handler(std::move(rhs.m_handler)), m_ec(rhs.m_ec), m_transferred(rhs.m_transferred)
+		{
+		}
+
 		bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
 			: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
 		{
 		}
-#endif
 
 		bound_handler(const Handler& handler, const boost::system::error_code& ec, std::size_t s)
 			: m_handler(handler), m_ec(ec), m_transferred(s)
@@ -271,15 +279,15 @@ class channel
 					}
 
 
-
-  protected:
-					channel(basic_connection& connection);
-	virtual			~channel();
-
-	virtual void	setup(ipacket& in) = 0;
-
 	// To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-	void			send(const opacket& data)
+	template<typename Handler>
+	void 			send_data(const std::string& data, Handler&& handler)
+					{
+						opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
+						make_write_op(std::move(out), std::move(handler));
+					}
+	
+	void			send_data(const opacket& data)
 					{
 						opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
 						make_write_op(std::move(out),
@@ -309,6 +317,13 @@ class channel
 							opacket(msg_channel_extended_data) << m_host_channel_id << type << data,
 							std::move(handler));
 					}
+
+
+  protected:
+					channel(basic_connection& connection);
+	virtual			~channel();
+
+	virtual void	setup(ipacket& in) = 0;
 
 	// low level
 	void			send_pending();
@@ -368,7 +383,8 @@ class exec_channel : public channel
 	template<typename Handler>
 							exec_channel(basic_connection& connection,
 								const std::string& cmd, Handler&& handler)
-								: m_result_handler(new result_handler<Handler>(std::move(handler)))
+								: channel(connection)
+								, m_handler(new result_handler<Handler>(std::move(handler)))
 								, m_command(cmd)
 							{
 							}

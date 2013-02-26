@@ -6,11 +6,13 @@
 #include <assh/config.hpp>
 
 #include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string/regex.hpp>
 
 #include <assh/proxy_cmd.hpp>
 #include <assh/channel.hpp>
 
 using namespace std;
+namespace ba = boost::algorithm;
 
 namespace assh
 {
@@ -20,10 +22,12 @@ namespace assh
 class proxy_channel : public channel
 {
   public:
-					proxy_channel(basic_connection& connection, const string& host, uint16 port)
-						: channel(connection)
+					proxy_channel(basic_connection& connection, const string& nc_cmd, const string& user, const string& host, uint16 port)
+						: channel(connection), m_cmd(nc_cmd)
 					{
-						m_cmd = string("nc ") + host + ' ' + boost::lexical_cast<string>(port);
+						ba::replace_regex(m_cmd, boost::regex("(?<!%)%r"), user);
+						ba::replace_regex(m_cmd, boost::regex("(?<!%)%h"), host);
+						ba::replace_regex(m_cmd, boost::regex("(?<!%)%p"), boost::lexical_cast<string>(port));
 					}
 		
 	virtual void	setup(ipacket& in)
@@ -36,9 +40,9 @@ class proxy_channel : public channel
 
 // --------------------------------------------------------------------
 
-proxied_connection::proxied_connection(basic_connection& proxy, const string& user, const string& host, uint16 port)
+proxied_connection::proxied_connection(basic_connection& proxy, const string& nc_cmd, const string& user, const string& host, uint16 port)
 	: basic_connection(proxy.get_io_service(), user)
-	, m_proxy(proxy), m_channel(new proxy_channel(m_proxy, host, port))
+	, m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port))
 {
 }
 
@@ -51,30 +55,28 @@ proxied_connection::~proxied_connection()
 
 void proxied_connection::start_handshake(basic_connect_handler* handler)
 {
-	m_connect_handler = handler;
-	
 	if (not m_proxy.is_connected())
 	{
-		m_proxy.async_connect([this](const boost::system::error_code& ec)
+		m_proxy.async_connect([this, handler](const boost::system::error_code& ec)
 		{
 			if (ec)
-				m_connect_handler->handle_connect(ec, get_io_service());
+				handler->handle_connect(ec, get_io_service());
 			else
-				start_handshake(m_connect_handler);
+				start_handshake(handler);
 		});
 	}
 	else if (not m_channel->is_open())
 	{
-		m_channel->open([this](const boost::system::error_code& ec)
+		m_channel->open([this, handler](const boost::system::error_code& ec)
 		{
 			if (ec)
-				m_connect_handler->handle_connect(ec, get_io_service());
+				handler->handle_connect(ec, get_io_service());
 			else
-				start_handshake(m_connect_handler);
+				start_handshake(handler);
 		});
 	}
 	else	// proxy connection and channel are now open
-		basic_connection::start_handshake(m_connect_handler);
+		basic_connection::start_handshake(handler);
 }
 
 void proxied_connection::async_write_int(boost::asio::streambuf* request, basic_write_op* op)

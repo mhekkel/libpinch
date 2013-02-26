@@ -62,16 +62,29 @@ boost::asio::io_service& channel::get_io_service()
 
 void channel::open()
 {
-	m_my_window_size = kWindowSize;
-	m_my_channel_id = s_next_channel_id++;
-	m_connection.open_channel(this, m_my_channel_id);
+	if (not m_connection.is_connected())
+	{
+		m_connection.async_connect([this](const boost::system::error_code& ec)
+		{
+			if (ec)
+				m_open_handler->handle_open_result(ec);
+			else
+				this->open();
+		});
+	}
+	else
+	{
+		m_my_window_size = kWindowSize;
+		m_my_channel_id = s_next_channel_id++;
+		m_connection.open_channel(this, m_my_channel_id);
+	}
 }
 
 void channel::opened()
 {
 	if (m_open_handler)
 	{
-		(*m_open_handler)(boost::system::error_code());
+		m_open_handler->handle_open_result(boost::system::error_code());
 		delete m_open_handler;
 		m_open_handler = nullptr;
 	}
@@ -176,7 +189,7 @@ void channel::process(ipacket& in)
 			
 			if (m_open_handler)
 			{
-				(*m_open_handler)(error::make_error_code(error::connection_lost));
+				m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
 				delete m_open_handler;
 				m_open_handler = nullptr;
 			}

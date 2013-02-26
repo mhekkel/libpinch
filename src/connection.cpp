@@ -58,8 +58,8 @@ const string
 basic_connection::basic_connection(boost::asio::io_service& io_service, const string& user)
 	: m_io_service(io_service)
 	, m_user(user)
-	, m_connect_handler(nullptr)
 	, m_authenticated(false)
+	, m_auth_state(auth_state_none)
 	, m_key_exchange(nullptr)
 	, m_forward_agent(false)
 {
@@ -67,13 +67,13 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 
 basic_connection::~basic_connection()
 {
-	delete m_connect_handler;
 	delete m_key_exchange;
 }
 
 void basic_connection::disconnect()
 {
 	m_authenticated = false;
+	m_auth_state = auth_state_none;
 	
 	m_packet.clear();
 	m_encryptor.reset(nullptr);
@@ -91,30 +91,49 @@ void basic_connection::forward_agent(bool forward)
 	m_forward_agent = forward;
 }
 
+void basic_connection::handle_connect_result(const boost::system::error_code& ec)
+{
+	if (ec)
+		m_auth_state = auth_state_none;
+	else
+		m_auth_state = auth_state_connected;
+	
+	for_each(m_connect_handlers.begin(), m_connect_handlers.end(),
+		[&ec](basic_connect_handler* h)
+		{
+			try { h->handle_connect(ec); } catch (...) {}
+			delete h;
+		});
+	
+	m_connect_handlers.clear();
+}
+
 void basic_connection::start_handshake(basic_connect_handler* handler)
 {
-	m_connect_handler = handler;
-
-	m_authenticated = false;
-	m_auth_state = auth_state_none;
-	m_password_attempts = 0;
-	m_in_seq_nr = m_out_seq_nr = 0;
-	m_iblocksize = m_oblocksize = 8;
-	
-	boost::asio::streambuf* request(new boost::asio::streambuf);
-	ostream out(request);
-	out << kSSHVersionString << "\r\n";
-
-	async_write(request, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+	m_connect_handlers.push_back(handler);
+	if (m_auth_state == auth_state_none)
 	{
-		handle_protocol_version_request(ec, bytes_transferred);
-	});
+		m_authenticated = false;
+		m_auth_state = auth_state_connecting;
+		m_password_attempts = 0;
+		m_in_seq_nr = m_out_seq_nr = 0;
+		m_iblocksize = m_oblocksize = 8;
+		
+		boost::asio::streambuf* request(new boost::asio::streambuf);
+		ostream out(request);
+		out << kSSHVersionString << "\r\n";
+	
+		async_write(request, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+		{
+			handle_protocol_version_request(ec, bytes_transferred);
+		});
+	}
 }
 
 void basic_connection::handle_protocol_version_request(const boost::system::error_code& ec, size_t)
 {
 	if (ec)
-		m_connect_handler->handle_connect(ec, m_io_service);
+		handle_connect_result(ec);
 	else
 		async_read_version_string();
 }
@@ -122,7 +141,7 @@ void basic_connection::handle_protocol_version_request(const boost::system::erro
 void basic_connection::handle_protocol_version_response(const boost::system::error_code& ec, size_t)
 {
 	if (ec)
-		m_connect_handler->handle_connect(ec, m_io_service);
+		handle_connect_result(ec);
 	else
 	{
 		istream response_stream(&m_response);
@@ -155,7 +174,7 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 			async_write(out, [this](const boost::system::error_code& ec, size_t bytes_transferred)
 			{
 				if (ec)
-					m_connect_handler->handle_connect(ec, m_io_service);
+					handle_connect_result(ec);
 			});
 			
 			m_my_payload = out;
@@ -164,7 +183,7 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 			received_data(boost::system::error_code());
 		}
 		else
-			m_connect_handler->handle_connect(error::make_error_code(error::protocol_version_not_supported), m_io_service);
+			handle_connect_result(error::make_error_code(error::protocol_version_not_supported));
 	}
 }
 
@@ -305,8 +324,8 @@ void basic_connection::process_packet(ipacket& in)
 		}
 	}
 	
-	if (ec and m_connect_handler)
-		m_connect_handler->handle_connect(ec, m_io_service);
+	if (ec)
+		handle_connect_result(ec);
 
 	if (not out.empty())
 	{
@@ -359,10 +378,7 @@ void basic_connection::process_service_accept(ipacket& in, opacket& out, boost::
 void basic_connection::process_userauth_success(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
 	m_authenticated = true;
-	m_connect_handler->handle_connect(boost::system::error_code(), m_io_service);
-
-	delete m_connect_handler;
-	m_connect_handler = nullptr;
+	handle_connect_result(boost::system::error_code());
 }
 
 void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -386,7 +402,7 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 		out = msg_ignore;
 	}
 	else
-		m_connect_handler->handle_connect(error::make_error_code(error::auth_cancelled_by_user), m_io_service);
+		handle_connect_result(error::make_error_code(error::auth_cancelled_by_user));
 }
 
 void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -420,9 +436,7 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 void basic_connection::full_stop(const boost::system::error_code& ec)
 {
 	disconnect();
-	
-	if (m_connect_handler)
-		m_connect_handler->handle_connect(ec, m_io_service);
+	handle_connect_result(ec);
 }
 
 struct packet_encryptor
@@ -648,7 +662,7 @@ void connection::start_handshake(basic_connect_handler* handler)
 void connection::handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
 {
 	if (ec)
-		m_connect_handler->handle_connect(ec, get_io_service());
+		handle_connect_result(ec);
 	else
 	{
 		boost::asio::ip::tcp::endpoint endpoint = *endpoint_iterator;

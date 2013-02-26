@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <assh/config.hpp>
+
 #include <vector>
 #include <deque>
 

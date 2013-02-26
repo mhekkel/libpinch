@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <assh/config.hpp>
 #include <assh/connection.hpp>
 
 namespace assh
@@ -15,6 +16,7 @@ class proxied_connection : public basic_connection
   public:
 
 							proxied_connection(basic_connection& proxy,
+								const std::string& nc_cmd,
 								const std::string& user,
 								const std::string& host, uint16 port = 22);
 

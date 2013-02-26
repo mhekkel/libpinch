@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <assh/config.hpp>
 #include <boost/system/error_code.hpp>
 
 namespace assh {

@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <assh/config.hpp>
+
 #include <boost/format.hpp>
 #include <boost/function.hpp>
 #include <boost/asio.hpp>
