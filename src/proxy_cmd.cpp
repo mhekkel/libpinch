@@ -42,7 +42,7 @@ class proxy_channel : public channel
 
 proxied_connection::proxied_connection(basic_connection& proxy, const string& nc_cmd, const string& user, const string& host, uint16 port)
 	: basic_connection(proxy.get_io_service(), user)
-	, m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port))
+	, m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
 {
 }
 
@@ -77,6 +77,11 @@ void proxied_connection::start_handshake()
 	}
 	else	// proxy connection and channel are now open
 		basic_connection::start_handshake();
+}
+
+bool proxied_connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key)
+{
+	return cb_validate_host_key and cb_validate_host_key(m_host, pk_alg, host_key);
 }
 
 void proxied_connection::async_write_int(boost::asio::streambuf* request, basic_write_op* op)

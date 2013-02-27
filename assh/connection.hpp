@@ -106,7 +106,7 @@ class basic_connection
 	};
 
 
-	virtual bool	validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key);
+	virtual bool	validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key) = 0;
 
 	virtual void	start_handshake();
 	void			handle_protocol_version_request(const boost::system::error_code& ec, std::size_t);
@@ -278,6 +278,8 @@ class connection : public basic_connection
   protected:
 
 	virtual void	start_handshake();
+
+	virtual bool	validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key);
 
 	void			handle_resolve(const boost::system::error_code& err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);
 	void			handle_connect(const boost::system::error_code& err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);

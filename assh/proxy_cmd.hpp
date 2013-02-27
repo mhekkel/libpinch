@@ -32,6 +32,8 @@ class proxied_connection : public basic_connection
 
 	virtual void			start_handshake();
 
+	virtual bool			validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key);
+
 	virtual void			async_write_int(boost::asio::streambuf* request, basic_write_op* op);
 	virtual void			async_read_version_string();
 	virtual void			async_read(uint32 at_least);
@@ -39,6 +41,7 @@ class proxied_connection : public basic_connection
   private:
 	basic_connection&		m_proxy;
 	class proxy_channel*	m_channel;
+	std::string				m_host;
 };
 
 }

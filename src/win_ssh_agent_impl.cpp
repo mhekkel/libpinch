@@ -356,7 +356,11 @@ string MWinSshPrivateKeyImpl::get_comment() const
 			vector<wchar_t> b(cb);
 			::CertGetNameString(mCertificateContext, type,
 				CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, &b[0], cb);
-//			comment = w2c(&b[0]);
+
+			while (cb > 0 and b[cb - 1] == 0)
+				--cb;
+
+			comment = string(b.begin(), b.begin() + cb);
 
 			if (not comment.empty())
 				break;

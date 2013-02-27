@@ -674,6 +674,11 @@ void connection::start_handshake()
 		basic_connection::start_handshake();
 }
 
+bool connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key)
+{
+	return cb_validate_host_key and cb_validate_host_key(m_host, pk_alg, host_key);
+}
+
 void connection::handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
 {
 	if (ec)
