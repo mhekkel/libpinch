@@ -101,14 +101,14 @@ void channel::closed()
 	m_channel_open = false;
 	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
 	{
-		op->written(error::make_error_code(error::connection_lost), 0);
+		op->written(error::make_error_code(error::channel_closed), 0);
 		delete op;
 	});
 	m_pending.clear();
 	
 	for_each(m_read_ops.begin(), m_read_ops.end(), [this](basic_read_op* handler)
 	{
-		handler->post_error(error::make_error_code(error::connection_lost), get_io_service());
+		handler->post_error(error::make_error_code(error::channel_closed), get_io_service());
 		delete handler;
 	});
 	m_read_ops.clear();
@@ -198,7 +198,7 @@ void channel::process(ipacket& in)
 		}
 
 		case msg_channel_close:
-			m_channel_open = false;
+			closed();
 			m_connection.close_channel(this, 0);
 			break;
 

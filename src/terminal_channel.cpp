@@ -7,6 +7,7 @@
 
 #include <assh/packet.hpp>
 #include <assh/terminal_channel.hpp>
+#include <assh/connection.hpp>
 
 using namespace std;
 
@@ -45,8 +46,10 @@ void terminal_channel::send_window_resize(uint32 width, uint32 height)
 {
 	opacket out(msg_channel_request);
 	out << m_host_channel_id
-		<< "window-change" << width << height << uint32(0) << uint32(0);
-	send_data(move(out));
+		<< "window-change" << false
+		<< width << height
+		<< uint32(0) << uint32(0);
+	m_connection.async_write(move(out));
 }
 	
 }

@@ -99,18 +99,17 @@ void basic_connection::handle_connect_result(const boost::system::error_code& ec
 		m_auth_state = auth_state_connected;
 	
 	for_each(m_connect_handlers.begin(), m_connect_handlers.end(),
-		[&ec](basic_connect_handler* h)
+		[this, &ec](basic_connect_handler* h)
 		{
-			try { h->handle_connect(ec); } catch (...) {}
+			try { h->handle_connect(ec, m_io_service); } catch (...) {}
 			delete h;
 		});
 	
 	m_connect_handlers.clear();
 }
 
-void basic_connection::start_handshake(basic_connect_handler* handler)
+void basic_connection::start_handshake()
 {
-	m_connect_handlers.push_back(handler);
 	if (m_auth_state == auth_state_none)
 	{
 		m_authenticated = false;
@@ -288,7 +287,10 @@ void basic_connection::process_packet(ipacket& in)
 				m_host_payload = in;
 				m_key_exchange = key_exchange::create(in, m_host_version, m_session_id, m_my_payload);
 				if (m_key_exchange)
+				{
+					m_key_exchange->cb_verify_host_key = boost::bind(&basic_connection::validate_host_key, this, _1, _2);
 					m_key_exchange->process(in, out, ec);
+				}
 				break;
 
 			case msg_newkeys:				process_newkeys(in, out, ec);				break;
@@ -335,6 +337,11 @@ void basic_connection::process_packet(ipacket& in)
 					full_stop(ec);
 			});
 	}
+}
+
+bool basic_connection::validate_host_key(const string& pk_alg, const vector<uint8>& host_key)
+{
+	return true;
 }
 
 void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -396,11 +403,8 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 		m_private_keys.pop_front();
 		m_auth_state = auth_state_public_key;
 	}
-	else if (choose_protocol(s, "password") == "password")
-	{
-		ec = error::make_error_code(error::require_password);
-		out = msg_ignore;
-	}
+	else if (choose_protocol(s, "password") == "password" and cb_request_password and ++m_password_attempts <= 3)
+		cb_request_password();
 	else
 		handle_connect_result(error::make_error_code(error::auth_cancelled_by_user));
 }
@@ -431,6 +435,17 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 		
 		out << ssh_private_key(blob).sign(session_id, out);
 	}
+}
+
+void basic_connection::password(const string& pw)
+{
+	async_write(opacket(msg_userauth_request) << m_user << "ssh-connection" << "password" << false << pw,
+		[this](const boost::system::error_code& ec, size_t)
+		{
+			if (ec)
+				full_stop(ec);
+		}
+	);
 }
 
 void basic_connection::full_stop(const boost::system::error_code& ec)
@@ -557,13 +572,15 @@ void basic_connection::open_channel(channel* ch, uint32 channel_id)
 void basic_connection::close_channel(channel* ch, uint32 channel_id)
 {
 	if (ch->is_open())
-		ch->closed();
-
-	if (m_authenticated)
 	{
-		opacket out(msg_channel_close);
-		out << channel_id;
-		async_write(out);
+		if (m_authenticated)
+		{
+			opacket out(msg_channel_close);
+			out << channel_id;
+			async_write(out);
+		}
+
+		ch->closed();
 	}
 	else if (find(m_channels.begin(), m_channels.end(), ch) != m_channels.end())
 	{
@@ -642,10 +659,8 @@ void connection::disconnect()
 	m_socket.close();
 }
 
-void connection::start_handshake(basic_connect_handler* handler)
+void connection::start_handshake()
 {
-	m_connect_handler = handler;
-	
 	if (not m_socket.is_open())
 	{
 		boost::asio::ip::tcp::resolver resolver(get_io_service());
@@ -656,7 +671,7 @@ void connection::start_handshake(basic_connect_handler* handler)
 				boost::asio::placeholders::error, boost::asio::placeholders::iterator));
 	}
 	else
-		basic_connection::start_handshake(m_connect_handler);
+		basic_connection::start_handshake();
 }
 
 void connection::handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
@@ -684,9 +699,9 @@ void connection::handle_connect(const boost::system::error_code& ec, boost::asio
             boost::asio::placeholders::error, ++endpoint_iterator));
     }
     else if (ec)
-    	m_connect_handler->handle_connect(ec, get_io_service());
+		handle_connect_result(ec);
     else
-    	start_handshake(m_connect_handler);
+    	start_handshake();
 }
 
 void connection::async_write_int(boost::asio::streambuf* request, basic_write_op* op)

@@ -30,7 +30,7 @@ class proxied_connection : public basic_connection
 
   protected:
 
-	virtual void			start_handshake(basic_connect_handler* handler);
+	virtual void			start_handshake();
 
 	virtual void			async_write_int(boost::asio::streambuf* request, basic_write_op* op);
 	virtual void			async_read_version_string();

@@ -79,6 +79,7 @@ enum disconnect_errors
 	protocol_version_not_supported,
 	host_key_not_verifiable,
 	connection_lost,
+	channel_closed,
 	by_application,
 	too_many_connections,
 	auth_cancelled_by_user,

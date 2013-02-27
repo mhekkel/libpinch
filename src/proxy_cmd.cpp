@@ -53,30 +53,30 @@ proxied_connection::~proxied_connection()
 	delete m_channel;
 }
 
-void proxied_connection::start_handshake(basic_connect_handler* handler)
+void proxied_connection::start_handshake()
 {
 	if (not m_proxy.is_connected())
 	{
-		m_proxy.async_connect([this, handler](const boost::system::error_code& ec)
+		m_proxy.async_connect([this](const boost::system::error_code& ec)
 		{
 			if (ec)
-				handler->handle_connect(ec, get_io_service());
+				handle_connect_result(ec);
 			else
-				start_handshake(handler);
+				start_handshake();
 		});
 	}
 	else if (not m_channel->is_open())
 	{
-		m_channel->open([this, handler](const boost::system::error_code& ec)
+		m_channel->open([this](const boost::system::error_code& ec)
 		{
 			if (ec)
-				handler->handle_connect(ec, get_io_service());
+				handle_connect_result(ec);
 			else
-				start_handshake(handler);
+				start_handshake();
 		});
 	}
 	else	// proxy connection and channel are now open
-		basic_connection::start_handshake(handler);
+		basic_connection::start_handshake();
 }
 
 void proxied_connection::async_write_int(boost::asio::streambuf* request, basic_write_op* op)

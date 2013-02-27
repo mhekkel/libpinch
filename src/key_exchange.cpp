@@ -141,35 +141,34 @@ void key_exchange::process_kex_dh_reply(ipacket& in, opacket& out, boost::system
 	ipacket pk_rs;
 	signature >> pk_type >> pk_rs;
 
-//						string hostName = mIPAddress;
-//						if (mPortNumber != 22)
-//							hostName = hostName + ':' + boost::lexical_cast<string>(mPortNumber);
-//						if (not MKnownHosts::Instance().CheckHost(hostName, pk_type, hostkey))
-//							Error(error::make_error_code(error::host_key_not_verifiable));
-
-	string h_pk_type;
-	hostkey >> h_pk_type;
-
-	if (h_pk_type == "ssh-dss")
-	{
-		Integer h_p, h_q, h_g, h_y;
-		hostkey >> h_p >> h_q >> h_g >> h_y;
-
-		h_key.reset(new GDSA<SHA1>::Verifier(h_p, h_q, h_g, h_y));
-	}
-	else if (h_pk_type == "ssh-rsa")
-	{
-		Integer h_e, h_n;
-		hostkey >> h_e >> h_n;
-
-		h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
-	}
-
-	vector<uint8> pk_rs_d = pk_rs;
-	if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
+	if (cb_verify_host_key and not cb_verify_host_key(pk_type, hostkey))
 		ec = error::make_error_code(error::host_key_verification_failed);
 	else
-		out = msg_newkeys;
+	{
+		string h_pk_type;
+		hostkey >> h_pk_type;
+	
+		if (h_pk_type == "ssh-dss")
+		{
+			Integer h_p, h_q, h_g, h_y;
+			hostkey >> h_p >> h_q >> h_g >> h_y;
+	
+			h_key.reset(new GDSA<SHA1>::Verifier(h_p, h_q, h_g, h_y));
+		}
+		else if (h_pk_type == "ssh-rsa")
+		{
+			Integer h_e, h_n;
+			hostkey >> h_e >> h_n;
+	
+			h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
+		}
+	
+		vector<uint8> pk_rs_d = pk_rs;
+		if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
+			ec = error::make_error_code(error::host_key_verification_failed);
+		else
+			out = msg_newkeys;
+	}
 
 	derive_keys_with_hash();		// to avoid problems
 }

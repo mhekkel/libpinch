@@ -9,6 +9,8 @@
 
 #include <list>
 
+#include <boost/function.hpp>
+
 #include <assh/packet.hpp>
 
 namespace assh
@@ -24,13 +26,25 @@ class basic_connection
   public:
 	virtual			~basic_connection();
 
+	// callbacks to be installed by owning object
+
+	// bool validate_host_key(host, alg, key)
+	boost::function<bool(const std::string&,const std::string&,const std::vector<uint8>&)>	cb_validate_host_key;
+	
+	// void request_password()
+	boost::function<void()> cb_request_password;
+
 	template<typename Handler>
 	void			async_connect(Handler&& handler)
 					{
 					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
-				    	start_handshake(new connect_handler<Handler>(std::move(handler)));
+					    m_connect_handlers.push_back(new connect_handler<Handler>(std::move(handler)));
+				    	start_handshake();
 					}
 	
+	// to be called when requested by the connection object
+	void			password(const std::string& pw);
+
 	virtual void	disconnect();
 
 	void			open_channel(channel* ch, uint32 id);
@@ -92,8 +106,9 @@ class basic_connection
 	};
 
 
+	virtual bool	validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key);
 
-	virtual void	start_handshake(basic_connect_handler* handler);
+	virtual void	start_handshake();
 	void			handle_protocol_version_request(const boost::system::error_code& ec, std::size_t);
 	void			handle_protocol_version_response(const boost::system::error_code& ec, std::size_t);
 	
@@ -262,7 +277,7 @@ class connection : public basic_connection
 
   protected:
 
-	virtual void	start_handshake(basic_connect_handler* handler);
+	virtual void	start_handshake();
 
 	void			handle_resolve(const boost::system::error_code& err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);
 	void			handle_connect(const boost::system::error_code& err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);

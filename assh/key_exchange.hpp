@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <boost/function.hpp>
+
 #include <assh/config.hpp>
 #include <assh/packet.hpp>
 
@@ -27,6 +29,8 @@ class key_exchange
 
 	virtual bool			process(ipacket& in, opacket& out, boost::system::error_code& ec);
 
+	boost::function<bool(const std::string&,const std::vector<uint8>&)>
+							cb_verify_host_key;
 
 	CryptoPP::StreamTransformation*			decryptor();
 	CryptoPP::StreamTransformation*			encryptor();
