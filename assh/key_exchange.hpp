@@ -36,6 +36,11 @@ class key_exchange
 	CryptoPP::StreamTransformation*			encryptor();
 	CryptoPP::MessageAuthenticationCode*	signer();
 	CryptoPP::MessageAuthenticationCode*	verifier();
+	struct z_stream_s*						compressor();
+	struct z_stream_s*						decompressor();
+	
+	bool									delay_compression();
+	bool									delay_decompression();
   	
   protected:
 

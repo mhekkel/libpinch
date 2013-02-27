@@ -20,6 +20,8 @@
 #include <cryptopp/blowfish.h>
 #include <cryptopp/modes.h>
 
+#include <zlib.h>
+
 #include <assh/hash.hpp>
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
@@ -277,6 +279,52 @@ MessageAuthenticationCode* key_exchange::verifier()
 		result = new HMAC<Weak::MD5>(&m_keys[5][0]);
 	
 	return result;
+}
+
+z_stream_s* key_exchange::compressor()
+{
+	z_stream_s* result = nullptr;
+	
+	string protocol = choose_protocol(m_compression_alg_c2s, kUseCompressionAlgorithms);
+	if (protocol == "zlib" or protocol == "zlib@openssh.com")
+	{
+		result = new z_stream_s;
+		if (deflateInit(result, 3) != Z_OK)
+		{
+			delete result;
+			result = nullptr;
+		}
+	}
+	
+	return result;
+}
+
+bool key_exchange::delay_compression()
+{
+	return choose_protocol(m_compression_alg_c2s, kUseCompressionAlgorithms) == "zlib@openssh.com";
+}
+
+z_stream_s* key_exchange::decompressor()
+{
+	z_stream_s* result = nullptr;
+	
+	string protocol = choose_protocol(m_compression_alg_s2c, kUseCompressionAlgorithms);
+	if (protocol == "zlib" or protocol == "zlib@openssh.com")
+	{
+		result = new z_stream_s;
+		if (inflateInit(result) != Z_OK)
+		{
+			delete result;
+			result = nullptr;
+		}
+	}
+	
+	return result;
+}
+
+bool key_exchange::delay_decompression()
+{
+	return choose_protocol(m_compression_alg_s2c, kUseCompressionAlgorithms) == "zlib@openssh.com";
 }
 
 // --------------------------------------------------------------------

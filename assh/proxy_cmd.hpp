@@ -28,6 +28,8 @@ class proxied_connection : public basic_connection
 								return m_proxy.get_io_service();
 							}
 
+	virtual void			set_validate_callback(const validate_callback_type& cb);
+
   protected:
 
 	virtual void			start_handshake();

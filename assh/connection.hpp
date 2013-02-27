@@ -29,11 +29,15 @@ class basic_connection
 	// callbacks to be installed by owning object
 
 	// bool validate_host_key(host, alg, key)
-	boost::function<bool(const std::string&,const std::string&,const std::vector<uint8>&)>	cb_validate_host_key;
-	
-	// void request_password()
-	boost::function<void()> cb_request_password;
+	typedef boost::function<bool(const std::string&,const std::string&,const std::vector<uint8>&)>
+					validate_callback_type;
 
+	// void request_password()
+	typedef boost::function<void()> password_callback_type;
+
+	virtual void	set_validate_callback(const validate_callback_type& cb);
+	void			set_password_callback(const password_callback_type& cb);
+	
 	template<typename Handler>
 	void			async_connect(Handler&& handler)
 					{
@@ -162,7 +166,7 @@ class basic_connection
 							io_service.post(bound_handler<Handler>(m_handler, boost::system::error_code(), std::move(p)));
 						}
 
-		Handler		m_handler;
+		Handler			m_handler;
 	};
 
 	template<typename Handler>
@@ -240,12 +244,16 @@ class basic_connection
 	ipacket						m_packet;
 	uint32						m_iblocksize, m_oblocksize;
 	boost::asio::streambuf		m_response;
+
+	validate_callback_type		m_validate_host_key_cb;
+	password_callback_type		m_request_password_cb;
 	
 	key_exchange*				m_key_exchange;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_decryptor;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_encryptor;
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode>	m_signer;
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode>	m_verifier;
+	std::unique_ptr<struct z_stream_s>						m_compressor;
 	//std::unique_ptr<MSshPacketCompressor>					m_compressor;
 	//std::unique_ptr<MSshPacketDecompressor>				m_decompressor;
 

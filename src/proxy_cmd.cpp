@@ -48,9 +48,15 @@ proxied_connection::proxied_connection(basic_connection& proxy, const string& nc
 
 proxied_connection::~proxied_connection()
 {
-	if (m_channel)
+	if (m_channel and m_channel->is_open())
 		m_channel->close();
 	delete m_channel;
+}
+
+void proxied_connection::set_validate_callback(const validate_callback_type& cb)
+{
+	m_proxy.set_validate_callback(cb);
+	basic_connection::set_validate_callback(cb);
 }
 
 void proxied_connection::start_handshake()
@@ -81,7 +87,7 @@ void proxied_connection::start_handshake()
 
 bool proxied_connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key)
 {
-	return cb_validate_host_key and cb_validate_host_key(m_host, pk_alg, host_key);
+	return m_validate_host_key_cb and m_validate_host_key_cb(m_host, pk_alg, host_key);
 }
 
 void proxied_connection::async_write_int(boost::asio::streambuf* request, basic_write_op* op)

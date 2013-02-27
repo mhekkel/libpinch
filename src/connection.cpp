@@ -29,6 +29,8 @@
 #include <cryptopp/factory.h>
 #include <cryptopp/modes.h>
 
+#include <zlib.h>
+
 #include <assh/connection.hpp>
 #include <assh/channel.hpp>
 #include <assh/hash.hpp>
@@ -70,6 +72,16 @@ basic_connection::~basic_connection()
 	delete m_key_exchange;
 }
 
+void basic_connection::set_validate_callback(const validate_callback_type& cb)
+{
+	m_validate_host_key_cb = cb;
+}
+
+void basic_connection::set_password_callback(const password_callback_type& cb)
+{
+	m_request_password_cb = cb;
+}
+
 void basic_connection::disconnect()
 {
 	m_authenticated = false;
@@ -80,6 +92,12 @@ void basic_connection::disconnect()
 	m_decryptor.reset(nullptr);
 	m_signer.reset(nullptr);
 	m_verifier.reset(nullptr);
+	
+	if (m_compressor)
+	{
+		deflateEnd(m_compressor.get());
+		m_compressor.reset(nullptr);
+	}
 	
 	// copy the list since calling Close will change it
 	list<channel*> channels(m_channels);
@@ -155,7 +173,8 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 			for (uint32 i = 0; i < 16; ++i)
 				out << rng.GenerateByte();
 			
-			string compress = "none";	// "zlib@openssh.com,zlib,none"
+			string decompress = "none";	// "zlib@openssh.com,zlib,none"
+			string compress = kUseCompressionAlgorithms;
 
 			out << kKeyExchangeAlgorithms
 				<< kServerHostKeyAlgorithms
@@ -164,7 +183,7 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 				<< kMacAlgorithms
 				<< kMacAlgorithms
 				<< compress
-				<< compress
+				<< decompress
 				<< ""
 				<< ""
 				<< false
@@ -351,16 +370,24 @@ void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system:
 	m_signer.reset(m_key_exchange->signer());
 	m_verifier.reset(m_key_exchange->verifier());
 	
-	delete m_key_exchange;
-	m_key_exchange = nullptr;
-
+	if (m_authenticated or not m_key_exchange->delay_compression())
+		m_compressor.reset(m_key_exchange->compressor());
+	
+	//if (m_authenticated or not m_key_exchange->delay_decompression())
+	//	m_decompressor.reset(m_key_exchange->decompressor());
+	
 	if (m_decryptor)
 	{
 		m_iblocksize = m_decryptor->OptimalBlockSize();
 		m_oblocksize = m_encryptor->OptimalBlockSize();
 	}
 	
-	if (not m_authenticated)
+	if (m_authenticated)
+	{
+		delete m_key_exchange;
+		m_key_exchange = nullptr;
+	}
+	else
 	{
 		out = msg_service_request;
 		out << "ssh-userauth";
@@ -385,6 +412,16 @@ void basic_connection::process_service_accept(ipacket& in, opacket& out, boost::
 void basic_connection::process_userauth_success(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
 	m_authenticated = true;
+	
+	if (m_key_exchange->delay_compression())
+		m_compressor.reset(m_key_exchange->compressor());
+	
+	if (m_key_exchange->delay_compression())
+		m_compressor.reset(m_key_exchange->compressor());
+
+	delete m_key_exchange;
+	m_key_exchange = nullptr;
+	
 	handle_connect_result(boost::system::error_code());
 }
 
@@ -403,8 +440,8 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 		m_private_keys.pop_front();
 		m_auth_state = auth_state_public_key;
 	}
-	else if (choose_protocol(s, "password") == "password" and cb_request_password and ++m_password_attempts <= 3)
-		cb_request_password();
+	else if (choose_protocol(s, "password") == "password" and m_request_password_cb and ++m_password_attempts <= 3)
+		m_request_password_cb();
 	else
 		handle_connect_result(error::make_error_code(error::auth_cancelled_by_user));
 }
@@ -453,6 +490,77 @@ void basic_connection::full_stop(const boost::system::error_code& ec)
 	disconnect();
 	handle_connect_result(ec);
 }
+
+struct packet_compressor
+{
+    typedef char char_type;
+	struct category : io::multichar_output_filter_tag, io::flushable_tag {};
+
+				packet_compressor(z_stream_s& z_stream)
+					: m_zstream(z_stream), m_flushed(false) {}
+	
+	template<typename Sink>
+	streamsize	write(Sink& sink, const char* s, streamsize n)
+				{
+					m_zstream.next_in = reinterpret_cast<uint8*>(const_cast<char*>(s));
+					m_zstream.avail_in = n;
+					m_zstream.total_in = 0;
+
+					m_zstream.total_out = 0;
+					
+					int err;
+					do
+					{
+						uint8 buffer[512];
+					
+						m_zstream.next_out = buffer;
+						m_zstream.avail_out = sizeof(buffer);
+						
+						err = deflate(&m_zstream, Z_NO_FLUSH);
+						
+						for (int i = 0; i < sizeof(buffer) - m_zstream.avail_out; ++i)
+							io::put(sink, buffer[i]);
+					}
+					while (err >= Z_OK);
+					
+                    return m_zstream.total_in;
+				}
+
+	template<typename Sink>
+	bool		flush(Sink& sink)
+				{
+					if (not m_flushed)
+					{
+						m_zstream.next_in = nullptr;
+						m_zstream.avail_in = 0;
+						m_zstream.total_in = 0;
+	
+						m_zstream.total_out = 0;
+						
+						int err;
+						do
+						{
+							uint8 buffer[512];
+						
+							m_zstream.next_out = buffer;
+							m_zstream.avail_out = sizeof(buffer);
+							
+							err = deflate(&m_zstream, Z_SYNC_FLUSH);
+							
+							for (int i = 0; i < sizeof(buffer) - m_zstream.avail_out; ++i)
+								io::put(sink, buffer[i]);
+						}
+						while (err >= Z_OK);
+						
+						m_flushed = true;
+					}
+
+					return true;
+				}
+
+	z_stream_s&	m_zstream;
+	bool		m_flushed;
+};
 
 struct packet_encryptor
 {
@@ -537,9 +645,13 @@ void basic_connection::async_write_packet_int(const opacket& p, basic_write_op* 
 
 	{
 		io::filtering_stream<io::output> out;
+		
+		if (m_compressor)
+			out.push(packet_compressor(*m_compressor));
 	
 		if (m_encryptor)
 			out.push(packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
+
 		out.push(*request);
 
 		p.write(out, m_oblocksize);
@@ -676,7 +788,7 @@ void connection::start_handshake()
 
 bool connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key)
 {
-	return cb_validate_host_key and cb_validate_host_key(m_host, pk_alg, host_key);
+	return m_validate_host_key_cb and m_validate_host_key_cb(m_host, pk_alg, host_key);
 }
 
 void connection::handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)

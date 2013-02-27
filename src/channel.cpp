@@ -93,7 +93,8 @@ void channel::opened()
 void channel::close()
 {
 //	ChannelMessage(_("Channel closed"));
-	m_connection.close_channel(this, m_host_channel_id);
+	if (m_channel_open)
+		m_connection.close_channel(this, m_host_channel_id);
 }
 
 void channel::closed()
