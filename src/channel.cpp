@@ -344,7 +344,7 @@ void channel::send_pending()
 		m_host_window_size -= size;
 		m_send_pending = true;
 
-		m_connection.async_write(op->m_packets.front(),
+		m_connection.async_write(move(op->m_packets.front()),
 			[this, op](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			this->m_send_pending = false;

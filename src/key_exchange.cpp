@@ -20,8 +20,6 @@
 #include <cryptopp/blowfish.h>
 #include <cryptopp/modes.h>
 
-#include <zlib.h>
-
 #include <assh/hash.hpp>
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
@@ -41,8 +39,7 @@ const string
 	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
 	kEncryptionAlgorithms("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha1,hmac-md5"),
-	kUseCompressionAlgorithms("zlib@openssh.com,zlib,none"),
-	kDontUseCompressionAlgorithms("none,zlib@openssh.com,zlib");
+	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
 
 // --------------------------------------------------------------------
 	
@@ -100,8 +97,8 @@ void key_exchange::init(ipacket& in)
 	m_encryption_alg_s2c = choose_protocol(encryption_alg_s2c, kEncryptionAlgorithms);
 	m_MAC_alg_c2s = choose_protocol(MAC_alg_c2s, kMacAlgorithms);
 	m_MAC_alg_s2c = choose_protocol(MAC_alg_s2c, kMacAlgorithms);
-	m_compression_alg_c2s = choose_protocol(compression_alg_c2s, kDontUseCompressionAlgorithms);
-	m_compression_alg_s2c = choose_protocol(compression_alg_s2c, kDontUseCompressionAlgorithms);
+	m_compression_alg_c2s = choose_protocol(compression_alg_c2s, kCompressionAlgorithms);
+	m_compression_alg_s2c = choose_protocol(compression_alg_s2c, kCompressionAlgorithms);
 	m_lang_c2s = choose_protocol(lang_c2s, "none");
 	m_lang_s2c = choose_protocol(lang_s2c, "none");
 }
@@ -281,50 +278,14 @@ MessageAuthenticationCode* key_exchange::verifier()
 	return result;
 }
 
-z_stream_s* key_exchange::compressor()
+string key_exchange::compression_alg()
 {
-	z_stream_s* result = nullptr;
-	
-	string protocol = choose_protocol(m_compression_alg_c2s, kUseCompressionAlgorithms);
-	if (protocol == "zlib" or protocol == "zlib@openssh.com")
-	{
-		result = new z_stream_s;
-		if (deflateInit(result, 3) != Z_OK)
-		{
-			delete result;
-			result = nullptr;
-		}
-	}
-	
-	return result;
+	return choose_protocol(m_compression_alg_c2s, kCompressionAlgorithms);
 }
 
-bool key_exchange::delay_compression()
+string key_exchange::decompression_alg()
 {
-	return choose_protocol(m_compression_alg_c2s, kUseCompressionAlgorithms) == "zlib@openssh.com";
-}
-
-z_stream_s* key_exchange::decompressor()
-{
-	z_stream_s* result = nullptr;
-	
-	string protocol = choose_protocol(m_compression_alg_s2c, kUseCompressionAlgorithms);
-	if (protocol == "zlib" or protocol == "zlib@openssh.com")
-	{
-		result = new z_stream_s;
-		if (inflateInit(result) != Z_OK)
-		{
-			delete result;
-			result = nullptr;
-		}
-	}
-	
-	return result;
-}
-
-bool key_exchange::delay_decompression()
-{
-	return choose_protocol(m_compression_alg_s2c, kUseCompressionAlgorithms) == "zlib@openssh.com";
+	return choose_protocol(m_compression_alg_s2c, kCompressionAlgorithms);
 }
 
 // --------------------------------------------------------------------

@@ -16,11 +16,24 @@
 
 #include <cryptopp/integer.h>
 
+struct z_stream_s;
+
 namespace assh
 {
 
 class ipacket;
 class opacket;
+
+class compression_helper
+{
+  public:
+			compression_helper(bool deflate);
+			~compression_helper();
+	
+			operator z_stream_s&();
+  private:
+	struct compression_helper_impl*	m_impl;
+};
 
 class packet_exception : public std::exception
 {
@@ -98,6 +111,8 @@ class opacket
 	opacket&		operator=(const opacket& rhs);
 	opacket&		operator=(opacket&& rhs);
 
+	void			compress(compression_helper& compressor, boost::system::error_code& ec);
+
 	void			write(std::ostream& os, int blocksize) const;
 	
 					operator std::vector<uint8>() const	{ return m_data; }
@@ -148,7 +163,8 @@ class ipacket
 	bool			complete();
 	bool			empty();
 	void			clear();
-	void			strip_padding();
+
+	void			decompress(compression_helper& decompressor, boost::system::error_code& ec);
 	
 	size_t			size() const						{ return m_length; }
 	

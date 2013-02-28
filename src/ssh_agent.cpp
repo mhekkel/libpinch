@@ -187,8 +187,9 @@ void ssh_agent_channel::setup(ipacket& in)
 {
 	m_channel_open = true;
 
-	m_connection.async_write(opacket(msg_channel_open_confirmation)
-		<< m_host_channel_id << m_my_channel_id << m_my_window_size << kMaxPacketSize);
+	opacket out(msg_channel_open_confirmation);
+	out << m_host_channel_id << m_my_channel_id << m_my_window_size << kMaxPacketSize;
+	m_connection.async_write(move(out));
 }
 
 void ssh_agent_channel::receive_data(const char* data, size_t size)

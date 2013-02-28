@@ -29,8 +29,6 @@
 #include <cryptopp/factory.h>
 #include <cryptopp/modes.h>
 
-#include <zlib.h>
-
 #include <assh/connection.hpp>
 #include <assh/channel.hpp>
 #include <assh/hash.hpp>
@@ -92,12 +90,8 @@ void basic_connection::disconnect()
 	m_decryptor.reset(nullptr);
 	m_signer.reset(nullptr);
 	m_verifier.reset(nullptr);
-	
-	if (m_compressor)
-	{
-		deflateEnd(m_compressor.get());
-		m_compressor.reset(nullptr);
-	}
+	m_compressor.reset(nullptr);
+	m_decompressor.reset(nullptr);
 	
 	// copy the list since calling Close will change it
 	list<channel*> channels(m_channels);
@@ -124,6 +118,9 @@ void basic_connection::handle_connect_result(const boost::system::error_code& ec
 		});
 	
 	m_connect_handlers.clear();
+
+	if (ec)
+		disconnect();
 }
 
 void basic_connection::start_handshake()
@@ -173,29 +170,26 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 			for (uint32 i = 0; i < 16; ++i)
 				out << rng.GenerateByte();
 			
-			string decompress = "none";	// "zlib@openssh.com,zlib,none"
-			string compress = kUseCompressionAlgorithms;
-
 			out << kKeyExchangeAlgorithms
 				<< kServerHostKeyAlgorithms
 				<< kEncryptionAlgorithms
 				<< kEncryptionAlgorithms
 				<< kMacAlgorithms
 				<< kMacAlgorithms
-				<< compress
-				<< decompress
+				<< kCompressionAlgorithms
+				<< kCompressionAlgorithms
 				<< ""
 				<< ""
 				<< false
 				<< uint32(0);
 			
-			async_write(out, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+			m_my_payload = out;
+			
+			async_write(move(out), [this](const boost::system::error_code& ec, size_t bytes_transferred)
 			{
 				if (ec)
 					handle_connect_result(ec);
 			});
-			
-			m_my_payload = out;
 			
 			// start read loop
 			received_data(boost::system::error_code());
@@ -259,6 +253,17 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 				{
 					full_stop(error::make_error_code(error::mac_error));
 					return;
+				}
+			}
+			
+			if (m_decompressor)
+			{
+				boost::system::error_code ec;
+				m_packet.decompress(*m_decompressor, ec);
+				if (ec)
+				{
+					full_stop(ec);
+					break;
 				}
 			}
 			
@@ -350,7 +355,7 @@ void basic_connection::process_packet(ipacket& in)
 
 	if (not out.empty())
 	{
-		async_write(out, [this](const boost::system::error_code& ec, size_t)
+		async_write(move(out), [this](const boost::system::error_code& ec, size_t)
 			{
 				if (ec)
 					full_stop(ec);
@@ -370,11 +375,11 @@ void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system:
 	m_signer.reset(m_key_exchange->signer());
 	m_verifier.reset(m_key_exchange->verifier());
 	
-	if (m_authenticated or not m_key_exchange->delay_compression())
-		m_compressor.reset(m_key_exchange->compressor());
-	
-	//if (m_authenticated or not m_key_exchange->delay_decompression())
-	//	m_decompressor.reset(m_key_exchange->decompressor());
+	if (not m_compressor and m_key_exchange->compression_alg() == "zlib")
+		m_compressor.reset(new compression_helper(true));
+
+	if (not m_decompressor and m_key_exchange->decompression_alg() == "zlib")
+		m_decompressor.reset(new compression_helper(false));
 	
 	if (m_decryptor)
 	{
@@ -413,11 +418,11 @@ void basic_connection::process_userauth_success(ipacket& in, opacket& out, boost
 {
 	m_authenticated = true;
 	
-	if (m_key_exchange->delay_compression())
-		m_compressor.reset(m_key_exchange->compressor());
-	
-	if (m_key_exchange->delay_compression())
-		m_compressor.reset(m_key_exchange->compressor());
+	if (m_key_exchange->compression_alg() == "zlib@openssh.com")
+		m_compressor.reset(new compression_helper(true));
+
+	if (m_key_exchange->decompression_alg() == "zlib@openssh.com")
+		m_decompressor.reset(new compression_helper(false));
 
 	delete m_key_exchange;
 	m_key_exchange = nullptr;
@@ -476,7 +481,9 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 
 void basic_connection::password(const string& pw)
 {
-	async_write(opacket(msg_userauth_request) << m_user << "ssh-connection" << "password" << false << pw,
+	opacket out(msg_userauth_request);
+	out << m_user << "ssh-connection" << "password" << false << pw;
+	async_write(move(out),
 		[this](const boost::system::error_code& ec, size_t)
 		{
 			if (ec)
@@ -490,77 +497,6 @@ void basic_connection::full_stop(const boost::system::error_code& ec)
 	disconnect();
 	handle_connect_result(ec);
 }
-
-struct packet_compressor
-{
-    typedef char char_type;
-	struct category : io::multichar_output_filter_tag, io::flushable_tag {};
-
-				packet_compressor(z_stream_s& z_stream)
-					: m_zstream(z_stream), m_flushed(false) {}
-	
-	template<typename Sink>
-	streamsize	write(Sink& sink, const char* s, streamsize n)
-				{
-					m_zstream.next_in = reinterpret_cast<uint8*>(const_cast<char*>(s));
-					m_zstream.avail_in = n;
-					m_zstream.total_in = 0;
-
-					m_zstream.total_out = 0;
-					
-					int err;
-					do
-					{
-						uint8 buffer[512];
-					
-						m_zstream.next_out = buffer;
-						m_zstream.avail_out = sizeof(buffer);
-						
-						err = deflate(&m_zstream, Z_NO_FLUSH);
-						
-						for (int i = 0; i < sizeof(buffer) - m_zstream.avail_out; ++i)
-							io::put(sink, buffer[i]);
-					}
-					while (err >= Z_OK);
-					
-                    return m_zstream.total_in;
-				}
-
-	template<typename Sink>
-	bool		flush(Sink& sink)
-				{
-					if (not m_flushed)
-					{
-						m_zstream.next_in = nullptr;
-						m_zstream.avail_in = 0;
-						m_zstream.total_in = 0;
-	
-						m_zstream.total_out = 0;
-						
-						int err;
-						do
-						{
-							uint8 buffer[512];
-						
-							m_zstream.next_out = buffer;
-							m_zstream.avail_out = sizeof(buffer);
-							
-							err = deflate(&m_zstream, Z_SYNC_FLUSH);
-							
-							for (int i = 0; i < sizeof(buffer) - m_zstream.avail_out; ++i)
-								io::put(sink, buffer[i]);
-						}
-						while (err >= Z_OK);
-						
-						m_flushed = true;
-					}
-
-					return true;
-				}
-
-	z_stream_s&	m_zstream;
-	bool		m_flushed;
-};
 
 struct packet_encryptor
 {
@@ -639,16 +575,26 @@ struct packet_encryptor
 	bool						m_flushed;
 };
 
-void basic_connection::async_write_packet_int(const opacket& p, basic_write_op* op)
+void basic_connection::async_write_packet_int(opacket&& p, basic_write_op* op)
 {
 	boost::asio::streambuf* request(new boost::asio::streambuf);
-
+	
+	if (m_compressor)
+	{
+		boost::system::error_code ec;
+		p.compress(*m_compressor, ec);
+		
+		if (ec)
+		{
+			(*op)(ec, 0);
+			delete op;
+			return;
+		}
+	}
+	
 	{
 		io::filtering_stream<io::output> out;
 		
-		if (m_compressor)
-			out.push(packet_compressor(*m_compressor));
-	
 		if (m_encryptor)
 			out.push(packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
 
@@ -677,7 +623,7 @@ void basic_connection::open_channel(channel* ch, uint32 channel_id)
 	{
 		opacket out(msg_channel_open);
 		out << "session" << channel_id << kWindowSize << kMaxPacketSize;
-		async_write(out);
+		async_write(move(out));
 	}
 }
 
@@ -689,7 +635,7 @@ void basic_connection::close_channel(channel* ch, uint32 channel_id)
 		{
 			opacket out(msg_channel_close);
 			out << channel_id;
-			async_write(out);
+			async_write(move(out));
 		}
 
 		ch->closed();

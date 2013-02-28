@@ -60,15 +60,19 @@ void x11_channel::setup(ipacket& in)
 			boost::bind(&x11_channel::receive_raw, this,
 			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 		
-		m_connection.async_write(opacket(msg_channel_open_confirmation) << m_host_channel_id
-			<< m_my_channel_id << m_my_window_size << kMaxPacketSize);
+		opacket out(msg_channel_open_confirmation);
+		out << m_host_channel_id
+			<< m_my_channel_id << m_my_window_size << kMaxPacketSize;
+		m_connection.async_write(move(out));
 		
 		m_channel_open = true;
 	}
 	catch (...)
 	{
-		m_connection.async_write(opacket(msg_channel_failure) << m_host_channel_id
-			<< 2 << "Failed to open connection to X-server" << "en");
+		opacket out(msg_channel_failure);
+		out << m_host_channel_id
+			<< 2 << "Failed to open connection to X-server" << "en";
+		m_connection.async_write(move(out));
 	}
 }
 
@@ -132,7 +136,7 @@ bool x11_channel::check_validation()
 		
 		string protocol, data;
 		
-		if (m_packet.size() >= 12 + pl + dl)
+		if (m_packet.size() >= 12UL + pl + dl)
 		{
 			protocol.assign(m_packet.begin() + 12, m_packet.begin() + 12 + pl);
 			data.assign(m_packet.begin() + 12 + pl, m_packet.begin() + 12 + pl + dl);
@@ -163,7 +167,7 @@ void x11_channel::receive_raw(const boost::system::error_code& ec, size_t)
 		{
 			char buffer[8192];
 	
-			size_t k = in.readsome(buffer, sizeof(buffer));
+			size_t k = static_cast<size_t>(in.readsome(buffer, sizeof(buffer)));
 			if (k == 0)
 				break;
 			

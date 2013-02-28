@@ -15,8 +15,7 @@ namespace assh
 
 extern const std::string
 	kKeyExchangeAlgorithms, kServerHostKeyAlgorithms,
-	kEncryptionAlgorithms, kMacAlgorithms,
-	kUseCompressionAlgorithms, kDontUseCompressionAlgorithms;
+	kEncryptionAlgorithms, kMacAlgorithms, kCompressionAlgorithms;
 
 std::string choose_protocol(const std::string& server, const std::string& client);
 
@@ -36,11 +35,9 @@ class key_exchange
 	CryptoPP::StreamTransformation*			encryptor();
 	CryptoPP::MessageAuthenticationCode*	signer();
 	CryptoPP::MessageAuthenticationCode*	verifier();
-	struct z_stream_s*						compressor();
-	struct z_stream_s*						decompressor();
-	
-	bool									delay_compression();
-	bool									delay_decompression();
+
+	std::string								compression_alg();
+	std::string								decompression_alg();
   	
   protected:
 

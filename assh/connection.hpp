@@ -54,15 +54,15 @@ class basic_connection
 	void			open_channel(channel* ch, uint32 id);
 	void			close_channel(channel* ch, uint32 id);
 
-	void			async_write(const opacket& p)
+	void			async_write(opacket&& p)
 					{
-						async_write(p, [](const boost::system::error_code&, std::size_t) {});
+						async_write(std::move(p), [](const boost::system::error_code&, std::size_t) {});
 					}
 
 	template<typename Handler>
-	void			async_write(const opacket& p, Handler&& handler)
+	void			async_write(opacket&& p, Handler&& handler)
 					{
-						async_write_packet_int(p, new write_op<Handler>(std::move(handler)));
+						async_write_packet_int(std::move(p), new write_op<Handler>(std::move(handler)));
 					}
 	
 	void			forward_agent(bool forward);
@@ -214,7 +214,7 @@ class basic_connection
 						async_write_int(request, new write_op<Handler>(std::move(handler)));
 					}
 
-	void			async_write_packet_int(const opacket& p, basic_write_op* handler);
+	void			async_write_packet_int(opacket&& p, basic_write_op* handler);
 	virtual void	async_write_int(boost::asio::streambuf* request, basic_write_op* handler) = 0;
 	
 	virtual void	async_read_version_string() = 0;
@@ -253,9 +253,9 @@ class basic_connection
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_encryptor;
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode>	m_signer;
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode>	m_verifier;
-	std::unique_ptr<struct z_stream_s>						m_compressor;
-	//std::unique_ptr<MSshPacketCompressor>					m_compressor;
-	//std::unique_ptr<MSshPacketDecompressor>				m_decompressor;
+
+	std::unique_ptr<compression_helper>						m_compressor;
+	std::unique_ptr<compression_helper>						m_decompressor;
 
 	std::deque<basic_read_handler*>
 								m_read_handlers;

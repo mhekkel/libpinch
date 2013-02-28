@@ -9,6 +9,8 @@
 #include <boost/random/uniform_int_distribution.hpp>
 #include <boost/algorithm/string.hpp>
 
+#include <zlib.h>
+
 #include <assh/packet.hpp>
 #include <assh/channel.hpp>
 
@@ -18,6 +20,42 @@ namespace ba = boost::algorithm;
 
 namespace assh
 {
+
+struct compression_helper_impl
+{
+	z_stream	m_zstream;
+	bool		m_deflate;
+};
+
+compression_helper::compression_helper(bool deflate)
+	: m_impl(new compression_helper_impl)
+{
+	m_impl->m_deflate = deflate;
+
+	memset(&m_impl->m_zstream, 0, sizeof(z_stream));
+	
+	int err;
+	if (deflate)
+		err = deflateInit(&m_impl->m_zstream, Z_BEST_SPEED);
+	else
+		err = inflateInit(&m_impl->m_zstream);
+}
+
+compression_helper::~compression_helper()
+{
+	if (m_impl->m_deflate)
+		deflateEnd(&m_impl->m_zstream);
+	else
+		inflateEnd(&m_impl->m_zstream);
+	delete m_impl;
+}	
+
+compression_helper::operator z_stream& ()
+{
+	return m_impl->m_zstream;
+}
+
+// --------------------------------------------------------------------
 
 opacket::opacket()
 {
@@ -51,6 +89,44 @@ opacket& opacket::operator=(const opacket& rhs)
 	if (this != &rhs)
 		m_data = rhs.m_data;
 	return *this;
+}
+
+void opacket::compress(compression_helper& compressor, boost::system::error_code& ec)
+{
+	z_stream& zstream(compressor);
+	
+	zstream.next_in = &m_data[0];
+	zstream.avail_in = m_data.size();
+	zstream.total_in = 0;
+	
+	vector<uint8> data;
+	data.reserve(m_data.size());
+	
+	uint8 buffer[1024];
+	
+	zstream.next_out = buffer;
+	zstream.avail_out = sizeof(buffer);
+	zstream.total_out = 0;
+
+	int err;
+	do
+	{
+		err = deflate(&zstream, Z_SYNC_FLUSH);
+
+		if (sizeof(buffer) - zstream.avail_out > 0)
+		{
+			copy(buffer, buffer + sizeof(buffer) - zstream.avail_out,
+				back_inserter(data));
+			zstream.next_out = buffer;
+			zstream.avail_out = sizeof(buffer);
+		}
+	}
+	while (err >= Z_OK);
+	
+	if (err != Z_BUF_ERROR)
+		ec = error::make_error_code(error::compression_error);
+
+	swap(data, m_data);
 }
 
 void opacket::write(ostream& os, int blocksize) const
@@ -248,6 +324,55 @@ ipacket& ipacket::operator=(ipacket&& rhs)
 	return *this;
 }
 
+void ipacket::decompress(compression_helper& decompressor, boost::system::error_code& ec)
+{
+	assert(m_complete);
+	
+	z_stream& zstream(decompressor);
+	
+	zstream.next_in = m_data;
+	zstream.avail_in = m_length;
+	zstream.total_in = 0;
+	
+	vector<uint8> data;
+	uint8 buffer[1024];
+	
+	zstream.next_out = buffer;
+	zstream.avail_out = sizeof(buffer);
+	zstream.total_out = 0;
+
+	int err;
+	do
+	{
+		err = inflate(&zstream, Z_SYNC_FLUSH);
+
+		if (sizeof(buffer) - zstream.avail_out > 0)
+		{
+			copy(buffer, buffer + sizeof(buffer) - zstream.avail_out,
+				back_inserter(data));
+			zstream.next_out = buffer;
+			zstream.avail_out = sizeof(buffer);
+		}
+	}
+	while (err >= Z_OK);
+	
+	if (err != Z_BUF_ERROR)
+		ec = error::make_error_code(error::compression_error);
+	else
+	{
+		if (m_owned)
+			delete[] m_data;
+
+		m_length = data.size();
+		m_data = new uint8[m_length];
+		copy(data.begin(), data.end(), m_data);
+		m_owned = true;
+		
+		m_message = static_cast<message_type>(m_data[0]);
+		m_offset = 1;
+	}
+}
+
 bool ipacket::complete()
 {
 	return m_complete;
@@ -255,7 +380,7 @@ bool ipacket::complete()
 
 bool ipacket::empty()
 {
-	return m_message == msg_undefined or m_length == 0 or m_data == nullptr;
+	return m_length == 0 or m_data == nullptr;
 }
 
 void ipacket::clear()
@@ -265,16 +390,16 @@ void ipacket::clear()
 		memset(m_data, 0xcc, m_length);
 #endif
 
+	if (m_owned)
+		delete[] m_data;
+	m_data = nullptr;
+
 	m_message = msg_undefined;
 	m_padding = 0;
 	m_owned = true;
 	m_complete = false;
 	m_length = 0;
 	m_offset = 0;
-
-	if (m_owned)
-		delete[] m_data;
-	m_data = nullptr;
 }
 
 void ipacket::append(const vector<uint8>& block)
