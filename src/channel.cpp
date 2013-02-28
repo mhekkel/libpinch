@@ -100,17 +100,17 @@ void channel::close()
 void channel::closed()
 {
 	m_channel_open = false;
-	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
+	for_each(m_pending.begin(), m_pending.end(), [this](basic_write_op* op)
 	{
-		op->written(error::make_error_code(error::channel_closed), 0);
+		op->error(error::make_error_code(error::channel_closed));
 		delete op;
 	});
 	m_pending.clear();
 	
-	for_each(m_read_ops.begin(), m_read_ops.end(), [this](basic_read_op* handler)
+	for_each(m_read_ops.begin(), m_read_ops.end(), [this](basic_read_op* op)
 	{
-		handler->post_error(error::make_error_code(error::channel_closed), get_io_service());
-		delete handler;
+		op->error(error::make_error_code(error::channel_closed));
+		delete op;
 	});
 	m_read_ops.clear();
 }
@@ -333,6 +333,7 @@ void channel::send_pending()
 		if (op->m_packets.empty())
 		{
 			m_pending.pop_front();
+			op->written(boost::system::error_code(), 0, get_io_service());
 			delete op;
 			continue;
 		}
@@ -344,13 +345,19 @@ void channel::send_pending()
 		m_host_window_size -= size;
 		m_send_pending = true;
 
-		m_connection.async_write(move(op->m_packets.front()),
+		opacket out(move(op->m_packets.front()));
+		op->m_packets.pop_front();
+
+		m_connection.async_write(move(out),
 			[this, op](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			this->m_send_pending = false;
-			op->m_packets.pop_front();
-			if (op->m_packets.empty() or ec)
-				op->written(ec, bytes_transferred);
+			if (ec)
+			{
+				op->written(ec, bytes_transferred, this->get_io_service());
+				delete op;
+				this->m_pending.pop_front();
+			}
 			this->send_pending();
 		});
 		

@@ -129,6 +129,15 @@ void basic_connection::start_handshake()
 	{
 		m_authenticated = false;
 		m_auth_state = auth_state_connecting;
+
+		m_packet.clear();
+		m_encryptor.reset(nullptr);
+		m_decryptor.reset(nullptr);
+		m_signer.reset(nullptr);
+		m_verifier.reset(nullptr);
+		m_compressor.reset(nullptr);
+		m_decompressor.reset(nullptr);
+
 		m_password_attempts = 0;
 		m_in_seq_nr = m_out_seq_nr = 0;
 		m_iblocksize = m_oblocksize = 8;
@@ -640,7 +649,8 @@ void basic_connection::close_channel(channel* ch, uint32 channel_id)
 
 		ch->closed();
 	}
-	else if (find(m_channels.begin(), m_channels.end(), ch) != m_channels.end())
+	
+	if (find(m_channels.begin(), m_channels.end(), ch) != m_channels.end())
 	{
 		m_channels.erase(
 			remove(m_channels.begin(), m_channels.end(), ch),

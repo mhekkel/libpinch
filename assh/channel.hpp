@@ -12,6 +12,7 @@
 #include <list>
 #include <string>
 #include <deque>
+#include <numeric>
 
 #include <boost/type_traits.hpp>
 #include <boost/asio.hpp>
@@ -123,7 +124,7 @@ class channel
 	struct basic_io_op
 	{
 		virtual				~basic_io_op() {}
-		virtual void		written(const boost::system::error_code& ec, std::size_t bytes_transferred) = 0;
+		virtual void		error(const boost::system::error_code& ec) = 0;
 	};
 	
 	struct basic_write_op : public basic_io_op
@@ -137,7 +138,10 @@ class channel
 							{
 								m_packets.push_back(std::move(p));
 							}
-				
+
+		virtual void		written(const boost::system::error_code& ec, std::size_t bytes_transferred,
+								boost::asio::io_service& io_service) = 0;
+
 		std::list<opacket>	m_packets;
 	};
 	
@@ -154,11 +158,21 @@ class channel
 							{
 							}
 				
-		virtual void		written(const boost::system::error_code& ec, std::size_t bytes_transferred)
+		virtual void		written(const boost::system::error_code& ec, std::size_t bytes_transferred,
+								boost::asio::io_service& io_service)
 							{
-								try { m_handler(ec, bytes_transferred); } catch(...) {}
+								std::size_t n = 0;
+								n = std::accumulate(m_packets.begin(), m_packets.end(), n,
+									[](std::size_t c, opacket& p) -> uint32 { return c + p.size(); });
+								
+								io_service.post(bound_handler<Handler>(m_handler, ec, n));
 							}
-		
+
+		virtual void		error(const boost::system::error_code& ec)
+							{
+								m_handler(ec, 0);
+							}
+
 		Handler				m_handler;
 	};
 
@@ -215,13 +229,11 @@ class channel
 						}
 					}
 
-	struct basic_read_op
+	struct basic_read_op : public basic_io_op
 	{
 		typedef std::deque<char>::iterator	iterator;
 		
-		virtual				~basic_read_op() {}
 		virtual iterator	receive_and_post(iterator begin, iterator end, boost::asio::io_service& io_service) = 0;
-		virtual void		post_error(const boost::system::error_code& ec, boost::asio::io_service& io_service) = 0;
 	};
 
 	template<class MutableBufferSequence, class Handler>
@@ -248,9 +260,9 @@ class channel
 								return end;
 							}
 
-		virtual void		post_error(const boost::system::error_code& ec, boost::asio::io_service& io_service)
+		virtual void		error(const boost::system::error_code& ec)
 							{
-								io_service.post(bound_handler<Handler>(m_handler, ec, 0));
+								m_handler(ec, 0);
 							}
 
 		MutableBufferSequence	m_buffer;

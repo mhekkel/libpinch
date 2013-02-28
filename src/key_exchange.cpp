@@ -40,6 +40,7 @@ const string
 	kEncryptionAlgorithms("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha1,hmac-md5"),
 	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
+	//kCompressionAlgorithms("none");
 
 // --------------------------------------------------------------------
 	
