@@ -216,7 +216,11 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 		full_stop(ec);
 		return;
 	}
-	
+
+	// don't process data at all if we're no longer willing
+	if (m_auth_state == auth_state_none)
+		return;
+
 	while (m_response.size() >= m_iblocksize)
 	{
 		if (not m_packet.complete())
@@ -762,7 +766,9 @@ void connection::handle_resolve(const boost::system::error_code& ec, boost::asio
 
 void connection::handle_connect(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
 {
-	if (endpoint_iterator != boost::asio::ip::tcp::resolver::iterator())
+	if (not ec)
+		start_handshake();
+	else if (endpoint_iterator != boost::asio::ip::tcp::resolver::iterator())
     {
       // The connection failed. Try the next endpoint in the list.
       m_socket.close();
@@ -771,10 +777,8 @@ void connection::handle_connect(const boost::system::error_code& ec, boost::asio
           boost::bind(&connection::handle_connect, this,
             boost::asio::placeholders::error, ++endpoint_iterator));
     }
-    else if (ec)
-		handle_connect_result(ec);
     else
-    	start_handshake();
+		handle_connect_result(ec);
 }
 
 void connection::async_write_int(boost::asio::streambuf* request, basic_write_op* op)
