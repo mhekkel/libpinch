@@ -64,6 +64,8 @@ class channel
 	virtual void	opened();
 	virtual void	closed();
 
+	std::string		get_connection_parameters(direction dir) const;
+
 	void			open_pty(uint32 width, uint32 height,
 						const std::string& terminal_type,
 						bool forward_agent, bool forward_x11);

@@ -13,11 +13,6 @@
 #include <cryptopp/gfpcrypt.h>
 #include <cryptopp/rsa.h>
 #include <cryptopp/osrng.h>
-#include <cryptopp/aes.h>
-#include <cryptopp/des.h>
-#define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
-#include <cryptopp/md5.h>
-#include <cryptopp/blowfish.h>
 #include <cryptopp/modes.h>
 
 #include <assh/hash.hpp>
@@ -34,40 +29,6 @@ namespace assh
 
 static AutoSeededRandomPool	rng;
 
-const string
-	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
-	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
-	kEncryptionAlgorithms("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
-	kMacAlgorithms("hmac-sha1,hmac-md5"),
-	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
-	//kCompressionAlgorithms("none");
-
-// --------------------------------------------------------------------
-	
-string choose_protocol(const string& server, const string& client)
-{
-	string result;
-	bool found = false;
-
-	typedef ba::split_iterator<string::const_iterator> split_iter_type;
-	split_iter_type c = ba::make_split_iterator(client, ba::first_finder(",", ba::is_equal()));
-	split_iter_type s = ba::make_split_iterator(server, ba::first_finder(",", ba::is_equal()));
-	
-	for (split_iter_type ci = c; not found and ci != split_iter_type(); ++ci)
-	{
-		for (split_iter_type si = s; not found and si != split_iter_type(); ++si)
-		{
-			if (*ci == *si)
-			{
-				result = boost::copy_range<string>(*ci);
-				found = true;
-			}
-		}
-	}
-
-	return result;
-}
-
 // --------------------------------------------------------------------
 	
 key_exchange::key_exchange(const string& host_version, vector<uint8>& session_id,
@@ -75,33 +36,6 @@ key_exchange::key_exchange(const string& host_version, vector<uint8>& session_id
 	: m_session_id(session_id), m_host_version(host_version)
 	, m_host_payload(host_payload), m_my_payload(my_payload)
 {
-}
-
-void key_exchange::init(ipacket& in)
-{
-	string server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c,
-		lang_c2s, lang_s2c;
-
-	in	>> server_host_key_alg
-		>> encryption_alg_c2s
-		>> encryption_alg_s2c
-		>> MAC_alg_c2s
-		>> MAC_alg_s2c
-		>> compression_alg_c2s
-		>> compression_alg_s2c
-		>> lang_c2s
-		>> lang_s2c
-		>> m_first_kex_packet_follows;
-
-	m_encryption_alg_c2s = choose_protocol(encryption_alg_c2s, kEncryptionAlgorithms);
-	m_encryption_alg_s2c = choose_protocol(encryption_alg_s2c, kEncryptionAlgorithms);
-	m_MAC_alg_c2s = choose_protocol(MAC_alg_c2s, kMacAlgorithms);
-	m_MAC_alg_s2c = choose_protocol(MAC_alg_s2c, kMacAlgorithms);
-	m_compression_alg_c2s = choose_protocol(compression_alg_c2s, kCompressionAlgorithms);
-	m_compression_alg_s2c = choose_protocol(compression_alg_s2c, kCompressionAlgorithms);
-	m_lang_c2s = choose_protocol(lang_c2s, "none");
-	m_lang_s2c = choose_protocol(lang_s2c, "none");
 }
 
 bool key_exchange::process(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -198,97 +132,6 @@ void key_exchange::derive_keys()
 	}
 }
 
-StreamTransformation* key_exchange::decryptor()
-{
-	StreamTransformation* result = nullptr;
-	
-	// Server to client encryption
-	string protocol = choose_protocol(m_encryption_alg_s2c, kEncryptionAlgorithms);
-	
-	if (protocol == "3des-cbc")
-		result = new CBC_Mode<DES_EDE3>::Decryption(&m_keys[3][0], 24, &m_keys[1][0]);
-	else if (protocol == "blowfish-cbc")
-		result = new CBC_Mode<Blowfish>::Decryption(&m_keys[3][0], 16, &m_keys[1][0]);
-	else if (protocol == "aes128-cbc")
-		result = new CBC_Mode<AES>::Decryption(&m_keys[3][0], 16, &m_keys[1][0]);
-	else if (protocol == "aes192-cbc")
-		result = new CBC_Mode<AES>::Decryption(&m_keys[3][0], 24, &m_keys[1][0]);
-	else if (protocol == "aes256-cbc")
-		result = new CBC_Mode<AES>::Decryption(&m_keys[3][0], 32, &m_keys[1][0]);
-	else if (protocol == "aes128-ctr")
-		result = new CTR_Mode<AES>::Decryption(&m_keys[3][0], 16, &m_keys[1][0]);
-	else if (protocol == "aes192-ctr")
-		result = new CTR_Mode<AES>::Decryption(&m_keys[3][0], 24, &m_keys[1][0]);
-	else if (protocol == "aes256-ctr")
-		result = new CTR_Mode<AES>::Decryption(&m_keys[3][0], 32, &m_keys[1][0]);
-	
-	return result;
-}
-
-StreamTransformation* key_exchange::encryptor()
-{
-	StreamTransformation* result = nullptr;
-	
-	// Client to server encryption
-	string protocol = choose_protocol(m_encryption_alg_c2s, kEncryptionAlgorithms);
-	
-	if (protocol == "3des-cbc")
-		result = new CBC_Mode<DES_EDE3>::Encryption(&m_keys[2][0], 24, &m_keys[0][0]);
-	else if (protocol == "blowfish-cbc")
-		result = new CBC_Mode<Blowfish>::Encryption(&m_keys[2][0], 16, &m_keys[0][0]);
-	else if (protocol == "aes128-cbc")
-		result = new CBC_Mode<AES>::Encryption(&m_keys[2][0], 16, &m_keys[0][0]);
-	else if (protocol == "aes192-cbc")
-		result = new CBC_Mode<AES>::Encryption(&m_keys[2][0], 24, &m_keys[0][0]);
-	else if (protocol == "aes256-cbc")
-		result = new CBC_Mode<AES>::Encryption(&m_keys[2][0], 32, &m_keys[0][0]);
-	else if (protocol == "aes128-ctr")
-		result = new CBC_Mode<AES>::Encryption(&m_keys[2][0], 16, &m_keys[0][0]);
-	else if (protocol == "aes192-ctr")
-		result = new CTR_Mode<AES>::Encryption(&m_keys[2][0], 24, &m_keys[0][0]);
-	else if (protocol == "aes256-ctr")
-		result = new CTR_Mode<AES>::Encryption(&m_keys[2][0], 32, &m_keys[0][0]);
-
-	return result;	
-}
-
-MessageAuthenticationCode* key_exchange::signer()
-{
-	MessageAuthenticationCode* result = nullptr;
-
-	string protocol = choose_protocol(m_MAC_alg_c2s, kMacAlgorithms);
-
-	if (protocol == "hmac-sha1")
-		result = new HMAC<SHA1>(&m_keys[4][0], 20);
-	else
-		result = new HMAC<Weak::MD5>(&m_keys[4][0]);
-	
-	return result;
-}
-
-MessageAuthenticationCode* key_exchange::verifier()
-{
-	MessageAuthenticationCode* result = nullptr;
-
-	string protocol = choose_protocol(m_MAC_alg_s2c, kMacAlgorithms);
-	if (protocol == "hmac-sha1")
-		result = new HMAC<SHA1>(&m_keys[5][0], 20);
-	else
-		result = new HMAC<Weak::MD5>(&m_keys[5][0]);
-	
-	return result;
-}
-
-string key_exchange::compression_alg()
-{
-	return choose_protocol(m_compression_alg_c2s, kCompressionAlgorithms);
-}
-
-string key_exchange::decompression_alg()
-{
-	return choose_protocol(m_compression_alg_s2c, kCompressionAlgorithms);
-}
-
 // --------------------------------------------------------------------
 	
 class key_exchange_dh_group : public key_exchange
@@ -315,7 +158,6 @@ bool key_exchange_dh_group::process(ipacket& in, opacket& out, boost::system::er
 	switch ((message_type)in)
 	{
 		case msg_kexinit:
-			init(in);
 			do
 			{
 				m_x.Randomize(rng, m_g, m_q - 1);
@@ -372,7 +214,6 @@ bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket& in, opacket& out, boos
 	switch ((message_type)in)
 	{
 		case msg_kexinit:
-			init(in);
 			out = msg_kex_dh_gex_request;
 			out << kMinGroupSize << kPreferredGroupSize << kMaxGroupSize;
 			break;
@@ -422,8 +263,8 @@ void key_exchange_dh_gex<HashAlgorithm>::derive_keys_with_hash()
 	derive_keys<HashAlgorithm>();
 }
 
-key_exchange* key_exchange::create(ipacket& in, const string& host_version,
-	vector<uint8>& session_id, const vector<uint8>& my_payload)
+key_exchange* key_exchange::create(const string& key_exchange_alg, const string& host_version,
+	vector<uint8>& session_id, const vector<uint8>& host_payload, const vector<uint8>& my_payload)
 {
 	// diffie hellman group 1 and group 14 primes
 	const byte
@@ -457,15 +298,6 @@ key_exchange* key_exchange::create(ipacket& in, const string& host_version,
 		};
 
 	key_exchange* result = nullptr;
-	vector<uint8> host_payload;
-	string key_exchange_alg;
-
-	host_payload = in;
-
-	in.skip(16);
-	in >> key_exchange_alg;
-
-	key_exchange_alg = choose_protocol(key_exchange_alg, kKeyExchangeAlgorithms);
 	
 	if (key_exchange_alg == "diffie-hellman-group1-sha1")
 		result = new key_exchange_dh_group(Integer(p2, sizeof(p2)), host_version,

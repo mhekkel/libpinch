@@ -115,6 +115,11 @@ void channel::closed()
 	m_read_ops.clear();
 }
 
+string channel::get_connection_parameters(direction dir) const
+{
+	return is_open() ? m_connection.get_connection_parameters(dir) : "";
+}
+
 void channel::init(ipacket& in, opacket& out)
 {
 	in >> m_host_window_size >> m_max_send_packet_size;

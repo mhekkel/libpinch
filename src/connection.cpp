@@ -53,6 +53,37 @@ AutoSeededRandomPool	rng;
 const string
 	kSSHVersionString("SSH-2.0-libassh");
 
+const string
+	kKeyExchangeAlgorithms_("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
+	kServerHostKeyAlgorithms_("ssh-rsa,ssh-dss"),
+	kEncryptionAlgorithms_("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
+	kMacAlgorithms_("hmac-sha1,hmac-md5"),
+	kCompressionAlgorithms_("zlib@openssh.com,zlib,none");
+
+string choose_protocol(const string& server, const string& client)
+{
+	string result;
+	bool found = false;
+
+	typedef ba::split_iterator<string::const_iterator> split_iter_type;
+	split_iter_type c = ba::make_split_iterator(client, ba::first_finder(",", ba::is_equal()));
+	split_iter_type s = ba::make_split_iterator(server, ba::first_finder(",", ba::is_equal()));
+	
+	for (split_iter_type ci = c; not found and ci != split_iter_type(); ++ci)
+	{
+		for (split_iter_type si = s; not found and si != split_iter_type(); ++si)
+		{
+			if (*ci == *si)
+			{
+				result = boost::copy_range<string>(*ci);
+				found = true;
+			}
+		}
+	}
+
+	return result;
+}
+
 // --------------------------------------------------------------------
 
 basic_connection::basic_connection(boost::asio::io_service& io_service, const string& user)
@@ -62,12 +93,45 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	, m_auth_state(auth_state_none)
 	, m_key_exchange(nullptr)
 	, m_forward_agent(false)
+	, m_alg_enc_c2s(kEncryptionAlgorithms_)
+	, m_alg_ver_c2s(kMacAlgorithms_)
+	, m_alg_cmp_c2s(kCompressionAlgorithms_)
+	, m_alg_enc_s2c(kEncryptionAlgorithms_) 
+	, m_alg_ver_s2c(kMacAlgorithms_)        
+	, m_alg_cmp_s2c(kCompressionAlgorithms_)
 {
 }
 
 basic_connection::~basic_connection()
 {
 	delete m_key_exchange;
+}
+
+void basic_connection::set_algorithm(algorithm alg, direction dir, const char* preferred)
+{
+	switch (alg)
+	{
+		case encryption:
+			if (dir == client2server)
+				m_alg_enc_c2s = preferred;
+			else
+				m_alg_enc_s2c = preferred;
+			break;
+
+		case verification:
+			if (dir == client2server)
+				m_alg_ver_c2s = preferred;
+			else
+				m_alg_ver_s2c = preferred;
+			break;
+
+		case compression:
+			if (dir == client2server)
+				m_alg_cmp_c2s = preferred;
+			else
+				m_alg_cmp_s2c = preferred;
+			break;
+	}
 }
 
 void basic_connection::set_validate_callback(const validate_callback_type& cb)
@@ -92,6 +156,7 @@ void basic_connection::disconnect()
 	m_verifier.reset(nullptr);
 	m_compressor.reset(nullptr);
 	m_decompressor.reset(nullptr);
+	m_delay_decompressor = m_delay_compressor = false;
 	
 	// copy the list since calling Close will change it
 	list<channel*> channels(m_channels);
@@ -101,6 +166,47 @@ void basic_connection::disconnect()
 void basic_connection::forward_agent(bool forward)
 {
 	m_forward_agent = forward;
+}
+
+string basic_connection::get_connection_parameters(direction dir) const
+{
+	string result;
+
+	ipacket payload(&m_host_payload[0], m_host_payload.size());
+
+	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
+		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
+	
+	payload.skip(16);
+	payload	>> key_exchange_alg
+			>> server_host_key_alg
+			>> encryption_alg_c2s
+			>> encryption_alg_s2c
+			>> MAC_alg_c2s
+			>> MAC_alg_s2c
+			>> compression_alg_c2s
+			>> compression_alg_s2c;
+
+	if (dir == client2server)
+	{
+		result = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s) + '/' +
+				 choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
+		
+		string compression = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
+		if (compression != "none")
+			result = result + '/' + compression;
+	}
+	else
+	{
+		result = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c) + '/' +
+				 choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
+		
+		string compression = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
+		if (compression != "none")
+			result = result + '/' + compression;
+	}
+	
+	return result;
 }
 
 void basic_connection::handle_connect_result(const boost::system::error_code& ec)
@@ -137,6 +243,7 @@ void basic_connection::start_handshake()
 		m_verifier.reset(nullptr);
 		m_compressor.reset(nullptr);
 		m_decompressor.reset(nullptr);
+		m_delay_decompressor = m_delay_compressor = false;
 
 		m_password_attempts = 0;
 		m_in_seq_nr = m_out_seq_nr = 0;
@@ -179,14 +286,14 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 			for (uint32 i = 0; i < 16; ++i)
 				out << rng.GenerateByte();
 			
-			out << kKeyExchangeAlgorithms
-				<< kServerHostKeyAlgorithms
-				<< kEncryptionAlgorithms
-				<< kEncryptionAlgorithms
-				<< kMacAlgorithms
-				<< kMacAlgorithms
-				<< kCompressionAlgorithms
-				<< kCompressionAlgorithms
+			out << kKeyExchangeAlgorithms_
+				<< kServerHostKeyAlgorithms_
+				<< m_alg_enc_c2s
+				<< m_alg_enc_s2c
+				<< m_alg_ver_c2s
+				<< m_alg_ver_s2c
+				<< m_alg_cmp_c2s
+				<< m_alg_cmp_s2c
 				<< ""
 				<< ""
 				<< false
@@ -320,16 +427,7 @@ void basic_connection::process_packet(ipacket& in)
 				full_stop(error::make_error_code(error::disconnect_by_host));
 				break;
 
-			case msg_kexinit:
-				m_host_payload = in;
-				m_key_exchange = key_exchange::create(in, m_host_version, m_session_id, m_my_payload);
-				if (m_key_exchange)
-				{
-					m_key_exchange->cb_verify_host_key = boost::bind(&basic_connection::validate_host_key, this, _1, _2);
-					m_key_exchange->process(in, out, ec);
-				}
-				break;
-
+			case msg_kexinit:				process_kexinit(in, out, ec);				break;
 			case msg_newkeys:				process_newkeys(in, out, ec);				break;
 
 			case msg_service_accept:		process_service_accept(in, out, ec);		break;
@@ -381,18 +479,122 @@ bool basic_connection::validate_host_key(const string& pk_alg, const vector<uint
 	return true;
 }
 
+void basic_connection::process_kexinit(ipacket& in, opacket& out, boost::system::error_code& ec)
+{
+	m_host_payload = in;
+	
+	string key_exchange_alg;
+	in.skip(16);
+	in >> key_exchange_alg;
+	
+	key_exchange_alg = choose_protocol(key_exchange_alg, kKeyExchangeAlgorithms_);
+	
+	m_key_exchange = key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload);
+
+	if (m_key_exchange)
+	{
+		m_key_exchange->cb_verify_host_key = boost::bind(&basic_connection::validate_host_key, this, _1, _2);
+		m_key_exchange->process(in, out, ec);
+	}
+	else
+		handle_connect_result(error::make_error_code(error::key_exchange_failed));
+}
+
 void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
-	m_encryptor.reset(m_key_exchange->encryptor());
-	m_decryptor.reset(m_key_exchange->decryptor());
-	m_signer.reset(m_key_exchange->signer());
-	m_verifier.reset(m_key_exchange->verifier());
-	
-	if (not m_compressor and m_key_exchange->compression_alg() == "zlib")
-		m_compressor.reset(new compression_helper(true));
+	ipacket payload(&m_host_payload[0], m_host_payload.size());
 
-	if (not m_decompressor and m_key_exchange->decompression_alg() == "zlib")
+	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
+		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
+	
+	payload.skip(16);
+	payload	>> key_exchange_alg
+			>> server_host_key_alg
+			>> encryption_alg_c2s
+			>> encryption_alg_s2c
+			>> MAC_alg_c2s
+			>> MAC_alg_s2c
+			>> compression_alg_c2s
+			>> compression_alg_s2c;
+	
+	// Client to server encryption
+	string protocol = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s);
+	
+	const uint8* key = m_key_exchange->key(key_exchange::C);
+	const uint8* iv = m_key_exchange->key(key_exchange::A);
+	
+	if (protocol == "3des-cbc")
+		m_encryptor.reset(new CBC_Mode<DES_EDE3>::Encryption(key, 24, iv));
+	else if (protocol == "blowfish-cbc")
+		m_encryptor.reset(new CBC_Mode<Blowfish>::Encryption(key, 16, iv));
+	else if (protocol == "aes128-cbc")
+		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 16, iv));
+	else if (protocol == "aes192-cbc")
+		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 24, iv));
+	else if (protocol == "aes256-cbc")
+		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 32, iv));
+	else if (protocol == "aes128-ctr")
+		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 16, iv));
+	else if (protocol == "aes192-ctr")
+		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 24, iv));
+	else if (protocol == "aes256-ctr")
+		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 32, iv));
+
+	// Server to client encryption
+	protocol = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c);
+
+	key = m_key_exchange->key(key_exchange::D);
+	iv = m_key_exchange->key(key_exchange::B);
+	
+	if (protocol == "3des-cbc")
+		m_decryptor.reset(new CBC_Mode<DES_EDE3>::Decryption(key, 24, iv));
+	else if (protocol == "blowfish-cbc")
+		m_decryptor.reset(new CBC_Mode<Blowfish>::Decryption(key, 16, iv));
+	else if (protocol == "aes128-cbc")
+		m_decryptor.reset(new CBC_Mode<AES>::Decryption(key, 16, iv));
+	else if (protocol == "aes192-cbc")
+		m_decryptor.reset(new CBC_Mode<AES>::Decryption(key, 24, iv));
+	else if (protocol == "aes256-cbc")
+		m_decryptor.reset(new CBC_Mode<AES>::Decryption(key, 32, iv));
+	else if (protocol == "aes128-ctr")
+		m_decryptor.reset(new CTR_Mode<AES>::Decryption(key, 16, iv));
+	else if (protocol == "aes192-ctr")
+		m_decryptor.reset(new CTR_Mode<AES>::Decryption(key, 24, iv));
+	else if (protocol == "aes256-ctr")
+		m_decryptor.reset(new CTR_Mode<AES>::Decryption(key, 32, iv));
+	
+	// Client To Server verification
+	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
+	iv = m_key_exchange->key(key_exchange::E);
+
+	if (protocol == "hmac-sha1")
+		m_signer.reset(new HMAC<SHA1>(iv, 20));
+	else
+		m_signer.reset(new HMAC<Weak::MD5>(iv));
+
+	// Server to Client verification
+
+	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
+	iv = m_key_exchange->key(key_exchange::F);
+
+	if (protocol == "hmac-sha1")
+		m_verifier.reset(new HMAC<SHA1>(iv, 20));
+	else
+		m_verifier.reset(new HMAC<Weak::MD5>(iv));
+	
+	// Client to Server compression
+	protocol = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
+	if (not m_compressor and protocol == "zlib")
+		m_compressor.reset(new compression_helper(true));
+	else if (protocol == "zlib@openssh.com")
+		m_delay_compressor = true;
+
+	// Server to Client compression
+	protocol = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
+	if (not m_decompressor and protocol == "zlib")
 		m_decompressor.reset(new compression_helper(false));
+	else if (protocol == "zlib@openssh.com")
+		m_delay_decompressor = true;
 	
 	if (m_decryptor)
 	{
@@ -431,10 +633,10 @@ void basic_connection::process_userauth_success(ipacket& in, opacket& out, boost
 {
 	m_authenticated = true;
 	
-	if (m_key_exchange->compression_alg() == "zlib@openssh.com")
+	if (m_delay_compressor)
 		m_compressor.reset(new compression_helper(true));
 
-	if (m_key_exchange->decompression_alg() == "zlib@openssh.com")
+	if (m_delay_decompressor)
 		m_decompressor.reset(new compression_helper(false));
 
 	delete m_key_exchange;

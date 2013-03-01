@@ -10,17 +10,19 @@
 #include <list>
 
 #include <boost/asio/io_service.hpp>
+#include <assh/connection.hpp>
 
 namespace assh
 {
-
-class basic_connection;
 
 class connection_pool
 {
   public:
 								connection_pool(boost::asio::io_service& io_service);
 								~connection_pool();
+
+	// set algorithms to use by connections created by this pool
+	void						set_algorithm(algorithm alg, direction dir, const char* preferred);
 
 	basic_connection&			get(const std::string& user, const std::string& host, uint16 port);
 
@@ -65,6 +67,9 @@ class connection_pool
 	boost::asio::io_service&	m_io_service;
 	entry_list					m_entries;
 	proxy_list					m_proxies;
+	
+	std::string					m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
+								m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 };
 
 }

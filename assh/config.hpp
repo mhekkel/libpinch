@@ -5,6 +5,14 @@
 
 #pragma once
 
+// some very common types
+
+namespace assh
+{
+enum direction { client2server, server2client };
+enum algorithm { encryption, verification, compression };
+}
+
 #define BOOST_ASIO_HAS_MOVE 1
 
 #ifndef LIBASSH_DOXYGEN_INVOKED
