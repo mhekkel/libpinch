@@ -27,7 +27,7 @@ class basic_connection
 	virtual			~basic_connection();
 
 	// configure before connecting
-	void			set_algorithm(algorithm alg, direction dir, const char* preferred);
+	void			set_algorithm(algorithm alg, direction dir, const std::string& preferred);
 
 	// callbacks to be installed by owning object
 
@@ -76,6 +76,7 @@ class basic_connection
 	virtual bool	is_connected() const									{ return m_authenticated; }
 	
 	std::string		get_connection_parameters(direction d) const;
+	std::string		get_key_exchange_algoritm() const;
 	
   protected:
 
@@ -270,7 +271,8 @@ class basic_connection
 	std::list<channel*>			m_channels;
 	bool						m_forward_agent;
 
-	std::string					m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
+	std::string					m_alg_kex,
+								m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
 								m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 
   private:

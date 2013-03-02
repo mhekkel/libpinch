@@ -10,7 +10,7 @@
 namespace assh
 {
 enum direction { client2server, server2client };
-enum algorithm { encryption, verification, compression };
+enum algorithm { encryption, verification, compression, keyexchange };
 }
 
 #define BOOST_ASIO_HAS_MOVE 1

@@ -22,10 +22,16 @@ class connection_pool
 								~connection_pool();
 
 	// set algorithms to use by connections created by this pool
-	void						set_algorithm(algorithm alg, direction dir, const char* preferred);
+	void						set_algorithm(algorithm alg, direction dir, const std::string& preferred);
 
 	basic_connection&			get(const std::string& user, const std::string& host, uint16 port);
+	
+	// get a proxied connection
+	basic_connection&			get(const std::string& user, const std::string& host, uint16 port,
+									const std::string& proxy_user, const std::string& proxy_host, uint16 proxy_port,
+									const std::string& proxy_cmd);
 
+	// register a default proxy for a connection
 	void						register_proxy(const std::string& destination_host, uint16 destination_port,
 									const std::string& proxy_cmd, const std::string& proxy_user,
 									const std::string& proxy_host, uint16 proxy_port);
@@ -68,7 +74,8 @@ class connection_pool
 	entry_list					m_entries;
 	proxy_list					m_proxies;
 	
-	std::string					m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
+	std::string					m_alg_kex,
+								m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
 								m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 };
 

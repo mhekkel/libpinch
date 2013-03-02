@@ -93,6 +93,7 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	, m_auth_state(auth_state_none)
 	, m_key_exchange(nullptr)
 	, m_forward_agent(false)
+	, m_alg_kex(kKeyExchangeAlgorithms_)
 	, m_alg_enc_c2s(kEncryptionAlgorithms_)
 	, m_alg_ver_c2s(kMacAlgorithms_)
 	, m_alg_cmp_c2s(kCompressionAlgorithms_)
@@ -107,10 +108,14 @@ basic_connection::~basic_connection()
 	delete m_key_exchange;
 }
 
-void basic_connection::set_algorithm(algorithm alg, direction dir, const char* preferred)
+void basic_connection::set_algorithm(algorithm alg, direction dir, const string& preferred)
 {
 	switch (alg)
 	{
+		case keyexchange:
+			m_alg_kex = preferred;
+			break;
+
 		case encryption:
 			if (dir == client2server)
 				m_alg_enc_c2s = preferred;
@@ -209,6 +214,20 @@ string basic_connection::get_connection_parameters(direction dir) const
 	return result;
 }
 
+string basic_connection::get_key_exchange_algoritm() const
+{
+	string result;
+
+	ipacket payload(&m_host_payload[0], m_host_payload.size());
+
+	string key_exchange_alg;
+	
+	payload.skip(16);
+	payload	>> key_exchange_alg;
+
+	return choose_protocol(key_exchange_alg, m_alg_kex);
+}
+
 void basic_connection::handle_connect_result(const boost::system::error_code& ec)
 {
 	if (ec)
@@ -286,7 +305,7 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 			for (uint32 i = 0; i < 16; ++i)
 				out << rng.GenerateByte();
 			
-			out << kKeyExchangeAlgorithms_
+			out << m_alg_kex
 				<< kServerHostKeyAlgorithms_
 				<< m_alg_enc_c2s
 				<< m_alg_enc_s2c
@@ -487,7 +506,7 @@ void basic_connection::process_kexinit(ipacket& in, opacket& out, boost::system:
 	in.skip(16);
 	in >> key_exchange_alg;
 	
-	key_exchange_alg = choose_protocol(key_exchange_alg, kKeyExchangeAlgorithms_);
+	key_exchange_alg = choose_protocol(key_exchange_alg, m_alg_kex);
 	
 	m_key_exchange = key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload);
 

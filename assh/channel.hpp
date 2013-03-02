@@ -65,6 +65,7 @@ class channel
 	virtual void	closed();
 
 	std::string		get_connection_parameters(direction dir) const;
+	std::string		get_key_exchange_algoritm() const;
 
 	void			open_pty(uint32 width, uint32 height,
 						const std::string& terminal_type,

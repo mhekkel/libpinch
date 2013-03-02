@@ -50,16 +50,6 @@ boost::asio::io_service& channel::get_io_service()
 	return m_connection.get_io_service();
 }
 
-//string channel::GetEncryptionParams() const
-//{
-//	return m_connection.GetEncryptionParams();
-//}
-//
-//string channel::GetHostVersion() const
-//{
-//	return m_connection.GetHostVersion();
-//}
-
 void channel::open()
 {
 	if (not m_connection.is_connected())
@@ -118,6 +108,11 @@ void channel::closed()
 string channel::get_connection_parameters(direction dir) const
 {
 	return is_open() ? m_connection.get_connection_parameters(dir) : "";
+}
+
+string channel::get_key_exchange_algoritm() const
+{
+	return is_open() ? m_connection.get_key_exchange_algoritm() : "";
 }
 
 void channel::init(ipacket& in, opacket& out)
