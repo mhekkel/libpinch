@@ -154,6 +154,7 @@ void basic_connection::disconnect()
 	m_authenticated = false;
 	m_auth_state = auth_state_none;
 	
+	m_session_id.clear();
 	m_packet.clear();
 	m_encryptor.reset(nullptr);
 	m_decryptor.reset(nullptr);
@@ -347,83 +348,91 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 	if (m_auth_state == auth_state_none)
 		return;
 
-	while (m_response.size() >= m_iblocksize)
+	try
 	{
-		if (not m_packet.complete())
+		while (m_response.size() >= m_iblocksize)
 		{
-			vector<uint8> block(m_iblocksize);
-			m_response.sgetn(reinterpret_cast<char*>(&block[0]), m_iblocksize);
-
-			if (m_decryptor)
+			if (not m_packet.complete())
 			{
-				vector<uint8> data(m_iblocksize);
-				m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
-				swap(data, block);
-			}
-
-			if (m_verifier)
-			{
-				if (m_packet.empty())
+				vector<uint8> block(m_iblocksize);
+				m_response.sgetn(reinterpret_cast<char*>(&block[0]), m_iblocksize);
+	
+				if (m_decryptor)
 				{
-					for (int32 i = 3; i >= 0; --i)
+					vector<uint8> data(m_iblocksize);
+					m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
+					swap(data, block);
+				}
+	
+				if (m_verifier)
+				{
+					if (m_packet.empty())
 					{
-						uint8 b = m_in_seq_nr >> (i * 8);
-						m_verifier->Update(&b, 1);
+						for (int32 i = 3; i >= 0; --i)
+						{
+							uint8 b = m_in_seq_nr >> (i * 8);
+							m_verifier->Update(&b, 1);
+						}
+					}
+	
+					m_verifier->Update(&block[0], block.size());
+				}
+	
+				m_packet.append(block);
+			}
+	
+			if (m_packet.complete())
+			{
+				if (m_verifier)
+				{
+					if (m_response.size() < m_verifier->DigestSize())
+						break;
+					
+					vector<uint8> digest(m_verifier->DigestSize());
+					m_response.sgetn(reinterpret_cast<char*>(&digest[0]), m_verifier->DigestSize());
+					
+					if (not m_verifier->Verify(&digest[0]))
+					{
+						full_stop(error::make_error_code(error::mac_error));
+						return;
 					}
 				}
-
-				m_verifier->Update(&block[0], block.size());
-			}
-
-			m_packet.append(block);
-		}
-
-		if (m_packet.complete())
-		{
-			if (m_verifier)
-			{
-				if (m_response.size() < m_verifier->DigestSize())
-					break;
 				
-				vector<uint8> digest(m_verifier->DigestSize());
-				m_response.sgetn(reinterpret_cast<char*>(&digest[0]), m_verifier->DigestSize());
+				if (m_decompressor)
+				{
+					boost::system::error_code ec;
+					m_packet.decompress(*m_decompressor, ec);
+					if (ec)
+					{
+						full_stop(ec);
+						break;
+					}
+				}
 				
-				if (not m_verifier->Verify(&digest[0]))
-				{
-					full_stop(error::make_error_code(error::mac_error));
-					return;
-				}
-			}
-			
-			if (m_decompressor)
-			{
-				boost::system::error_code ec;
-				m_packet.decompress(*m_decompressor, ec);
-				if (ec)
-				{
-					full_stop(ec);
-					break;
-				}
-			}
-			
-			process_packet(m_packet);
-
-			m_packet.clear();
-			++m_in_seq_nr;
-		}
-	}
+				process_packet(m_packet);
 	
-	uint32 at_least = m_iblocksize;
-	if (m_response.size() >= m_iblocksize)
-	{
-		// if we arrive here, we might have read a block, but not the digest?
-		// call readsome with 0 as at-least, that will return something we hope.
-		at_least = 1;
+				m_packet.clear();
+				++m_in_seq_nr;
+			}
+		}
+		
+		uint32 at_least = m_iblocksize;
+		if (m_response.size() >= m_iblocksize)
+		{
+			// if we arrive here, we might have read a block, but not the digest?
+			// call readsome with 0 as at-least, that will return something we hope.
+			at_least = 1;
+		}
+		else
+			at_least -= m_response.size();
+	
+		async_read(at_least);
 	}
-	else
-		at_least -= m_response.size();
-
-	async_read(at_least);
+	catch (...)
+	{
+		try { disconnect(); } catch (...) {}
+		throw;
+	}
 }
 
 void basic_connection::process_packet(ipacket& in)
