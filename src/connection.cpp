@@ -294,6 +294,8 @@ void basic_connection::start_handshake()
 	if (m_auth_state == auth_state_none)
 	{
 		reset();
+
+		m_auth_state = auth_state_connecting;
 		
 		boost::asio::streambuf* request(new boost::asio::streambuf);
 		ostream out(request);
