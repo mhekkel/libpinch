@@ -285,6 +285,7 @@ void basic_connection::start_handshake()
 		m_authenticated = false;
 		m_auth_state = auth_state_connecting;
 		m_private_key_hash.clear();
+		m_session_id.clear();
 
 		m_packet.clear();
 		m_encryptor.reset(nullptr);

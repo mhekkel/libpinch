@@ -43,6 +43,8 @@ class MCertificateStore
 
 	bool		GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer& n);
 
+	void		ExposePageant(bool inExpose);
+
   private:
 				MCertificateStore();
 				~MCertificateStore();
@@ -64,31 +66,6 @@ MCertificateStore::MCertificateStore()
 {
 	::CertControlStore(mCertificateStore, 0, CERT_STORE_CTRL_NOTIFY_CHANGE, &mEvent);
 	::SetTimer(nullptr, 0, 1000, &MCertificateStore::Timer);
-	
-	//if (Preferences::GetBoolean("act-as-pageant", true))
-	//{
-	//	try
-	//	{
-	//		HINSTANCE inst = MWinApplicationImpl::GetInstance()->GetHInstance();
-	//
-	//		WNDCLASS lWndClass = { sizeof(WNDCLASS) };
-	//		lWndClass.lpszClassName = kPageantName;
-	//
-	//		if (not ::GetClassInfo(inst, lWndClass.lpszClassName, &lWndClass))
-	//		{
-	//			lWndClass.lpfnWndProc = &MCertificateStore::WndProc;
-	//			lWndClass.hInstance = inst;
-	//			::RegisterClass(&lWndClass);
-	//		}
-	//
-	//		mPageant = ::CreateWindow(kPageantName, kPageantName,
-	//				0, 0, 0, 0, 0, HWND_MESSAGE, NULL, inst, NULL);
-	//	}
-	//	catch (...)
-	//	{
-	//		mPageant = nullptr;
-	//	}
-	//}
 }
 
 MCertificateStore::~MCertificateStore()
@@ -114,6 +91,39 @@ MCertificateStore& MCertificateStore::Instance()
 {
 	static MCertificateStore sInstance;
 	return sInstance;
+}
+
+void MCertificateStore::ExposePageant(bool inExpose)
+{
+	if (inExpose and mPageant == nullptr)
+	{
+		try
+		{
+			HINSTANCE inst = ::GetModuleHandle(nullptr);; // MWinApplicationImpl::GetInstance()->GetHInstance();
+	
+			WNDCLASS lWndClass = { sizeof(WNDCLASS) };
+			lWndClass.lpszClassName = kPageantName;
+	
+			if (not ::GetClassInfo(inst, lWndClass.lpszClassName, &lWndClass))
+			{
+				lWndClass.lpfnWndProc = &MCertificateStore::WndProc;
+				lWndClass.hInstance = inst;
+				::RegisterClass(&lWndClass);
+			}
+	
+			mPageant = ::CreateWindow(kPageantName, kPageantName,
+					0, 0, 0, 0, 0, HWND_MESSAGE, NULL, inst, NULL);
+		}
+		catch (...)
+		{
+			mPageant = nullptr;
+		}
+	}
+	else if (inExpose == false and mPageant != nullptr)
+	{
+		::DestroyWindow(mPageant);
+		mPageant = nullptr;
+	}
 }
 
 bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer& n)
@@ -164,83 +174,85 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 		{
 			case WM_COPYDATA:
 			{
-				//uint8* p = nullptr;
-				//HANDLE mapFile = nullptr;
-				//
-				//do
-				//{
-				//	COPYDATASTRUCT *cds = reinterpret_cast<COPYDATASTRUCT*>(lParam);
-				//	if (cds == nullptr or cds->dwData != AGENT_COPYDATA_ID)
-				//		break;
-				//	
-				//	char* fileName = reinterpret_cast<char*>(cds->lpData);
-				//	if (fileName == nullptr or fileName[cds->cbData - 1] != 0)
-				//		break;
-				//	
-				//	mapFile = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, false,
-				//		fileName);
-				//	if (mapFile == nullptr or mapFile == INVALID_HANDLE_VALUE)
-				//		break;
-				//	
-				//	p = reinterpret_cast<uint8*>(::MapViewOfFile(mapFile, FILE_MAP_WRITE, 0, 0, 0));
-				//	if (p == nullptr)
-				//		break;
-				//	
-				//	HANDLE proc = ::OpenProcess(MAXIMUM_ALLOWED, false, ::GetCurrentProcessId());
-				//	if (proc == nullptr)
-				//		break;
-				//	
-				//	PSECURITY_DESCRIPTOR procSD = nullptr, mapSD = nullptr;
-				//	PSID mapOwner, procOwner;
-				//	
-				//	if (::GetSecurityInfo(proc, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-				//			&procOwner, nullptr, nullptr, nullptr, &procSD) != ERROR_SUCCESS)
-				//	{
-				//		if (procSD != nullptr)
-				//			::LocalFree(procSD);
-				//		procSD = nullptr;
-				//	}
-				//	::CloseHandle(proc);
-				//	
-				//	if (::GetSecurityInfo(mapFile, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-				//		&mapOwner, nullptr, nullptr, nullptr, &mapSD) != ERROR_SUCCESS)
-				//	{
-				//		if (mapSD != nullptr)
-				//			::LocalFree(mapSD);
-				//		mapSD = nullptr;
-				//	}
-				//	
-				//	if (::EqualSid(mapOwner, procOwner))
-				//	{
-				//		uint32 len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
-				//		if (len < 10240)
-				//		{
-				//			MSshPacket in(p + 4, len);
-				//			MSshPacket out;
-				//			
-				//			MSshAgent::Instance().ProcessAgentRequest(in, out);
-				//			
-				//			MSshPacket wrapped;
-				//			wrapped << out;
-	
-				//			copy(wrapped.peek(), wrapped.peek() + wrapped.size(), p);
-				//			result = 1;
-				//		}
-				//	}
-				//	
-				//	if (procSD != nullptr)
-				//		::LocalFree(procSD);
-				//	
-				//	if (mapSD != nullptr)
-				//		::LocalFree(mapSD);
-				//}
-				//while (false);
-
-				//if (p != nullptr)
-				//	::UnmapViewOfFile(p);
-				//
-				//if (mapFile != nullptr and mapFile != INVALID_HANDLE_VALUE)
-				//	::CloseHandle(mapFile);
+				uint8* p = nullptr;
+				HANDLE mapFile = nullptr;
+				
+				do
+				{
+					COPYDATASTRUCT *cds = reinterpret_cast<COPYDATASTRUCT*>(lParam);
+					if (cds == nullptr or cds->dwData != AGENT_COPYDATA_ID)
+						break;
+					
+					char* fileName = reinterpret_cast<char*>(cds->lpData);
+					if (fileName == nullptr or fileName[cds->cbData - 1] != 0)
+						break;
+					
+					mapFile = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, false,
+						fileName);
+					if (mapFile == nullptr or mapFile == INVALID_HANDLE_VALUE)
+						break;
+					
+					p = reinterpret_cast<uint8*>(::MapViewOfFile(mapFile, FILE_MAP_WRITE, 0, 0, 0));
+					if (p == nullptr)
+						break;
+					
+					HANDLE proc = ::OpenProcess(MAXIMUM_ALLOWED, false, ::GetCurrentProcessId());
+					if (proc == nullptr)
+						break;
+					
+					PSECURITY_DESCRIPTOR procSD = nullptr, mapSD = nullptr;
+					PSID mapOwner, procOwner;
+					
+					if (::GetSecurityInfo(proc, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
+							&procOwner, nullptr, nullptr, nullptr, &procSD) != ERROR_SUCCESS)
+					{
+						if (procSD != nullptr)
+							::LocalFree(procSD);
+						procSD = nullptr;
+					}
+					::CloseHandle(proc);
+					
+					if (::GetSecurityInfo(mapFile, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
+						&mapOwner, nullptr, nullptr, nullptr, &mapSD) != ERROR_SUCCESS)
+					{
+						if (mapSD != nullptr)
+							::LocalFree(mapSD);
+						mapSD = nullptr;
+					}
+					
+					if (::EqualSid(mapOwner, procOwner))
+					{
+						uint32 len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+						if (len < 10240)
+						{
+							ipacket in(p + 4, len);
+							opacket out;
+							
+							ssh_agent::instance().process_agent_request(in, out);
+							
+							opacket wrapped;
+							wrapped << out;
+							
+							const vector<uint8>& data(wrapped);
+				
+							copy(data.begin(), data.end(), p);
+							result = 1;
+						}
+					}
+					
+					if (procSD != nullptr)
+						::LocalFree(procSD);
+					
+					if (mapSD != nullptr)
+						::LocalFree(mapSD);
+				}
+				while (false);
+				
+				if (p != nullptr)
+					::UnmapViewOfFile(p);
+				
+				if (mapFile != nullptr and mapFile != INVALID_HANDLE_VALUE)
+					::CloseHandle(mapFile);
 
 				break;
 			}
@@ -260,6 +272,11 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 void MCertificateStore::Timer(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
 	MCertificateStore::Instance().Check();
+}
+
+void expose_pageant(bool expose)
+{
+	MCertificateStore::Instance().ExposePageant(expose);
 }
 
 // --------------------------------------------------------------------

@@ -40,4 +40,6 @@ class ssh_private_key_impl
 	int32							m_refcount;
 };
 
+void expose_pageant(bool expose);
+
 }

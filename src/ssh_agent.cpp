@@ -183,6 +183,11 @@ void ssh_agent::update()
 		basic_connection::close_for_disappeared_private_key(hash);
 }
 
+void ssh_agent::expose_pageant(bool expose)
+{
+	assh::expose_pageant(expose);
+}
+
 // --------------------------------------------------------------------
 
 ssh_agent_channel::ssh_agent_channel(basic_connection& connection)

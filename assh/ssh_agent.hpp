@@ -75,6 +75,9 @@ class ssh_agent
 	iterator			begin()						{ return m_private_keys.begin(); }
 	iterator			end()						{ return m_private_keys.end(); }
 
+	// for Windows only, expose the private keys via a Pageant compatible window
+	void				expose_pageant(bool expose);
+
   private:
 
 						ssh_agent();
