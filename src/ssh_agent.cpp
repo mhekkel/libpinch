@@ -53,10 +53,10 @@ ssh_private_key::ssh_private_key(ssh_private_key_impl* impl)
 {
 }
 
-ssh_private_key::ssh_private_key(const string& hash)
-	: m_impl(ssh_private_key_impl::create_for_hash(hash))
-{
-}
+//ssh_private_key::ssh_private_key(const string& hash)
+//	: m_impl(ssh_private_key_impl::create_for_hash(hash))
+//{
+//}
 
 ssh_private_key::ssh_private_key(ipacket& blob)
 	: m_impl(ssh_private_key_impl::create_for_blob(blob))
@@ -91,7 +91,7 @@ vector<uint8> ssh_private_key::sign(const vector<uint8>& session_id, const opack
 	return m_impl->sign(session_id, data);
 }
 
-string ssh_private_key::get_hash() const
+vector<uint8> ssh_private_key::get_hash() const
 {
 	return m_impl->get_hash();
 }
@@ -168,8 +168,19 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 
 void ssh_agent::update()
 {
+	list<vector<uint8>> deleted;
+	
+	foreach (ssh_private_key& key, m_private_keys)
+		deleted.push_back(key.get_hash());
+	
 	m_private_keys.clear();
 	ssh_private_key_impl::create_list(m_private_keys);
+	
+	foreach (ssh_private_key& key, m_private_keys)
+		deleted.erase(remove(deleted.begin(), deleted.end(), key.get_hash()), deleted.end());
+	
+	foreach (vector<uint8>& hash, deleted)
+		basic_connection::close_for_disappeared_private_key(hash);
 }
 
 // --------------------------------------------------------------------

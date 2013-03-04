@@ -273,7 +273,7 @@ class MWinSshPrivateKeyImpl : public ssh_private_key_impl
 
 	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
 
-	virtual string			get_hash() const;
+	virtual vector<uint8>	get_hash() const;
 	virtual string			get_comment() const;
 
   private:
@@ -370,47 +370,43 @@ string MWinSshPrivateKeyImpl::get_comment() const
 	return comment;
 }
 
-string MWinSshPrivateKeyImpl::get_hash() const
+vector<uint8> MWinSshPrivateKeyImpl::get_hash() const
 {
-	string hash;
-
-	// and create a hash for this key
-	byte sha1[20];	// SHA1 hash is always 20 bytes
-	DWORD cbHash = sizeof(sha1);
+	// create a hash for this key
+	vector<uint8> result(20);	// SHA1 hash is always 20 bytes
+	DWORD cbHash = 20;
 			
-	if (::CertGetCertificateContextProperty(mCertificateContext,
-		CERT_HASH_PROP_ID, sha1, &cbHash))
+	if (not ::CertGetCertificateContextProperty(mCertificateContext,
+		CERT_HASH_PROP_ID, &result[0], &cbHash))
 	{
-		Base64Encoder enc(new StringSink(hash));
-		enc.Put(sha1, cbHash);
-		enc.MessageEnd(true);
+		result.clear();
 	}
 
-	return hash;
+	return result;
 }
 
 // --------------------------------------------------------------------
 
-ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
-{
-//	string hash;
+//ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
+//{
+////	string hash;
+////
+////	Base64Decoder d(new StringSink(hash));
+////	d.Put(reinterpret_cast<const byte*>(inHash.c_str()), inHash.length());
+////	d.MessageEnd();
+////	
+////	CRYPT_HASH_BLOB k;
+////	k.cbData = hash.length();
+////	k.pbData = const_cast<byte*>(reinterpret_cast<const byte*>(hash.c_str()));
+////	
+////	PCCERT_CONTEXT context = ::CertFindCertificateInStore(
+////		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+////		0, CERT_FIND_SHA1_HASH, &k, nullptr);
+////	
+////	return new MWinSshPrivateKeyImpl(context);
 //
-//	Base64Decoder d(new StringSink(hash));
-//	d.Put(reinterpret_cast<const byte*>(inHash.c_str()), inHash.length());
-//	d.MessageEnd();
-//	
-//	CRYPT_HASH_BLOB k;
-//	k.cbData = hash.length();
-//	k.pbData = const_cast<byte*>(reinterpret_cast<const byte*>(hash.c_str()));
-//	
-//	PCCERT_CONTEXT context = ::CertFindCertificateInStore(
-//		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-//		0, CERT_FIND_SHA1_HASH, &k, nullptr);
-//	
-//	return new MWinSshPrivateKeyImpl(context);
-
-	return nullptr;
-}
+//	return nullptr;
+//}
 
 ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& inBlob)
 {

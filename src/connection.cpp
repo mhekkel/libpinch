@@ -86,6 +86,8 @@ string choose_protocol(const string& server, const string& client)
 
 // --------------------------------------------------------------------
 
+basic_connection* basic_connection::s_first = nullptr;
+
 basic_connection::basic_connection(boost::asio::io_service& io_service, const string& user)
 	: m_io_service(io_service)
 	, m_user(user)
@@ -101,10 +103,24 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	, m_alg_ver_s2c(kMacAlgorithms_)        
 	, m_alg_cmp_s2c(kCompressionAlgorithms_)
 {
+	m_next = s_first;
+	s_first = this;
 }
 
 basic_connection::~basic_connection()
 {
+	if (s_first == this)
+		s_first = m_next;
+	else
+	{
+		basic_connection* next = this;
+		while (next != nullptr and next->m_next != this)
+			next = next->m_next;
+		assert(next != nullptr);
+		assert(next->m_next == this);
+		next->m_next = m_next;
+	}
+	
 	delete m_key_exchange;
 }
 
@@ -149,10 +165,23 @@ void basic_connection::set_password_callback(const password_callback_type& cb)
 	m_request_password_cb = cb;
 }
 
+void basic_connection::close_for_disappeared_private_key(const vector<uint8>& hash)
+{
+	list<basic_connection*> to_close;
+	for (basic_connection* c = s_first; c != nullptr; c = c->m_next)
+	{
+		if (c->m_private_key_hash == hash)
+			to_close.push_back(c);
+	}
+
+	for_each(to_close.begin(), to_close.end(), [](basic_connection* c) { c->disconnect(); });
+}
+
 void basic_connection::disconnect()
 {
 	m_authenticated = false;
 	m_auth_state = auth_state_none;
+	m_private_key_hash.clear();
 	
 	m_session_id.clear();
 	m_packet.clear();
@@ -255,6 +284,7 @@ void basic_connection::start_handshake()
 	{
 		m_authenticated = false;
 		m_auth_state = auth_state_connecting;
+		m_private_key_hash.clear();
 
 		m_packet.clear();
 		m_encryptor.reset(nullptr);
@@ -679,6 +709,8 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 	bool partial;
 	
 	in >> s >> partial;
+
+	m_private_key_hash.clear();
 	
 	if (choose_protocol(s, "publickey") == "publickey" and not m_private_keys.empty())
 	{
@@ -718,7 +750,12 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 		opacket session_id;
 		session_id << m_session_id;
 		
-		out << ssh_private_key(blob).sign(session_id, out);
+		ssh_private_key pk(blob);
+		
+		out << pk.sign(session_id, out);
+		
+		// store the hash for this private key
+		m_private_key_hash = pk.get_hash();
 	}
 }
 

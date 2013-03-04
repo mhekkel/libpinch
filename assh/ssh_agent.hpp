@@ -40,7 +40,7 @@ class ssh_private_key
 
 	std::vector<uint8>	sign(const std::vector<uint8>& session_id, const opacket& data);
 
-	std::string			get_hash() const;
+	std::vector<uint8>	get_hash() const;
 	std::string			get_comment() const;
 	
 						operator bool() const							{ return m_impl != nullptr; }

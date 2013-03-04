@@ -78,6 +78,8 @@ class basic_connection
 	std::string		get_connection_parameters(direction d) const;
 	std::string		get_key_exchange_algoritm() const;
 	
+	static void		close_for_disappeared_private_key(const std::vector<uint8>& hash);
+	
   protected:
 
 					basic_connection(boost::asio::io_service& io_service, const std::string& user);
@@ -246,6 +248,7 @@ class basic_connection
 	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;
 	auth_state					m_auth_state;
 	uint32						m_password_attempts;
+	std::vector<uint8>			m_private_key_hash;
 	uint32						m_in_seq_nr, m_out_seq_nr;
 	ipacket						m_packet;
 	uint32						m_iblocksize, m_oblocksize;
@@ -278,6 +281,9 @@ class basic_connection
   private:
 								basic_connection(const basic_connection&);
 	basic_connection&			operator=(const basic_connection&);
+
+	static basic_connection*	s_first;
+	basic_connection*			m_next;
 };
 
 // --------------------------------------------------------------------
