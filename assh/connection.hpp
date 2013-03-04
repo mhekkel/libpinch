@@ -84,6 +84,8 @@ class basic_connection
 
 					basic_connection(boost::asio::io_service& io_service, const std::string& user);
 
+	void			reset();
+
 	void			handle_connect_result(const boost::system::error_code& ec);
 
 	struct basic_connect_handler

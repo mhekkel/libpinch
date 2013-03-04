@@ -103,6 +103,8 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	, m_alg_ver_s2c(kMacAlgorithms_)        
 	, m_alg_cmp_s2c(kCompressionAlgorithms_)
 {
+	reset();
+	
 	m_next = s_first;
 	s_first = this;
 }
@@ -177,12 +179,13 @@ void basic_connection::close_for_disappeared_private_key(const vector<uint8>& ha
 	for_each(to_close.begin(), to_close.end(), [](basic_connection* c) { c->disconnect(); });
 }
 
-void basic_connection::disconnect()
+void basic_connection::reset()
 {
 	m_authenticated = false;
 	m_auth_state = auth_state_none;
 	m_private_key_hash.clear();
-	
+	delete m_key_exchange;
+	m_key_exchange = nullptr;
 	m_session_id.clear();
 	m_packet.clear();
 	m_encryptor.reset(nullptr);
@@ -192,6 +195,14 @@ void basic_connection::disconnect()
 	m_compressor.reset(nullptr);
 	m_decompressor.reset(nullptr);
 	m_delay_decompressor = m_delay_compressor = false;
+	m_password_attempts = 0;
+	m_in_seq_nr = m_out_seq_nr = 0;
+	m_iblocksize = m_oblocksize = 8;
+}
+
+void basic_connection::disconnect()
+{
+	reset();
 	
 	// copy the list since calling Close will change it
 	list<channel*> channels(m_channels);
@@ -282,23 +293,7 @@ void basic_connection::start_handshake()
 {
 	if (m_auth_state == auth_state_none)
 	{
-		m_authenticated = false;
-		m_auth_state = auth_state_connecting;
-		m_private_key_hash.clear();
-		m_session_id.clear();
-
-		m_packet.clear();
-		m_encryptor.reset(nullptr);
-		m_decryptor.reset(nullptr);
-		m_signer.reset(nullptr);
-		m_verifier.reset(nullptr);
-		m_compressor.reset(nullptr);
-		m_decompressor.reset(nullptr);
-		m_delay_decompressor = m_delay_compressor = false;
-
-		m_password_attempts = 0;
-		m_in_seq_nr = m_out_seq_nr = 0;
-		m_iblocksize = m_oblocksize = 8;
+		reset();
 		
 		boost::asio::streambuf* request(new boost::asio::streambuf);
 		ostream out(request);
@@ -724,7 +719,7 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 	else if (choose_protocol(s, "password") == "password" and m_request_password_cb and ++m_password_attempts <= 3)
 		m_request_password_cb();
 	else
-		handle_connect_result(error::make_error_code(error::auth_cancelled_by_user));
+		full_stop(error::make_error_code(error::auth_cancelled_by_user));
 }
 
 void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec)
