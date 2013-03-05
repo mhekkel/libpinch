@@ -15,7 +15,6 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/modes.h>
 
-#include <assh/hash.hpp>
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
 #include <assh/connection.hpp>
@@ -28,6 +27,66 @@ namespace assh
 {
 
 static AutoSeededRandomPool	rng;
+
+// --------------------------------------------------------------------
+// a utility class to make hashing easier
+	
+template<typename HAlg>
+class hash
+{
+  public:
+						hash() {}
+
+	hash&				update(const CryptoPP::Integer& v)
+						{
+							opacket p;
+							p << v;
+							return update(static_cast<std::vector<uint8>>(p));
+						}
+
+	hash&				update(const std::vector<uint8>& v)
+						{
+							m_hash.Update(&v[0], v.size());
+							return *this;
+						}
+						
+	hash&				update(const std::string& v)
+						{
+							m_hash.Update(reinterpret_cast<const uint8*>(v.c_str()), v.length());
+							return *this;
+						}
+						
+	hash&				update(const char* v)
+						{
+							m_hash.Update(v, std::strlen(v));
+							return *this;
+						}
+						
+	hash&				update(uint8 v)
+						{
+							m_hash.Update(&v, 1);
+							return *this;
+						}
+	
+	std::vector<uint8>	final()
+						{
+							std::vector<uint8> result(m_hash.DigestSize());
+							m_hash.Final(&result[0]);
+							return result;
+						}
+
+  private:
+						hash(const hash&);
+	hash&				operator=(const hash&);
+
+	HAlg				m_hash;
+};
+
+template<typename H, typename T>
+hash<H>& operator|(hash<H>& h, T t)
+{
+	return h.update(t);
+}
 
 // --------------------------------------------------------------------
 	

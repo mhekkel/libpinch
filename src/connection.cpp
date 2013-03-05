@@ -31,7 +31,6 @@
 
 #include <assh/connection.hpp>
 #include <assh/channel.hpp>
-#include <assh/hash.hpp>
 #include <assh/ssh_agent.hpp>
 #include <assh/x11_channel.hpp>
 #include <assh/key_exchange.hpp>
@@ -56,7 +55,7 @@ const string
 const string
 	kKeyExchangeAlgorithms_("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
 	kServerHostKeyAlgorithms_("ssh-rsa,ssh-dss"),
-	kEncryptionAlgorithms_("aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,blowfish-cbc,3des-cbc"),
+	kEncryptionAlgorithms_("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,blowfish-cbc,3des-cbc"),
 	kMacAlgorithms_("hmac-sha1,hmac-md5"),
 	kCompressionAlgorithms_("zlib@openssh.com,zlib,none");
 
@@ -135,24 +134,24 @@ void basic_connection::set_algorithm(algorithm alg, direction dir, const string&
 			break;
 
 		case encryption:
-			if (dir == client2server)
-				m_alg_enc_c2s = preferred;
-			else
+			if (dir != client2server)
 				m_alg_enc_s2c = preferred;
+			if (dir != server2client)
+				m_alg_enc_c2s = preferred;
 			break;
-
+		
 		case verification:
-			if (dir == client2server)
-				m_alg_ver_c2s = preferred;
-			else
+			if (dir != client2server)
 				m_alg_ver_s2c = preferred;
+			if (dir != server2client)
+				m_alg_ver_c2s = preferred;
 			break;
-
+		
 		case compression:
-			if (dir == client2server)
-				m_alg_cmp_c2s = preferred;
-			else
+			if (dir != client2server)
 				m_alg_cmp_s2c = preferred;
+			if (dir != server2client)
+				m_alg_cmp_c2s = preferred;
 			break;
 	}
 }
@@ -590,7 +589,7 @@ void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system:
 	else if (protocol == "aes256-cbc")
 		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 32, iv));
 	else if (protocol == "aes128-ctr")
-		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 16, iv));
+		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 16, iv));
 	else if (protocol == "aes192-ctr")
 		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 24, iv));
 	else if (protocol == "aes256-ctr")

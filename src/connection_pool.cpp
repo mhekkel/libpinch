@@ -44,30 +44,30 @@ void connection_pool::set_algorithm(algorithm alg, direction dir, const string& 
 			break;
 
 		case encryption:
-			if (dir == client2server)
-				m_alg_enc_c2s = preferred;
-			else
+			if (dir != client2server)
 				m_alg_enc_s2c = preferred;
+			if (dir != server2client)
+				m_alg_enc_c2s = preferred;
 			break;
 		
 		case verification:
-			if (dir == client2server)
-				m_alg_ver_c2s = preferred;
-			else
+			if (dir != client2server)
 				m_alg_ver_s2c = preferred;
+			if (dir != server2client)
+				m_alg_ver_c2s = preferred;
 			break;
 		
 		case compression:
-			if (dir == client2server)
-				m_alg_cmp_c2s = preferred;
-			else
+			if (dir != client2server)
 				m_alg_cmp_s2c = preferred;
+			if (dir != server2client)
+				m_alg_cmp_c2s = preferred;
 			break;
 	}
 }
 
 void connection_pool::register_proxy(const string& destination_host, uint16 destination_port,
-	const string& proxy_cmd, const string& proxy_user, const string& proxy_host, uint16 proxy_port)
+	const string& proxy_user, const string& proxy_host, uint16 proxy_port, const string& proxy_cmd)
 {
 	proxy p = { destination_host, destination_port, proxy_cmd, proxy_user, proxy_host, proxy_port };
 	proxy_list::iterator pi = find(m_proxies.begin(), m_proxies.end(), p);
@@ -107,13 +107,13 @@ basic_connection& connection_pool::get(const string& user, const string& host, u
 		entry e = { user, host, port, result };
 		m_entries.push_back(e);
 
-		if (not m_alg_kex.empty())		result->set_algorithm(keyexchange, client2server, m_alg_kex);
-		if (not m_alg_enc_c2s.empty())	result->set_algorithm(encryption, client2server, m_alg_enc_c2s);
-		if (not m_alg_ver_c2s.empty())	result->set_algorithm(verification, client2server, m_alg_ver_c2s);
-		if (not m_alg_cmp_c2s.empty())	result->set_algorithm(compression, client2server, m_alg_cmp_c2s);
-		if (not m_alg_enc_s2c.empty())	result->set_algorithm(encryption, server2client, m_alg_enc_s2c);
-		if (not m_alg_ver_s2c.empty())	result->set_algorithm(verification, server2client, m_alg_ver_s2c);
-		if (not m_alg_cmp_s2c.empty())	result->set_algorithm(compression, server2client, m_alg_cmp_s2c);
+		if (not m_alg_kex.empty())		result->set_algorithm(keyexchange,	client2server, m_alg_kex);
+		if (not m_alg_enc_c2s.empty())	result->set_algorithm(encryption,	client2server, m_alg_enc_c2s);
+		if (not m_alg_ver_c2s.empty())	result->set_algorithm(verification,	client2server, m_alg_ver_c2s);
+		if (not m_alg_cmp_c2s.empty())	result->set_algorithm(compression,	client2server, m_alg_cmp_c2s);
+		if (not m_alg_enc_s2c.empty())	result->set_algorithm(encryption,	server2client, m_alg_enc_s2c);
+		if (not m_alg_ver_s2c.empty())	result->set_algorithm(verification,	server2client, m_alg_ver_s2c);
+		if (not m_alg_cmp_s2c.empty())	result->set_algorithm(compression,	server2client, m_alg_cmp_s2c);
 	}
 
 	return *result;

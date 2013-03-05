@@ -9,7 +9,7 @@
 
 namespace assh
 {
-enum direction { client2server, server2client };
+enum direction { client2server, server2client, both_directions };
 enum algorithm { encryption, verification, compression, keyexchange };
 }
 

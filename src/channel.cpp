@@ -82,7 +82,6 @@ void channel::opened()
 
 void channel::close()
 {
-//	ChannelMessage(_("Channel closed"));
 	if (m_channel_open)
 		m_connection.close_channel(this, m_host_channel_id);
 }
@@ -185,7 +184,8 @@ void channel::process(ipacket& in)
 			
 			in >> reasonCode >> reason;
 			
-//			ChannelError(FormatString("Opening channel failed: ^0", reason));
+			error(reason, "en");
+
 			m_connection.close_channel(this, 0);
 			
 			if (m_open_handler)
@@ -241,14 +241,6 @@ void channel::process(ipacket& in)
 			}
 			break;
 		
-		//case SSH_MSG_CHANNEL_SUCCESS:
-		//	HandleChannelEvent(SSH_CHANNEL_SUCCESS);
-		//	break;
-
-		//case SSH_MSG_CHANNEL_FAILURE:
-		//	HandleChannelEvent(SSH_CHANNEL_FAILURE);
-		//	break;
-
 		case msg_channel_request:
 		{
 			string request;
@@ -299,20 +291,6 @@ void channel::error(const string& msg, const string& lang)
 void channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
 {
 }
-
-//void channel::receive_data(ipacket& in)
-//{
-//	pair<const char*, size_t> data;
-//	in >> data;
-//	receive_data(data.first, data.second);
-//}
-//
-//void channel::receive_extended_data(ipacket& in, uint32 type)
-//{
-//	pair<const char*, size_t> data;
-//	in >> data;
-//	receive_extended_data(data.first, data.second, type);
-//}
 
 void channel::receive_data(const char* data, size_t size)
 {
@@ -400,6 +378,5 @@ void exec_channel::handle_channel_request(const string& request, ipacket& in, op
 	
 	m_handler->post_result(request, status);
 }
-
 
 }

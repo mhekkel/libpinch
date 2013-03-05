@@ -77,9 +77,6 @@ class channel
 	uint32			my_channel_id() const		{ return m_my_channel_id; }
 	bool			is_open() const				{ return m_channel_open; }
 
-//	std::string		GetEncryptionParams() const;
-//	std::string		GetHostVersion() const;
-
 	virtual void	banner(const std::string& msg, const std::string& lang);
 	virtual void	message(const std::string& msg, const std::string& lang);
 	virtual void	error(const std::string& msg, const std::string& lang);
