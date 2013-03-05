@@ -63,7 +63,12 @@ enum ssh_errors
 	channel_open_failure = SSH_MSG_CHANNEL_OPEN_FAILURE,
 	channel_failure = SSH_MSG_CHANNEL_FAILURE,
 	
-	require_password
+	// our errors
+	host_key_verification_failed,
+	channel_closed,
+	require_password,
+	not_authenticated,
+	disconnect_by_host
 };
 
 enum disconnect_errors
@@ -71,7 +76,6 @@ enum disconnect_errors
 	host_not_allowed_to_connect = 1,
 	protocol_error,
 	key_exchange_failed,
-	host_key_verification_failed,
 	reserved,
 	mac_error,
 	compression_error,
@@ -79,14 +83,11 @@ enum disconnect_errors
 	protocol_version_not_supported,
 	host_key_not_verifiable,
 	connection_lost,
-	channel_closed,
 	by_application,
 	too_many_connections,
 	auth_cancelled_by_user,
 	no_more_auth_methods_available,
-	illegal_user_name,
-	not_authenticated,
-	disconnect_by_host
+	illegal_user_name
 };
 
 boost::system::error_category& ssh_category();

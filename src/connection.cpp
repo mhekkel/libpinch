@@ -465,8 +465,12 @@ void basic_connection::process_packet(ipacket& in)
 		switch ((message_type)in)
 		{
 			case msg_disconnect:
-				full_stop(error::make_error_code(error::disconnect_by_host));
+			{
+				uint32 reasonCode;
+				in >> reasonCode;
+				full_stop(error::make_error_code(error::disconnect_errors(reasonCode)));
 				break;
+			}
 
 			case msg_kexinit:				process_kexinit(in, out, ec);				break;
 			case msg_newkeys:				process_newkeys(in, out, ec);				break;
@@ -757,6 +761,8 @@ void basic_connection::password(const string& pw)
 
 void basic_connection::full_stop(const boost::system::error_code& ec)
 {
+	for_each(m_channels.begin(), m_channels.end(), [&ec] (channel* ch) { ch->error(ec.message(), ""); });
+	
 	disconnect();
 	handle_connect_result(ec);
 }

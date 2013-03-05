@@ -8,6 +8,8 @@
 #include <boost/bind.hpp>
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
+#include <boost/regex.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <assh/x11_channel.hpp>
 #include <assh/connection.hpp>
@@ -48,10 +50,21 @@ void x11_channel::setup(ipacket& in)
 	
 	try
 	{
-#pragma message("Get info from DISPLAY")
+		string host = "localhost", port = "6000";
+
+		const char* display = getenv("DISPLAY");
+		boost::regex rx("([-[:alnum:].]*):(\\d+)(?:\.\\d+)?");
+
+		boost::cmatch m;
+		if (display != nullptr and boost::regex_match(display, m, rx))
+		{
+			if (m[1].matched and not m[1].str().empty())
+				host = m[1];
+			port = boost::lexical_cast<string>(6000 + boost::lexical_cast<int>(m[2]));
+		}
 
 		tcp::resolver resolver(get_io_service());
-		tcp::resolver::query query("localhost", "6000");
+		tcp::resolver::query query(host, port);
 		tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
 		boost::asio::connect(m_socket, endpoint_iterator);
 
