@@ -51,6 +51,8 @@ class channel
 		Handler			m_handler;
 	};
 
+	virtual void	fill_open_opacket(opacket& out);
+
 	template<typename Handler>
 	void			open(Handler&& handler)
 					{
@@ -332,8 +334,12 @@ class channel
 
 
   protected:
+
 					channel(basic_connection& connection);
 	virtual			~channel();
+
+	virtual std::string
+					channel_type() const						{ return "session"; }
 
 	virtual void	setup(ipacket& in) = 0;
 

@@ -50,6 +50,11 @@ boost::asio::io_service& channel::get_io_service()
 	return m_connection.get_io_service();
 }
 
+void channel::fill_open_opacket(opacket& out)
+{
+	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
+}
+
 void channel::open()
 {
 	if (not m_connection.is_connected())

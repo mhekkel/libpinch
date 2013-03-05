@@ -1,4 +1,4 @@
-//          Copyright Maarten L. Hekkelman 2006-2008
+//           Copyright Maarten L. Hekkelman 2013
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -179,8 +179,29 @@ void ssh_agent::update()
 	foreach (ssh_private_key& key, m_private_keys)
 		deleted.erase(remove(deleted.begin(), deleted.end(), key.get_hash()), deleted.end());
 	
+	connection_list connections(m_registered_connections);
+	
 	foreach (vector<uint8>& hash, deleted)
-		basic_connection::close_for_disappeared_private_key(hash);
+	{
+		foreach (basic_connection* connection, connections)
+		{
+			if (connection->get_used_private_key() == hash)
+				connection->disconnect();
+		}
+	}
+}
+
+void ssh_agent::register_connection(basic_connection* connection)
+{
+	if (find(m_registered_connections.begin(), m_registered_connections.end(), connection) == m_registered_connections.end())
+		m_registered_connections.push_back(connection);
+}
+
+void ssh_agent::unregister_connection(basic_connection* connection)
+{
+	m_registered_connections.erase(
+		remove(m_registered_connections.begin(), m_registered_connections.end(), connection),
+		m_registered_connections.end());
 }
 
 void ssh_agent::expose_pageant(bool expose)

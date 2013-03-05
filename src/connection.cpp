@@ -35,6 +35,7 @@
 #include <assh/x11_channel.hpp>
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
+#include <assh/port_forwarding.hpp>
 
 using namespace std;
 using namespace CryptoPP;
@@ -85,8 +86,6 @@ string choose_protocol(const string& server, const string& client)
 
 // --------------------------------------------------------------------
 
-basic_connection* basic_connection::s_first = nullptr;
-
 basic_connection::basic_connection(boost::asio::io_service& io_service, const string& user)
 	: m_io_service(io_service)
 	, m_user(user)
@@ -94,6 +93,7 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	, m_auth_state(auth_state_none)
 	, m_key_exchange(nullptr)
 	, m_forward_agent(false)
+	, m_port_forwarder(nullptr)
 	, m_alg_kex(kKeyExchangeAlgorithms_)
 	, m_alg_enc_c2s(kEncryptionAlgorithms_)
 	, m_alg_ver_c2s(kMacAlgorithms_)
@@ -103,26 +103,16 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	, m_alg_cmp_s2c(kCompressionAlgorithms_)
 {
 	reset();
-	
-	m_next = s_first;
-	s_first = this;
+
+	ssh_agent::instance().register_connection(this);
 }
 
 basic_connection::~basic_connection()
 {
-	if (s_first == this)
-		s_first = m_next;
-	else
-	{
-		basic_connection* next = this;
-		while (next != nullptr and next->m_next != this)
-			next = next->m_next;
-		assert(next != nullptr);
-		assert(next->m_next == this);
-		next->m_next = m_next;
-	}
+	ssh_agent::instance().unregister_connection(this);
 	
 	delete m_key_exchange;
+	delete m_port_forwarder;
 }
 
 void basic_connection::set_algorithm(algorithm alg, direction dir, const string& preferred)
@@ -166,18 +156,6 @@ void basic_connection::set_password_callback(const password_callback_type& cb)
 	m_request_password_cb = cb;
 }
 
-void basic_connection::close_for_disappeared_private_key(const vector<uint8>& hash)
-{
-	list<basic_connection*> to_close;
-	for (basic_connection* c = s_first; c != nullptr; c = c->m_next)
-	{
-		if (c->m_private_key_hash == hash)
-			to_close.push_back(c);
-	}
-
-	for_each(to_close.begin(), to_close.end(), [](basic_connection* c) { c->disconnect(); });
-}
-
 void basic_connection::reset()
 {
 	m_authenticated = false;
@@ -211,6 +189,14 @@ void basic_connection::disconnect()
 void basic_connection::forward_agent(bool forward)
 {
 	m_forward_agent = forward;
+}
+
+void basic_connection::forward_port(const string& local_address, uint16 local_port,
+	const string& remote_address, uint16 remote_port)
+{
+	if (m_port_forwarder == nullptr)
+		m_port_forwarder = new port_forward_listener(*this);
+	m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
 }
 
 string basic_connection::get_connection_parameters(direction dir) const
@@ -899,7 +885,7 @@ void basic_connection::open_channel(channel* ch, uint32 channel_id)
 	if (m_authenticated)
 	{
 		opacket out(msg_channel_open);
-		out << "session" << channel_id << kWindowSize << kMaxPacketSize;
+		ch->fill_open_opacket(out);
 		async_write(move(out));
 	}
 }

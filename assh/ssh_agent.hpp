@@ -1,4 +1,4 @@
-//          Copyright Maarten L. Hekkelman 2006-2008
+//           Copyright Maarten L. Hekkelman 2013
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -15,7 +15,7 @@
 
 #include <cryptopp/integer.h>
 
- #include <assh/channel.hpp>
+#include <assh/channel.hpp>
 
 namespace assh
 {
@@ -64,7 +64,10 @@ class ssh_agent
 	static ssh_agent&	instance();
 	
 	void				process_agent_request(ipacket& in, opacket& out);
+
 	void				update();
+	void				register_connection(basic_connection* c);
+	void				unregister_connection(basic_connection* c);
 
 	typedef std::vector<ssh_private_key>	ssh_private_key_list;
 	typedef ssh_private_key_list::iterator	iterator;
@@ -85,7 +88,10 @@ class ssh_agent
 						~ssh_agent();
 	ssh_agent&			operator=(const ssh_agent&);
 
+	typedef std::list<basic_connection*> connection_list;
+
 	ssh_private_key_list m_private_keys;
+	connection_list		 m_registered_connections;
 };
 
 // --------------------------------------------------------------------

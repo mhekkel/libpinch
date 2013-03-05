@@ -18,6 +18,7 @@ namespace assh
 
 class key_exchange;
 class channel;
+class port_forward_listener;
 	
 extern const std::string kSSHVersionString;
 
@@ -69,6 +70,8 @@ class basic_connection
 					}
 	
 	void			forward_agent(bool forward);
+	void			forward_port(const std::string& local_address, uint16 local_port,
+						const std::string& remote_address, uint16 remote_port);
 
 	virtual boost::asio::io_service&
 					get_io_service() = 0;
@@ -77,8 +80,8 @@ class basic_connection
 	
 	std::string		get_connection_parameters(direction d) const;
 	std::string		get_key_exchange_algoritm() const;
-	
-	static void		close_for_disappeared_private_key(const std::vector<uint8>& hash);
+	std::vector<uint8>
+					get_used_private_key() const							{ return m_private_key_hash; }
 	
   protected:
 
@@ -275,6 +278,7 @@ class basic_connection
 
 	std::list<channel*>			m_channels;
 	bool						m_forward_agent;
+	port_forward_listener*		m_port_forwarder;
 
 	std::string					m_alg_kex,
 								m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
@@ -283,9 +287,6 @@ class basic_connection
   private:
 								basic_connection(const basic_connection&);
 	basic_connection&			operator=(const basic_connection&);
-
-	static basic_connection*	s_first;
-	basic_connection*			m_next;
 };
 
 // --------------------------------------------------------------------
