@@ -165,4 +165,20 @@ void connection_pool::disconnect_all()
 		});
 }
 
+bool connection_pool::has_open_connections()
+{
+	bool connection_open = false;
+
+	foreach (auto& e, m_entries)
+	{
+		if (e.connection->is_connected())
+		{
+			connection_open = true;
+			break;
+		}
+	}
+
+	return connection_open;
+}
+
 }

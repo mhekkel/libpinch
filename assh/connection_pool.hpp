@@ -37,6 +37,7 @@ class connection_pool
 									uint16 proxy_port, const std::string& proxy_cmd);
 
 	void						disconnect_all();
+	bool						has_open_connections();
 
   private:
 								connection_pool(const connection_pool&);
