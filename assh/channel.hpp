@@ -65,6 +65,7 @@ class channel
 
 	virtual void	opened();
 	virtual void	closed();
+	virtual void	end_of_file();
 
 	std::string		get_connection_parameters(direction dir) const;
 	std::string		get_key_exchange_algoritm() const;

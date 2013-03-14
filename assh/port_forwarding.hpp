@@ -72,7 +72,6 @@ class port_forwarding_channel : public channel
 	
 
 	boost::asio::streambuf				m_response;
-	std::deque<boost::asio::streambuf*>	m_requests;
 	boost::asio::ip::tcp::socket		m_socket;
 	std::vector<uint8>					m_packet;
 	std::string							m_remote_address;

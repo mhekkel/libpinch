@@ -154,29 +154,39 @@ void port_forwarding_channel::closed()
 
 	channel::closed();
 	
-	// all the dependancies should be gone now
-	delete this;
+	m_connection.get_io_service().post([this]
+	{
+		delete this;
+	});
 }
 
 void port_forwarding_channel::receive_data(const char* data, size_t size)
 {
-	m_requests.push_back(new boost::asio::streambuf);
-	ostream out(m_requests.back());
+	shared_ptr<boost::asio::streambuf> buffer(new boost::asio::streambuf);
+	ostream out(buffer.get());
 	
 	out.write(data, size);
 	
-	boost::asio::async_write(m_socket, *m_requests.back(),
-		[this](const boost::system::error_code& ec, size_t)
+	boost::asio::async_write(m_socket, *buffer,
+		[this, buffer](const boost::system::error_code& ec, size_t)
 		{
 			if (ec)
+			{
+				string err = ec.message();
+
 				close();
+			}
 		});
 }
 
 void port_forwarding_channel::receive_raw(const boost::system::error_code& ec, std::size_t bytes_received)
 {
 	if (ec)
+	{
+		string err = ec.message();
+
 		close();
+	}
 	else
 	{
 		istream in(&m_response);
@@ -193,7 +203,11 @@ void port_forwarding_channel::receive_raw(const boost::system::error_code& ec, s
 				[this](const boost::system::error_code& ec, size_t)
 				{
 					if (ec)
+					{
+						string err = ec.message();
+
 						close();
+					}
 				});
 		}
 		

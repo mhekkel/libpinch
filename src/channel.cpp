@@ -109,6 +109,11 @@ void channel::closed()
 	m_read_ops.clear();
 }
 
+void channel::end_of_file()
+{
+	close();
+}
+
 string channel::get_connection_parameters(direction dir) const
 {
 	return is_open() ? m_connection.get_connection_parameters(dir) : "";
@@ -202,6 +207,10 @@ void channel::process(ipacket& in)
 
 			break;
 		}
+
+		case msg_channel_eof:
+			end_of_file();
+			break;
 
 		case msg_channel_close:
 			closed();
