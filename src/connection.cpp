@@ -186,6 +186,31 @@ void basic_connection::disconnect()
 	for_each(channels.begin(), channels.end(), [](channel* c) { c->close(); });
 }
 
+void basic_connection::rekey()
+{
+	opacket out(msg_kexinit);
+	
+	for (uint32 i = 0; i < 16; ++i)
+		out << rng.GenerateByte();
+	
+	out << m_alg_kex
+		<< kServerHostKeyAlgorithms_
+		<< m_alg_enc_c2s
+		<< m_alg_enc_s2c
+		<< m_alg_ver_c2s
+		<< m_alg_ver_s2c
+		<< m_alg_cmp_c2s
+		<< m_alg_cmp_s2c
+		<< ""
+		<< ""
+		<< false
+		<< uint32(0);
+	
+	m_my_payload = out;
+	
+	async_write(move(out));
+}
+
 void basic_connection::forward_agent(bool forward)
 {
 	m_forward_agent = forward;
@@ -629,14 +654,14 @@ void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system:
 	
 	// Client to Server compression
 	protocol = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
-	if (not m_compressor and protocol == "zlib")
+	if ((not m_compressor and protocol == "zlib") or (m_authenticated and protocol == "zlib@openssh.com"))
 		m_compressor.reset(new compression_helper(true));
 	else if (protocol == "zlib@openssh.com")
 		m_delay_compressor = true;
 
 	// Server to Client compression
 	protocol = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
-	if (not m_decompressor and protocol == "zlib")
+	if ((not m_decompressor and protocol == "zlib") or (m_authenticated and protocol == "zlib@openssh.com"))
 		m_decompressor.reset(new compression_helper(false));
 	else if (protocol == "zlib@openssh.com")
 		m_delay_decompressor = true;

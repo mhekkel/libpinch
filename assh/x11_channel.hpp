@@ -38,7 +38,6 @@ class x11_channel : public channel
 	
 
 	boost::asio::streambuf				m_response;
-	std::deque<boost::asio::streambuf*>	m_requests;
 	boost::asio::ip::tcp::socket		m_socket;
 	bool								m_verified;
 	std::string							m_auth_protocol, m_auth_data;

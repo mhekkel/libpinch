@@ -54,6 +54,7 @@ class basic_connection
 	void			password(const std::string& pw);
 
 	virtual void	disconnect();
+	virtual void	rekey();
 
 	void			open_channel(channel* ch, uint32 id);
 	void			close_channel(channel* ch, uint32 id);

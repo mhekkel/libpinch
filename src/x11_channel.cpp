@@ -30,11 +30,6 @@ x11_channel::~x11_channel()
 {
 	if (m_socket.is_open())
 		m_socket.close();
-
-	foreach (boost::asio::streambuf* buffer, m_requests)
-		delete buffer;
-
-	m_requests.clear();
 }
 
 void x11_channel::setup(ipacket& in)
@@ -99,8 +94,8 @@ void x11_channel::closed()
 
 void x11_channel::receive_data(const char* data, size_t size)
 {
-	m_requests.push_back(new boost::asio::streambuf);
-	ostream out(m_requests.back());
+	shared_ptr<boost::asio::streambuf> request(new boost::asio::streambuf);
+	ostream out(request.get());
 	
 	if (m_verified)
 		out.write(data, size);
@@ -117,8 +112,8 @@ void x11_channel::receive_data(const char* data, size_t size)
 		}
 	}
 	
-	boost::asio::async_write(m_socket, *m_requests.back(),
-		[this](const boost::system::error_code& ec, size_t)
+	boost::asio::async_write(m_socket, *request,
+		[this,request](const boost::system::error_code& ec, size_t)
 		{
 			if (ec)
 				close();

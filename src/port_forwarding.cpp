@@ -171,22 +171,14 @@ void port_forwarding_channel::receive_data(const char* data, size_t size)
 		[this, buffer](const boost::system::error_code& ec, size_t)
 		{
 			if (ec)
-			{
-				string err = ec.message();
-
 				close();
-			}
 		});
 }
 
 void port_forwarding_channel::receive_raw(const boost::system::error_code& ec, std::size_t bytes_received)
 {
 	if (ec)
-	{
-		string err = ec.message();
-
 		close();
-	}
 	else
 	{
 		istream in(&m_response);
@@ -203,11 +195,7 @@ void port_forwarding_channel::receive_raw(const boost::system::error_code& ec, s
 				[this](const boost::system::error_code& ec, size_t)
 				{
 					if (ec)
-					{
-						string err = ec.message();
-
 						close();
-					}
 				});
 		}
 		
