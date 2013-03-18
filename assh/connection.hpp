@@ -61,7 +61,10 @@ class basic_connection
 
 	void			async_write(opacket&& p)
 					{
-						async_write(std::move(p), [](const boost::system::error_code&, std::size_t) {});
+						async_write(std::move(p), [this](const boost::system::error_code& ec, std::size_t)
+						{
+							if (ec) this->handle_error(ec);
+						});
 					}
 
 	template<typename Handler>
@@ -69,6 +72,8 @@ class basic_connection
 					{
 						async_write_packet_int(std::move(p), new write_op<Handler>(std::move(handler)));
 					}
+	
+	virtual void	handle_error(const boost::system::error_code& ec);
 	
 	void			forward_agent(bool forward);
 	void			forward_port(const std::string& local_address, uint16 local_port,
@@ -144,8 +149,6 @@ class basic_connection
 
 	void			process_channel_open(ipacket& in, opacket& out);
 	void			process_channel(ipacket& in, opacket& out, boost::system::error_code& ec);
-
-	void			full_stop(const boost::system::error_code& ec);
 
 	template<class Handler>
 	struct bound_handler
@@ -249,6 +252,7 @@ class basic_connection
 	boost::asio::io_service&	m_io_service;
 	std::string					m_user;
 	bool						m_authenticated;
+	bool						m_sent_kexinit;
 	connect_handler_list		m_connect_handlers;
 	std::string					m_host_version;
 	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;

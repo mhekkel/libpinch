@@ -12,10 +12,11 @@
 #include <assh/connection_pool.hpp>
 #include <assh/proxy_cmd.hpp>
 #include <assh/terminal_channel.hpp>
+#include <assh/sftp_channel.hpp>
 #include <assh/debug.hpp>
 
 #if defined(_MSC_VER)
-//#pragma comment (lib, "libzeep")
+#pragma comment (lib, "libz")
 #pragma comment (lib, "libassh")
 #pragma comment (lib, "cryptlib")
 #endif
@@ -28,18 +29,53 @@ class client
   public:
 			client(assh::basic_connection& connection)
 				: m_channel(connection)
+				, m_sftp_channel(connection)
 				, m_first(true)
 			{
-				m_channel.open_with_pty(80, 24, "vt220", true, true, [this](const boost::system::error_code& ec)
+//				m_channel.open_with_pty(80, 24, "vt220", true, true, [this](const boost::system::error_code& ec)
+//				{
+//					if (ec)
+//					{
+//						cerr << "error opening channel: " << ec.message() << endl;
+//						m_channel.close();
+//					}
+//					else
+//						this->received(ec, 0);
+//				});
+				
+				m_sftp_channel.open([this](const boost::system::error_code& ec)
 				{
 					if (ec)
 					{
-						cerr << "error opening channel: " << ec.message() << endl;
-						m_channel.close();
+						cerr << "error sftp opening channel: " << ec.message() << endl;
+						m_sftp_channel.close();
 					}
 					else
-						this->received(ec, 0);
+					{
+						m_sftp_channel.read_dir("/home/maarten", boost::bind(&client::read_dir, this, _1, _2, _3, _4));
+
+						//m_sftp_channel.read_dir("/home/maarten", []
+						//		(const boost::system::error_code& ec, const string& name, const string& longname,
+						//			const assh::sftp_channel::file_attributes& attr) -> bool
+						//		{
+						//			if (ec)
+						//				cerr << "read dir error: " << ec.message() << endl;
+						//			else
+						//				cout << longname << endl;
+						//			return true;
+						//		});
+					}
 				});
+			}
+
+	bool	read_dir(const boost::system::error_code& ec, const string& name, const string& longname,
+				const assh::sftp_channel::file_attributes& attr)
+			{
+				if (ec)
+					cerr << "read dir error: " << ec.message() << endl;
+				else
+					cout << longname << endl;
+				return true;
 			}
 	
 	void	written(const boost::system::error_code& ec, std::size_t bytes_received)
@@ -64,15 +100,15 @@ class client
 				{
 					if (bytes_received > 0 and m_first)
 					{
-//						const char k_cmd[] = "ssh-add -L\n";
-//						const char k_cmd[] = "ssh www\n";
-						const char k_cmd[] = "xclock\n";
-						boost::asio::const_buffers_1 b(k_cmd, strlen(k_cmd));
-					
-						boost::asio::async_write(m_channel, b, [this](const boost::system::error_code& ec, size_t bytes_transferred)
-						{
-							this->written(ec, bytes_transferred);
-						});
+////						const char k_cmd[] = "ssh-add -L\n";
+////						const char k_cmd[] = "ssh www\n";
+//						const char k_cmd[] = "xclock\n";
+//						boost::asio::const_buffers_1 b(k_cmd, strlen(k_cmd));
+//					
+//						boost::asio::async_write(m_channel, b, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+//						{
+//							this->written(ec, bytes_transferred);
+//						});
 					
 						m_first = false;
 					}
@@ -90,6 +126,7 @@ class client
 			}
 	
 	assh::terminal_channel	m_channel;
+	assh::sftp_channel		m_sftp_channel;
 	boost::asio::streambuf	m_response;
 	bool					m_first;
 };
@@ -108,12 +145,13 @@ int main(int argc, char* const argv[])
 		string port = argv[2];
 		string user = argv[3];
 	
-		assh::connection_pool::instance().register_proxy("newcmbi2", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
-		assh::connection_pool::instance().register_proxy("newcmbi2.cmbi.ru.nl", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
-	
 		boost::asio::io_service io_service;
-		
-		assh::basic_connection& connection(assh::connection_pool::instance().get(io_service, user, host, boost::lexical_cast<uint16>(port)));
+		assh::connection_pool pool(io_service);
+
+		//pool.register_proxy("newcmbi2", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
+		//pool.register_proxy("newcmbi2.cmbi.ru.nl", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
+	
+		assh::basic_connection& connection(pool.get(user, host, boost::lexical_cast<uint16>(port)));
 
 		client* c = nullptr;
 		

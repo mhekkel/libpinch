@@ -90,6 +90,7 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	: m_io_service(io_service)
 	, m_user(user)
 	, m_authenticated(false)
+	, m_sent_kexinit(false)
 	, m_auth_state(auth_state_none)
 	, m_key_exchange(nullptr)
 	, m_forward_agent(false)
@@ -186,6 +187,21 @@ void basic_connection::disconnect()
 	for_each(channels.begin(), channels.end(), [](channel* c) { c->close(); });
 }
 
+void basic_connection::handle_error(const boost::system::error_code& ec)
+{
+	if (ec)
+	{
+#if DEBUG
+		cerr << ec << endl;
+#endif
+
+		for_each(m_channels.begin(), m_channels.end(), [&ec] (channel* ch) { ch->error(ec.message(), ""); });
+		
+		disconnect();
+		handle_connect_result(ec);
+	}
+}
+
 void basic_connection::rekey()
 {
 	opacket out(msg_kexinit);
@@ -209,6 +225,8 @@ void basic_connection::rekey()
 	m_my_payload = out;
 	
 	async_write(move(out));
+	
+	m_sent_kexinit = true;
 }
 
 void basic_connection::forward_agent(bool forward)
@@ -339,31 +357,7 @@ void basic_connection::handle_protocol_version_response(const boost::system::err
 		
 		if (ba::starts_with(m_host_version, "SSH-2.0"))
 		{
-			opacket out(msg_kexinit);
-			
-			for (uint32 i = 0; i < 16; ++i)
-				out << rng.GenerateByte();
-			
-			out << m_alg_kex
-				<< kServerHostKeyAlgorithms_
-				<< m_alg_enc_c2s
-				<< m_alg_enc_s2c
-				<< m_alg_ver_c2s
-				<< m_alg_ver_s2c
-				<< m_alg_cmp_c2s
-				<< m_alg_cmp_s2c
-				<< ""
-				<< ""
-				<< false
-				<< uint32(0);
-			
-			m_my_payload = out;
-			
-			async_write(move(out), [this](const boost::system::error_code& ec, size_t bytes_transferred)
-			{
-				if (ec)
-					handle_connect_result(ec);
-			});
+			rekey();
 			
 			// start read loop
 			received_data(boost::system::error_code());
@@ -378,7 +372,7 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 {
 	if (ec)
 	{
-		full_stop(ec);
+		handle_error(ec);
 		return;
 	}
 
@@ -431,7 +425,7 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 					
 					if (not m_verifier->Verify(&digest[0]))
 					{
-						full_stop(error::make_error_code(error::mac_error));
+						handle_error(error::make_error_code(error::mac_error));
 						return;
 					}
 				}
@@ -442,7 +436,7 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 					m_packet.decompress(*m_decompressor, ec);
 					if (ec)
 					{
-						full_stop(ec);
+						handle_error(ec);
 						break;
 					}
 				}
@@ -493,14 +487,24 @@ void basic_connection::process_packet(ipacket& in)
 			{
 				uint32 reasonCode;
 				in >> reasonCode;
-				full_stop(error::make_error_code(error::disconnect_errors(reasonCode)));
+				handle_error(error::make_error_code(error::disconnect_errors(reasonCode)));
 				break;
 			}
+
+			case msg_ignore:
+			case msg_unimplemented:
+			case msg_debug:
+				break;
+
+			case msg_service_request:
+				disconnect();
+				break;
+
+			case msg_service_accept:		process_service_accept(in, out, ec);		break;
 
 			case msg_kexinit:				process_kexinit(in, out, ec);				break;
 			case msg_newkeys:				process_newkeys(in, out, ec);				break;
 
-			case msg_service_accept:		process_service_accept(in, out, ec);		break;
 			case msg_userauth_success:		process_userauth_success(in, out, ec);		break;
 			case msg_userauth_failure:		process_userauth_failure(in, out, ec);		break;
 			case msg_userauth_banner:		process_userauth_banner(in, out, ec);		break;
@@ -525,9 +529,13 @@ void basic_connection::process_packet(ipacket& in)
 					process_channel(in, out, ec);
 				break;
 
-			case msg_ignore:
 			default:
+			{
+				opacket out(msg_unimplemented);
+				out << (uint32)m_in_seq_nr;
+				async_write(move(out));
 				break;
+			}
 		}
 	}
 	
@@ -535,13 +543,7 @@ void basic_connection::process_packet(ipacket& in)
 		handle_connect_result(ec);
 
 	if (not out.empty())
-	{
-		async_write(move(out), [this](const boost::system::error_code& ec, size_t)
-			{
-				if (ec)
-					full_stop(ec);
-			});
-	}
+		async_write(move(out));
 }
 
 bool basic_connection::validate_host_key(const string& pk_alg, const vector<uint8>& host_key)
@@ -551,6 +553,10 @@ bool basic_connection::validate_host_key(const string& pk_alg, const vector<uint
 
 void basic_connection::process_kexinit(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
+	// if this is a rekey request by the server, send our kexinit packet
+	if (not m_sent_kexinit)
+		rekey();
+
 	m_host_payload = in;
 	
 	string key_exchange_alg;
@@ -572,6 +578,10 @@ void basic_connection::process_kexinit(ipacket& in, opacket& out, boost::system:
 
 void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
+	// something went terribly wrong, obviously
+	if (m_key_exchange == nullptr)
+		return;
+
 	ipacket payload(&m_host_payload[0], m_host_payload.size());
 
 	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
@@ -691,6 +701,8 @@ void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system:
 			m_private_keys.push_back(blob);
 		}
 	}
+
+	m_sent_kexinit = false;
 }
 
 void basic_connection::process_service_accept(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -735,7 +747,7 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 	else if (choose_protocol(s, "password") == "password" and m_request_password_cb and ++m_password_attempts <= 3)
 		m_request_password_cb();
 	else
-		full_stop(error::make_error_code(error::auth_cancelled_by_user));
+		handle_error(error::make_error_code(error::auth_cancelled_by_user));
 }
 
 void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -775,21 +787,7 @@ void basic_connection::password(const string& pw)
 {
 	opacket out(msg_userauth_request);
 	out << m_user << "ssh-connection" << "password" << false << pw;
-	async_write(move(out),
-		[this](const boost::system::error_code& ec, size_t)
-		{
-			if (ec)
-				full_stop(ec);
-		}
-	);
-}
-
-void basic_connection::full_stop(const boost::system::error_code& ec)
-{
-	for_each(m_channels.begin(), m_channels.end(), [&ec] (channel* ch) { ch->error(ec.message(), ""); });
-	
-	disconnect();
-	handle_connect_result(ec);
+	async_write(move(out));
 }
 
 struct packet_encryptor
@@ -1029,7 +1027,7 @@ void connection::start_handshake()
 
 bool connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key)
 {
-	return m_validate_host_key_cb and m_validate_host_key_cb(m_host, pk_alg, host_key);
+	return not m_validate_host_key_cb or m_validate_host_key_cb(m_host, pk_alg, host_key);
 }
 
 void connection::handle_resolve(const boost::system::error_code& ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)

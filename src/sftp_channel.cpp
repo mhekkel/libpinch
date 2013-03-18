@@ -6,13 +6,14 @@
 #include <assh/config.hpp>
 
 //#include <boost/bind.hpp>
-//#include <boost/foreach.hpp>
-//#define foreach BOOST_FOREACH
+#include <boost/foreach.hpp>
+#define foreach BOOST_FOREACH
 //#include <boost/regex.hpp>
 //#include <boost/lexical_cast.hpp>
 
 #include <assh/sftp_channel.hpp>
 #include <assh/connection.hpp>
+#include <assh/packet.hpp>
 
 using namespace std;
 
@@ -75,9 +76,61 @@ enum sftp_fxf_flags : uint32
 	SSH_FXF_EXCL =   0x00000020
 };
 
-sftp_fxf_flags operator(sftp_fxf_flags lhs, sftp_fxf_flags rhs)
+sftp_fxf_flags operator|(sftp_fxf_flags lhs, sftp_fxf_flags rhs)
 {
 	return sftp_fxf_flags((uint32)lhs | (uint32)rhs);
+}
+
+// --------------------------------------------------------------------
+
+namespace error {
+namespace detail {
+
+class sftp_category : public boost::system::error_category
+{
+  public:
+
+	const char* name() const
+	{
+		return "sftp";
+	}
+	
+	std::string message(int value) const
+	{
+		switch (value)
+		{
+			case ssh_fx_ok:
+				return "ok";
+			case ssh_fx_eof:
+				return "end of file";
+			case ssh_fx_no_such_file:
+				return "no such file";
+			case ssh_fx_permission_denied:
+				return "permission denied";
+			case ssh_fx_failure:
+				return "general failure";
+			case ssh_fx_bad_message:
+				return "bad message";
+			case ssh_fx_no_connection:
+				return "no connection";
+			case ssh_fx_connection_lost:
+				return "connection lost";
+			case ssh_fx_op_unsupported:
+				return "unsupported operation";
+			default:
+				return "unknown sftp error";
+		}
+	}
+};
+
+}
+
+boost::system::error_category& sftp_category()
+{
+	static detail::sftp_category impl;
+	return impl;
+}
+
 }
 
 // --------------------------------------------------------------------
@@ -133,6 +186,16 @@ ipacket& operator>>(ipacket& in, sftp_channel::file_attributes& attr)
 // --------------------------------------------------------------------
 // 
 
+void sftp_channel::sftp_reply_handler::handle_handle(const std::string& handle, opacket& out)
+{
+	m_handle = handle;
+	out = opacket((message_type)SSH_FXP_READDIR);
+	out << m_id << m_handle;
+}
+
+// --------------------------------------------------------------------
+// 
+
 sftp_channel::sftp_channel(basic_connection& connection)
 	: channel(connection)
 	, m_request_id(0)
@@ -144,17 +207,38 @@ sftp_channel::~sftp_channel()
 {
 }
 
+void sftp_channel::closed()
+{
+	foreach (sftp_reply_handler* h, m_handlers)
+	{
+		h->handle_status(error::make_error_code(error::ssh_fx_connection_lost), "", "");
+		delete h;
+	}
+	m_handlers.clear();
+	
+	channel::closed();
+}
+
 void sftp_channel::setup(ipacket& in)
 {
 	send_request_and_command("subsystem", "sftp");
 	
-	opacket out(SSH_FXP_INIT);
+	opacket out((message_type)SSH_FXP_INIT);
 	out << uint32(3);
-	m_connection.async_write(move(out));
+	write(move(out));
 }
 
 // --------------------------------------------------------------------
 // 
+
+void sftp_channel::read_dir_int(const std::string& path, handle_read_dir_base* handler)
+{
+	m_handlers.push_back(handler);
+	
+	opacket out((message_type)SSH_FXP_OPENDIR);
+	out << handler->m_id << path;
+	write(move(out));
+}
 
 void sftp_channel::receive_data(const char* data, size_t size)
 {
@@ -172,7 +256,10 @@ void sftp_channel::receive_data(const char* data, size_t size)
 		{
 			try
 			{
-				process_packet();
+				if (m_packet.message() == SSH_FXP_VERSION)
+					m_packet >> m_version;
+				else
+					process_packet();
 			}
 			catch (...) {}
 			m_packet.clear();
@@ -186,77 +273,109 @@ void sftp_channel::receive_data(const char* data, size_t size)
 void sftp_channel::process_packet()
 {
 	uint32 id;
-	opacket out;
+
+	m_packet >> id;
+	sftp_reply_handler* handler = fetch_handler(id);
+	if (handler == nullptr)
+	{
+		close();
+		return;
+	}
 	
+	opacket out;
+
 	switch (m_packet.message())
 	{
-		case SSH_FXP_VERSION:
-		{
-			uint32 version;
-			m_packet >> m_version;
-			break;
-		}
-
 		case SSH_FXP_STATUS:
 		{
 			uint32 error;
 			string message, language_tag;
-			m_packet >> id >> error >> message >> language_tag;
-			handle_error(id, boost::system::make_error_code(error::sftp_errors(error)),
-				message, language_tag, out);
+			m_packet >> error >> message >> language_tag;
+			handler->handle_status(error::make_error_code(error::sftp_error(error)),
+				message, language_tag);
+			
+			m_handlers.erase(remove(m_handlers.begin(), m_handlers.end(), handler), m_handlers.end());
+			delete handler;
+
 			break;
 		}
 
 		case SSH_FXP_HANDLE:
 		{
-			uint32 handle;
-			m_packet >> id >> handle;
-			set_handle(id, handle, out);
+			string handle;
+			m_packet >> handle;
+			handler->handle_handle(handle, out);
 			break;
 		}
 
-		case SSH_FXP_DATA:
-		{
-			pair<const char*,size_t> data;
-			m_packet >> id >> data;
-			handle_data(id, data, out);
-			break;
-		}
+//		case SSH_FXP_DATA:
+//		{
+//			pair<const char*,size_t> data;
+//			m_packet >> data;
+//			handler->handle_data(data.data, data.size, out);
+//			break;
+//		}
 
 		case SSH_FXP_NAME:
 		{
-			uint32 count;
-			m_packet >> id >> count;
-			while (count--)
+			handle_read_dir_base* nh = dynamic_cast<handle_read_dir_base*>(handler);
+			if (nh != nullptr)
 			{
-				string name, longname;
-				file_attributes attr;
+				uint32 count;
+				m_packet >> count;
+				while (count--)
+				{
+					string name, longname;
+					file_attributes attr;
 				
-				in >> name >> longname >> attr;
+					m_packet >> name >> longname >> attr;
 				
-				if (not handle_name(id, name, longname, attr, out))
-					break;
+					if (not nh->handle_name(name, longname, attr))
+						break;
+				}
+			}
+			
+			if (out.empty())
+			{
+				out = opacket((message_type)SSH_FXP_READDIR);
+				out << handler->m_id << handler->m_handle;
 			}
 			break;
 		}
 
-		case SSH_FXP_ATTRS:
-		{
-			file_attributes attr;
-			m_packet >> id >> attr;
-			handle_attrs(id, attr, out);
-			break;
-		}
-
-//		case SSH_FXP_EXTENDED:
+//		case SSH_FXP_ATTRS:
+//		{
+//			file_attributes attr;
+//			m_packet >> attr;
+//			handler->handle_attrs(attr, out);
 //			break;
-//
-//		case SSH_FXP_EXTENDED_REPLY:
-//			break;
+//		}
 	}
 	
 	if (not out.empty())
-		m_connection.async_write(out);
+		write(move(out));
 }
+
+sftp_channel::sftp_reply_handler* sftp_channel::fetch_handler(uint32 id)
+{
+	sftp_reply_handler* result = nullptr;
+	foreach (sftp_reply_handler* h, m_handlers)
+	{
+		if (h->m_id == id)
+		{
+			result = h;
+			break;
+		}
+	}
+	
+	return result;
+}
+
+void sftp_channel::write(opacket&& out)
+{
+	opacket p = opacket() << move(out);
+	send_data(move(p));
+}
+
 
 }
