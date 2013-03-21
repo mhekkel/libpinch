@@ -48,7 +48,7 @@ void x11_channel::setup(ipacket& in)
 		string host = "localhost", port = "6000";
 
 		const char* display = getenv("DISPLAY");
-		boost::regex rx("([-[:alnum:].]*):(\\d+)(?:\.\\d+)?");
+		boost::regex rx("([-[:alnum:].]*):(\\d+)(?:\\.\\d+)?");
 
 		boost::cmatch m;
 		if (display != nullptr and boost::regex_match(display, m, rx))
