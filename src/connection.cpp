@@ -933,6 +933,20 @@ void basic_connection::close_channel(channel* ch, uint32 channel_id)
 		ch->closed();
 	}
 	
+	auto iter = remove_if(m_connect_handlers.begin(), m_connect_handlers.end(),
+		[this, &ch](basic_connect_handler* h) -> bool
+		{
+			bool result = false;
+			if (h->m_opening_channel == ch)
+			{
+				delete h;
+				result = true;
+			}
+			return result;
+		});
+	
+	m_connect_handlers.erase(iter, m_connect_handlers.end());
+	
 	if (find(m_channels.begin(), m_channels.end(), ch) != m_channels.end())
 	{
 		m_channels.erase(

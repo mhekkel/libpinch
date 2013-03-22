@@ -62,10 +62,15 @@ void channel::open()
 		m_connection.async_connect([this](const boost::system::error_code& ec)
 		{
 			if (ec)
-				m_open_handler->handle_open_result(ec);
+			{
+				if (m_open_handler)
+					m_open_handler->handle_open_result(ec);
+				else
+					this->error(ec.message(), "en");
+			}
 			else
 				this->open();
-		});
+		}, this);
 	}
 	else
 	{
@@ -87,8 +92,14 @@ void channel::opened()
 
 void channel::close()
 {
-	if (m_channel_open)
-		m_connection.close_channel(this, m_host_channel_id);
+	if (m_open_handler)
+	{
+		auto handler = m_open_handler;
+		m_open_handler = nullptr;
+		handler->handle_open_result(make_error_code(error::by_application));
+	}
+
+	m_connection.close_channel(this, m_host_channel_id);
 }
 
 void channel::closed()

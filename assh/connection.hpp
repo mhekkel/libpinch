@@ -43,10 +43,10 @@ class basic_connection
 	void			set_password_callback(const password_callback_type& cb);
 	
 	template<typename Handler>
-	void			async_connect(Handler&& handler)
+	void			async_connect(Handler&& handler, channel* opening_channel = nullptr)
 					{
 					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
-					    m_connect_handlers.push_back(new connect_handler<Handler>(std::move(handler)));
+					    m_connect_handlers.push_back(new connect_handler<Handler>(std::move(handler), opening_channel));
 				    	start_handshake();
 					}
 	
@@ -99,8 +99,12 @@ class basic_connection
 
 	struct basic_connect_handler
 	{
+							basic_connect_handler(channel* opening_channel) : m_opening_channel(opening_channel) {}
 		virtual				~basic_connect_handler() {}
+		
 		virtual void		handle_connect(const boost::system::error_code& ec, boost::asio::io_service& io_service) = 0;
+		//virtual void		handle_connect(const boost::system::error_code& ec) = 0;
+		channel*			m_opening_channel;
 	};
 	
 	typedef std::list<basic_connect_handler*>	connect_handler_list;
@@ -108,21 +112,26 @@ class basic_connection
 	template<class Handler>
 	struct connect_handler : public basic_connect_handler
 	{
-							connect_handler(Handler&& handler) : m_handler(std::move(handler)) {}
-							connect_handler(connect_handler&& rhs) : m_handler(std::move(rhs.m_handler)), m_ec(rhs.m_ec) {}
-							connect_handler(connect_handler&& rhs, const boost::system::error_code& ec) : m_handler(std::move(rhs.m_handler)), m_ec(ec) {}
-							connect_handler(const connect_handler& rhs) : m_handler(rhs.m_handler), m_ec(rhs.m_ec) {}
-		connect_handler&	operator=(const connect_handler&);
+							connect_handler(Handler&& handler, channel* opening_channel)
+								: basic_connect_handler(opening_channel), m_handler(std::move(handler)) {}
+							connect_handler(Handler&& handler, channel* opening_channel, const boost::system::error_code& ec)
+								: basic_connect_handler(opening_channel)
+								, m_handler(std::move(handler)), m_ec(ec) {}
 		
 		virtual void		handle_connect(const boost::system::error_code& ec, boost::asio::io_service& io_service)
 							{
-								io_service.post(connect_handler(std::move(m_handler), ec));
+								io_service.post(connect_handler(std::move(m_handler), std::move(m_opening_channel), ec));
 							}
 		
 		void				operator()()
 							{
 								m_handler(m_ec);
 							}
+
+		//virtual void		handle_connect(const boost::system::error_code& ec)
+		//					{
+		//						m_handler(ec);
+		//					}
 		
 		Handler						m_handler;
 		boost::system::error_code	m_ec;
