@@ -242,6 +242,13 @@ void basic_connection::forward_port(const string& local_address, uint16 local_po
 	m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
 }
 
+void basic_connection::forward_http(const string& local_address, uint16 local_port)
+{
+	if (m_port_forwarder == nullptr)
+		m_port_forwarder = new port_forward_listener(*this);
+	m_port_forwarder->forward_http(local_address, local_port);
+}
+
 string basic_connection::get_connection_parameters(direction dir) const
 {
 	string result;
@@ -329,9 +336,10 @@ void basic_connection::start_handshake()
 		ostream out(request);
 		out << kSSHVersionString << "\r\n";
 	
-		async_write(request, [this](const boost::system::error_code& ec, size_t bytes_transferred)
+		async_write(request, [this, request](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			handle_protocol_version_request(ec, bytes_transferred);
+//			delete request;
 		});
 	}
 }

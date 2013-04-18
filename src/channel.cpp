@@ -122,7 +122,7 @@ void channel::closed()
 
 void channel::end_of_file()
 {
-	close();
+	closed();
 }
 
 string channel::get_connection_parameters(direction dir) const
