@@ -60,8 +60,7 @@ typedef boost::function<basic_forwarding_channel*()> channel_factory;
 struct bound_port
 {
 	bound_port(basic_connection& connection, port_forward_listener& listener,
-			const string& local_address, uint16 local_port,
-			channel_factory&& make_channel);
+		const string& local_address, uint16 local_port, channel_factory&& make_channel);
 	virtual ~bound_port() {}
 
 	virtual void handle_accept(const boost::system::error_code& ec);
@@ -157,10 +156,10 @@ void basic_forwarding_channel::closed()
 
 	channel::closed();
 	
-//	m_connection.get_io_service().post([this]
-//	{
-//		delete this;
-//	});
+	m_connection.get_io_service().post([this]
+	{
+		delete this;
+	});
 }
 
 void basic_forwarding_channel::receive_data(const char* data, size_t size)
@@ -180,8 +179,16 @@ void basic_forwarding_channel::receive_data(const char* data, size_t size)
 
 void basic_forwarding_channel::receive_raw(const boost::system::error_code& ec, std::size_t bytes_received)
 {
-	if (ec)
+	if (ec == boost::asio::error::eof)
+	{
+		opacket msg(msg_channel_eof);
+	}
+	else if (ec)
+	{
+		string msg = ec.message();
+
 		close();
+	}
 	else
 	{
 		istream in(&m_response);
@@ -486,7 +493,6 @@ void socks5_proxy_channel::read_request_1(const boost::system::error_code& ec, s
 				m_buffer.resize(1);
 				break;
 		}
-		
 		
 		boost::asio::async_read(m_socket, boost::asio::buffer(m_buffer),
 			boost::bind(&socks5_proxy_channel::read_request_addr, this,

@@ -368,6 +368,7 @@ class channel
 	std::deque<basic_write_op*>	m_pending;
 	std::deque<char>			m_received;
 	std::deque<basic_read_op*>	m_read_ops;
+	bool					m_eof;
 
   private:
 

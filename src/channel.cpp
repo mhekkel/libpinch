@@ -26,6 +26,7 @@ channel::channel(basic_connection& inConnection)
 	, m_host_channel_id(0)
 	, m_my_window_size(kWindowSize)
 	, m_host_window_size(0)
+	, m_eof(false)
 {
 }
 
@@ -122,7 +123,8 @@ void channel::closed()
 
 void channel::end_of_file()
 {
-	closed();
+	m_eof = true;
+	push_received();
 }
 
 string channel::get_connection_parameters(direction dir) const
@@ -194,6 +196,7 @@ void channel::process(ipacket& in)
 	switch ((message_type)in)
 	{
 		case msg_channel_open_confirmation:
+			m_eof = false;
 			in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
 			setup(in);
 			break;
@@ -241,6 +244,7 @@ void channel::process(ipacket& in)
 			if (not m_channel_open)
 			{
 				m_channel_open = true;
+				m_eof = false;
 				opened();
 			}
 			break;
@@ -385,6 +389,9 @@ void channel::push_received()
 	}
 
 	m_received.erase(m_received.begin(), b);
+	
+	if (m_received.empty() and m_eof)
+		closed();
 }
 
 // --------------------------------------------------------------------
