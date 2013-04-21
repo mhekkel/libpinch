@@ -151,15 +151,15 @@ void basic_forwarding_channel::setup(ipacket& in)
 
 void basic_forwarding_channel::closed()
 {
-	if (m_socket.is_open())
-		m_socket.close();
-
 	channel::closed();
 	
-	m_connection.get_io_service().post([this]
+	if (not m_socket.is_open())
 	{
-		delete this;
-	});
+		m_connection.get_io_service().post([this]
+		{
+			delete this;
+		});
+	}
 }
 
 void basic_forwarding_channel::receive_data(const char* data, size_t size)
@@ -179,14 +179,9 @@ void basic_forwarding_channel::receive_data(const char* data, size_t size)
 
 void basic_forwarding_channel::receive_raw(const boost::system::error_code& ec, std::size_t bytes_received)
 {
-	if (ec == boost::asio::error::eof)
+	if (ec)
 	{
-		opacket msg(msg_channel_eof);
-	}
-	else if (ec)
-	{
-		string msg = ec.message();
-
+		m_socket.close();
 		close();
 	}
 	else
