@@ -66,6 +66,8 @@ class channel
 	virtual void	opened();
 	virtual void	closed();
 	virtual void	end_of_file();
+	
+	virtual void	succeeded();	// the request succeeded
 
 	std::string		get_connection_parameters(direction dir) const;
 	std::string		get_key_exchange_algoritm() const;
@@ -342,7 +344,7 @@ class channel
 	virtual std::string
 					channel_type() const						{ return "session"; }
 
-	virtual void	setup(ipacket& in) = 0;
+	virtual void	setup(ipacket& in);
 
 	// low level
 	void			send_pending();
@@ -414,7 +416,7 @@ class exec_channel : public channel
 								delete m_handler;
 							}
 
-	virtual void			setup(ipacket& in);
+	virtual void			opened();
 
   protected:
 	virtual void			handle_channel_request(const std::string& request, ipacket& in, opacket& out);

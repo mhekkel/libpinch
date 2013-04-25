@@ -30,8 +30,9 @@ class proxy_channel : public channel
 						ba::replace_regex(m_cmd, boost::regex("(?<!%)%p"), boost::lexical_cast<string>(port));
 					}
 		
-	virtual void	setup(ipacket& in)
+	virtual void	opened()
 					{
+						channel::opened();
 						send_request_and_command("exec", m_cmd);
 					}
 

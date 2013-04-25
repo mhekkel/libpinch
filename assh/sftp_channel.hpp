@@ -50,7 +50,7 @@ class sftp_channel : public channel
 					sftp_channel(basic_connection& connection);
 					~sftp_channel();
 
-	virtual void	setup(ipacket& in);
+	virtual void	opened();
 	virtual void	closed();
 
 	struct file_attributes

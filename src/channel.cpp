@@ -56,6 +56,11 @@ void channel::fill_open_opacket(opacket& out)
 	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
 }
 
+void channel::setup(ipacket& in)
+{
+	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
+}
+
 void channel::open()
 {
 	if (not m_connection.is_connected())
@@ -119,6 +124,10 @@ void channel::closed()
 		delete op;
 	});
 	m_read_ops.clear();
+}
+
+void channel::succeeded()
+{
 }
 
 void channel::end_of_file()
@@ -196,9 +205,10 @@ void channel::process(ipacket& in)
 	switch ((message_type)in)
 	{
 		case msg_channel_open_confirmation:
-			m_eof = false;
-			in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
 			setup(in);
+			m_channel_open = true;
+			m_eof = false;
+			opened();
 			break;
 
 		case msg_channel_open_failure:
@@ -222,13 +232,13 @@ void channel::process(ipacket& in)
 			break;
 		}
 
-		case msg_channel_eof:
-			end_of_file();
-			break;
-
 		case msg_channel_close:
 			closed();
 			m_connection.close_channel(this, 0);
+			break;
+
+		case msg_channel_success:
+			succeeded();
 			break;
 
 		case msg_channel_window_adjust:
@@ -240,15 +250,6 @@ void channel::process(ipacket& in)
 			break;
 		}
 		
-		case msg_channel_success:
-			if (not m_channel_open)
-			{
-				m_channel_open = true;
-				m_eof = false;
-				opened();
-			}
-			break;
-
 		case msg_channel_data:
 			if (m_channel_open)
 			{
@@ -270,6 +271,10 @@ void channel::process(ipacket& in)
 			}
 			break;
 		
+		case msg_channel_eof:
+			end_of_file();
+			break;
+
 		case msg_channel_request:
 		{
 			string request;
@@ -396,8 +401,10 @@ void channel::push_received()
 
 // --------------------------------------------------------------------
 
-void exec_channel::setup(ipacket& in)
+void exec_channel::opened()
 {
+	channel::opened();
+
 	send_request_and_command("exec", m_command);
 }
 

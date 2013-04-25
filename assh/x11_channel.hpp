@@ -28,7 +28,7 @@ class x11_channel : public channel
 
   protected:
 
-	virtual void	setup(ipacket& in);
+	virtual void	opened();
 	virtual void	closed();
 
 	virtual void	receive_data(const char* data, std::size_t size);

@@ -219,8 +219,10 @@ void sftp_channel::closed()
 	channel::closed();
 }
 
-void sftp_channel::setup(ipacket& in)
+void sftp_channel::opened()
 {
+	channel::opened();
+	
 	send_request_and_command("subsystem", "sftp");
 	
 	opacket out((message_type)SSH_FXP_INIT);

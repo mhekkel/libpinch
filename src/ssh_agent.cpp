@@ -220,10 +220,10 @@ ssh_agent_channel::~ssh_agent_channel()
 {
 }
 
-void ssh_agent_channel::setup(ipacket& in)
+void ssh_agent_channel::opened()
 {
-	m_channel_open = true;
-
+	channel::opened();
+	
 	opacket out(msg_channel_open_confirmation);
 	out << m_host_channel_id << m_my_channel_id << m_my_window_size << kMaxPacketSize;
 	m_connection.async_write(move(out));

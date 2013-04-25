@@ -28,21 +28,18 @@ class basic_forwarding_channel : public channel
   public:
 
 	basic_forwarding_channel(basic_connection& inConnection);
-	virtual ~basic_forwarding_channel();
 
 	boost::asio::ip::tcp::socket& get_socket()		{ return m_socket; }
 
-	virtual void accepted() = 0;
-	virtual void accept_failed() = 0;
+	virtual void start() = 0;
 
 	virtual std::string channel_type() const		{ return "direct-tcpip"; }
 	virtual void fill_open_opacket(opacket& out);
 
-	virtual void setup(ipacket& in);
 	virtual void closed();
 
 	virtual void receive_data(const char* data, std::size_t size);
-	virtual void receive_raw(const boost::system::error_code& ec, std::size_t bytes_received);
+	virtual void receive_raw(const boost::system::error_code& ec);
 
   protected:
 
@@ -110,10 +107,7 @@ void bound_port::handle_accept(const boost::system::error_code& ec)
 	{
 		basic_forwarding_channel* channel = m_new_channel.release();
 		
-		if (m_connection.is_connected())
-			channel->accepted();
-		else
-			channel->accept_failed();
+		channel->start();
 		
 		m_new_channel.reset(m_channel_factory());
 		m_acceptor.async_accept(m_new_channel->get_socket(),
@@ -129,10 +123,6 @@ basic_forwarding_channel::basic_forwarding_channel(basic_connection& inConnectio
 {
 }
 
-basic_forwarding_channel::~basic_forwarding_channel()
-{
-}
-
 void basic_forwarding_channel::fill_open_opacket(opacket& out)
 {
 	channel::fill_open_opacket(out);
@@ -142,11 +132,6 @@ void basic_forwarding_channel::fill_open_opacket(opacket& out)
 	uint16 originator_port = m_socket.remote_endpoint().port();
 
 	out << m_remote_address << uint32(m_remote_port) << originator_address << uint32(originator_port);
-}
-
-void basic_forwarding_channel::setup(ipacket& in)
-{
-	m_channel_open = true;
 }
 
 void basic_forwarding_channel::closed()
@@ -177,7 +162,7 @@ void basic_forwarding_channel::receive_data(const char* data, size_t size)
 		});
 }
 
-void basic_forwarding_channel::receive_raw(const boost::system::error_code& ec, std::size_t bytes_received)
+void basic_forwarding_channel::receive_raw(const boost::system::error_code& ec)
 {
 	if (ec)
 	{
@@ -205,7 +190,7 @@ void basic_forwarding_channel::receive_raw(const boost::system::error_code& ec, 
 		}
 		
 		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
-			boost::bind(&basic_forwarding_channel::receive_raw, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+			boost::bind(&basic_forwarding_channel::receive_raw, this, boost::asio::placeholders::error));
 	}
 }
 
@@ -223,24 +208,19 @@ class port_forwarding_channel : public basic_forwarding_channel
 		m_remote_port = remote_port;
 	}
 
-	virtual void accepted()
+	virtual void start()
 	{
 		open();
 	}
 	
-	virtual void accept_failed()
+	virtual void opened()
 	{
-		delete this;
-	}
-
-	virtual void setup(ipacket& in)
-	{
-		basic_forwarding_channel::setup(in);
+		basic_forwarding_channel::opened();
 		
 		// start the read loop
 		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
 			boost::bind(&port_forwarding_channel::receive_raw, this,
-			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+			boost::asio::placeholders::error));
 	}
 };
 
@@ -256,8 +236,7 @@ class port_forwarding_channel : public basic_forwarding_channel
 //	virtual void opened();
 //	virtual void closed();
 //
-//	virtual void accepted();
-//	virtual void accept_failed();
+//	virtual void start();
 //
 //	void read_connect(const boost::system::error_code& ec, size_t bytes_transferred);
 //	void read_header(const boost::system::error_code& ec, size_t bytes_transferred);
@@ -267,7 +246,7 @@ class port_forwarding_channel : public basic_forwarding_channel
 //	bool m_accepted;
 //};
 //
-//void http_proxy_channel::accepted()
+//void http_proxy_channel::start()
 //{
 //	boost::asio::async_read_until(m_socket, m_response, "\r\n",
 //		boost::bind(&http_proxy_channel::read_connect, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
@@ -352,12 +331,6 @@ class port_forwarding_channel : public basic_forwarding_channel
 //		write_error("connection closed");
 //}
 //
-//void http_proxy_channel::accept_failed()
-//{
-//	write_error("connection failed");
-//	m_connection.get_io_service().post([this]() { delete this; });
-//}
-//
 //void http_proxy_channel::write_error(const string& message)
 //{
 //	boost::asio::streambuf* request(new boost::asio::streambuf);
@@ -382,25 +355,23 @@ class socks5_proxy_channel : public basic_forwarding_channel
 	socks5_proxy_channel(basic_connection& inConnection)
 		: basic_forwarding_channel(inConnection), m_accepted(false) {}
 
-	virtual void setup(ipacket& in);
-
-	virtual void accepted();
-	virtual void accept_failed();
+	virtual void opened();
+	virtual void start();
 
 	void read_handshake_1(const boost::system::error_code& ec, size_t bytes_transferred);
 	void read_handshake_2(const boost::system::error_code& ec, size_t bytes_transferred);
 	void wrote_handshake(const boost::system::error_code& ec, size_t bytes_transferred);
 	void read_request_1(const boost::system::error_code& ec, size_t bytes_transferred);
 	void read_request_addr(const boost::system::error_code& ec, size_t bytes_transferred, uint8 atyp);
-	void wrote_error(const boost::system::error_code& ec, size_t bytes_transferred);
 	
 	void write_error(uint8 error_code);
+	void wrote_error();
 	
 	bool m_accepted;
 	vector<uint8> m_buffer;
 };
 
-void socks5_proxy_channel::accepted()
+void socks5_proxy_channel::start()
 {
 	m_buffer.resize(2);
 	boost::asio::async_read(m_socket, boost::asio::buffer(m_buffer),
@@ -424,7 +395,7 @@ void socks5_proxy_channel::read_handshake_1(const boost::system::error_code& ec,
 		m_buffer[1] = '\xff';
 		
 		boost::asio::async_write(m_socket, boost::asio::buffer(m_buffer),
-			boost::bind(&socks5_proxy_channel::wrote_error, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+			boost::bind(&socks5_proxy_channel::wrote_error, this));
 	}
 }
 
@@ -448,7 +419,7 @@ void socks5_proxy_channel::read_handshake_2(const boost::system::error_code& ec,
 		m_buffer[1] = '\xff';
 		
 		boost::asio::async_write(m_socket, boost::asio::buffer(m_buffer),
-			boost::bind(&socks5_proxy_channel::wrote_error, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+			boost::bind(&socks5_proxy_channel::wrote_error, this));
 	}
 }
 
@@ -537,9 +508,9 @@ void socks5_proxy_channel::read_request_addr(const boost::system::error_code& ec
 	}
 }
 
-void socks5_proxy_channel::setup(ipacket& in)
+void socks5_proxy_channel::opened()
 {
-	basic_forwarding_channel::setup(in);
+	basic_forwarding_channel::opened();
 	
 	m_accepted = true;
 	
@@ -558,16 +529,10 @@ void socks5_proxy_channel::setup(ipacket& in)
 	
 	// start the read loop
 	boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
-		boost::bind(&port_forwarding_channel::receive_raw, this,
-			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+		boost::bind(&port_forwarding_channel::receive_raw, this, boost::asio::placeholders::error));
 }
 
-void socks5_proxy_channel::accept_failed()
-{
-	m_connection.get_io_service().post([this]() { delete this; });
-}
-
-void socks5_proxy_channel::wrote_error(const boost::system::error_code& ec, size_t bytes_transferred)
+void socks5_proxy_channel::wrote_error()
 {
 	m_connection.get_io_service().post([this]() { delete this; });
 }
@@ -610,6 +575,8 @@ void port_forward_listener::accept_failed(const boost::system::error_code& ec, b
 
 void port_forward_listener::connection_closed()
 {
+	for_each(m_bound_ports.begin(), m_bound_ports.end(), [](bound_port* e) { delete e; });
+	m_bound_ports.clear();
 }
 
 }

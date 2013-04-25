@@ -103,7 +103,7 @@ class ssh_agent_channel : public channel
 						ssh_agent_channel(basic_connection& connection);
 	virtual				~ssh_agent_channel();
 	
-	virtual void		setup(ipacket& in);
+	virtual void		opened();
 	virtual void		receive_data(const char* data, std::size_t size);
 
   private:

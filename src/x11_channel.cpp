@@ -32,16 +32,21 @@ x11_channel::~x11_channel()
 		m_socket.close();
 }
 
-void x11_channel::setup(ipacket& in)
+//void x11_channel::setup(ipacket& in)
+//{
+//	channel::setup(in);
+//	
+//	string orig_addr;
+//	uint32 orig_port;
+//
+//	in >> orig_addr >> orig_port;
+//}
+
+void x11_channel::opened()
 {
-	using boost::asio::ip::tcp;
-
-	string orig_addr;
-	uint32 orig_port;
-
-	in >> orig_addr >> orig_port;
+	channel::opened();
 	
-	// 
+	using boost::asio::ip::tcp;
 	
 	try
 	{

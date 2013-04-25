@@ -16,7 +16,7 @@ class terminal_channel : public channel
   public:
 					terminal_channel(basic_connection& connection);
 	
-	virtual void	setup(ipacket& in);
+	virtual void	opened();
 
 	template<typename Handler>
 	void			open_with_pty(uint32 width, uint32 height,

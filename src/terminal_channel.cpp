@@ -24,8 +24,10 @@ terminal_channel::terminal_channel(basic_connection& connection)
 {
 }
 
-void terminal_channel::setup(ipacket& in)
+void terminal_channel::opened()
 {
+	channel::opened();
+	
 	open_pty(m_width, m_height, m_terminal_type, m_forward_agent, m_forward_x11);
 	send_request_and_command("shell", "");
 }
