@@ -96,11 +96,6 @@ class channel
 	template<class Handler>
 	struct bound_handler
 	{
-		bound_handler(const bound_handler& rhs)
-			: m_handler(rhs.m_handler), m_ec(rhs.m_ec), m_transferred(rhs.m_transferred)
-		{
-		}
-
 		bound_handler(bound_handler&& rhs)
 			: m_handler(std::move(rhs.m_handler)), m_ec(rhs.m_ec), m_transferred(rhs.m_transferred)
 		{
@@ -108,11 +103,6 @@ class channel
 
 		bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
 			: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
-		{
-		}
-
-		bound_handler(const Handler& handler, const boost::system::error_code& ec, std::size_t s)
-			: m_handler(handler), m_ec(ec), m_transferred(s)
 		{
 		}
 
@@ -170,7 +160,7 @@ class channel
 								n = std::accumulate(m_packets.begin(), m_packets.end(), n,
 									[](std::size_t c, opacket& p) -> uint32 { return c + p.size(); });
 								
-								io_service.post(bound_handler<Handler>(m_handler, ec, n));
+								io_service.post(bound_handler<Handler>(std::move(m_handler), ec, n));
 							}
 
 		virtual void		error(const boost::system::error_code& ec)
@@ -260,7 +250,7 @@ class channel
 								end = begin + n;
 								std::copy(begin, end, ptr);
 								
-								io_service.post(bound_handler<Handler>(m_handler, boost::system::error_code(), n));
+								io_service.post(bound_handler<Handler>(std::move(m_handler), boost::system::error_code(), n));
 								
 								return end;
 							}

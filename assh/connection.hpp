@@ -190,7 +190,7 @@ class basic_connection
 		
 		virtual void	receive_and_post(ipacket&& p, boost::asio::io_service& io_service)
 						{
-							io_service.post(bound_handler<Handler>(m_handler, boost::system::error_code(), std::move(p)));
+							io_service.post(bound_handler<Handler>(std::move(m_handler), boost::system::error_code(), std::move(p)));
 						}
 
 		Handler			m_handler;

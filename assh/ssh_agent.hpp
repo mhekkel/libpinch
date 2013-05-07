@@ -10,7 +10,7 @@
 #include <vector>
 #include <deque>
 
-#include <boost/tr1/tuple.hpp>
+//#include <boost/tr1/tuple.hpp>
 #include <boost/range.hpp>
 
 #include <cryptopp/integer.h>
