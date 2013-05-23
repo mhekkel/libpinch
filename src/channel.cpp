@@ -354,7 +354,7 @@ void channel::send_pending()
 		if (size > m_host_window_size)
 			break;
 		
-		m_host_window_size -= size;
+		m_host_window_size -= (size - 5);
 		m_send_pending = true;
 
 		opacket out(move(op->m_packets.front()));
