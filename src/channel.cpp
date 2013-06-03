@@ -11,13 +11,6 @@
 using namespace std;
 using namespace CryptoPP;
 
-extern const char*	__S_FILE;
-extern int			__S_LINE;
-void __debug_printf(const char* inMsg, ...);
-//void __report_mach_error(const char* func, mach_error_t e);
-
-#define PRINT(x)		do { __S_FILE = __FILE__; __S_LINE = __LINE__; __debug_printf x; } while (false)
-
 namespace assh
 {
 
@@ -359,10 +352,7 @@ void channel::send_pending()
 		
 		size_t size = op->m_packets.front().size() - 9;
 		if (size > m_host_window_size)
-		{
-			PRINT(("cannot send, size: %d, host window size: %d", size, m_host_window_size));
 			break;
-		}
 		
 		m_host_window_size -= size;
 		m_send_pending = true;
