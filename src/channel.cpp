@@ -152,7 +152,8 @@ void channel::init(ipacket& in, opacket& out)
 }
 
 void channel::open_pty(uint32 width, uint32 height,
-	const string& terminal_type, bool forward_agent, bool forward_x11)
+	const string& terminal_type, bool forward_agent, bool forward_x11,
+	const environment& env)
 {
 	if (forward_x11)
 	{
@@ -176,6 +177,17 @@ void channel::open_pty(uint32 width, uint32 height,
 			<< false;
 		m_connection.async_write(move(out));
 	}
+	
+	for_each(env.begin(), env.end(), [this](const environment_variable& v)
+	{
+		opacket out(msg_channel_request);
+		out	<< m_host_channel_id
+			<< "env"
+			<< false
+			<< v.name
+			<< v.value;
+		m_connection.async_write(move(out));
+	});
 	
 	opacket out(msg_channel_request);
 	out	<< m_host_channel_id

@@ -32,7 +32,7 @@ class client
 				, m_sftp_channel(connection)
 				, m_first(true)
 			{
-//				m_channel.open_with_pty(80, 24, "vt220", true, true, [this](const boost::system::error_code& ec)
+//				m_channel.open_with_pty(80, 24, "xterm", true, true, [this](const boost::system::error_code& ec)
 //				{
 //					if (ec)
 //					{

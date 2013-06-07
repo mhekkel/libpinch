@@ -32,6 +32,14 @@ const uint32
 class channel
 {
   public:
+	struct environment_variable
+	{
+		std::string		name;
+		std::string		value;
+	};
+
+	typedef std::list<environment_variable> environment;
+
 	struct basic_open_handler
 	{
 		virtual			~basic_open_handler() {}
@@ -74,7 +82,8 @@ class channel
 
 	void			open_pty(uint32 width, uint32 height,
 						const std::string& terminal_type,
-						bool forward_agent, bool forward_x11);
+						bool forward_agent, bool forward_x11,
+						const environment& env);
 
 	void			send_request_and_command(const std::string& request,
 						const std::string& command);

@@ -16,6 +16,9 @@ class terminal_channel : public channel
   public:
 					terminal_channel(basic_connection& connection);
 	
+	void			set_environment_variable(const std::string& name,
+						const std::string& value);
+	
 	virtual void	opened();
 
 	template<typename Handler>
@@ -42,7 +45,8 @@ class terminal_channel : public channel
   protected:
 	uint32			m_width, m_height;
 	std::string		m_terminal_type;
-	bool			m_forward_agent, m_forward_x11;	
+	bool			m_forward_agent, m_forward_x11;
+	environment		m_env;
 };
 	
 }

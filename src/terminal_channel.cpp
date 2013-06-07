@@ -18,17 +18,24 @@ terminal_channel::terminal_channel(basic_connection& connection)
 	: channel(connection)
 	, m_width(80)
 	, m_height(24)
-	, m_terminal_type("vt220")
+	, m_terminal_type("xterm")
 	, m_forward_agent(false)
 	, m_forward_x11(false)
 {
+}
+
+void terminal_channel::set_environment_variable(
+	const string& name, const string& value)
+{
+	environment_variable v = { name, value };
+	m_env.push_back(v);
 }
 
 void terminal_channel::opened()
 {
 	channel::opened();
 	
-	open_pty(m_width, m_height, m_terminal_type, m_forward_agent, m_forward_x11);
+	open_pty(m_width, m_height, m_terminal_type, m_forward_agent, m_forward_x11, m_env);
 	send_request_and_command("shell", "");
 }
 
