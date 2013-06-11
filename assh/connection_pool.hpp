@@ -38,6 +38,7 @@ class connection_pool
 
 	void						disconnect_all();
 	bool						has_open_connections();
+	bool						has_open_channels();
 
   private:
 								connection_pool(const connection_pool&);

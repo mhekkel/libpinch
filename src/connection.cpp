@@ -963,6 +963,22 @@ void basic_connection::close_channel(channel* ch, uint32 channel_id)
 	}
 }
 
+bool basic_connection::has_open_channels()
+{
+	bool channel_open = false;
+
+	foreach (channel* c, m_channels)
+	{
+		if (c->is_open())
+		{
+			channel_open = true;
+			break;
+		}
+	}
+	
+	return channel_open;
+}
+
 void basic_connection::process_channel_open(ipacket& in, opacket& out)
 {
 	channel* c = nullptr;

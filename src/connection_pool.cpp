@@ -181,4 +181,20 @@ bool connection_pool::has_open_connections()
 	return connection_open;
 }
 
+bool connection_pool::has_open_channels()
+{
+	bool channel_open = false;
+
+	foreach (auto& e, m_entries)
+	{
+		if (e.connection->is_connected() and e.connection->has_open_channels())
+		{
+			channel_open = true;
+			break;
+		}
+	}
+
+	return channel_open;
+}
+
 }

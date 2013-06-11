@@ -59,6 +59,8 @@ class basic_connection
 	void			open_channel(channel* ch, uint32 id);
 	void			close_channel(channel* ch, uint32 id);
 
+	bool			has_open_channels();
+
 	void			async_write(opacket&& p)
 					{
 						async_write(std::move(p), [this](const boost::system::error_code& ec, std::size_t)
