@@ -88,6 +88,8 @@ class channel
 	void			send_request_and_command(const std::string& request,
 						const std::string& command);
 
+	void			send_signal(const std::string& inSignal);
+
 	uint32			my_channel_id() const		{ return m_my_channel_id; }
 	bool			is_open() const				{ return m_channel_open; }
 

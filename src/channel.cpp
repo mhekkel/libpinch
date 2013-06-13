@@ -212,6 +212,16 @@ void channel::send_request_and_command(
 	m_connection.async_write(move(out));
 }
 
+void channel::send_signal(const string& signal)
+{
+	opacket out(msg_channel_request);
+	out	<< m_host_channel_id
+		<< "signal"
+		<< false
+		<< signal;
+	m_connection.async_write(move(out));
+}
+
 void channel::process(ipacket& in)
 {
 	switch ((message_type)in)
