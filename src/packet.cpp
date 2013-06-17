@@ -458,25 +458,34 @@ size_t ipacket::read(const char* data, size_t size)
 
 	if (m_data == nullptr)
 	{
-		assert(size >= 4);
+		while (m_offset < 4 and size > 0)
+		{
+			m_length = m_length << 8 | static_cast<uint8>(*data);
+			++data;
+			--size;
+			++m_offset;
+			++result;
+		}
+		
+		if (m_offset == 4)
+		{
+			if (m_length > kMaxPacketSize)
+				throw packet_exception();
+			
+			m_padding = 0;
+			m_owned = true;
+			m_offset = 1;
+			m_data = new uint8[m_length];
+			
+			uint32 k = size;
+			if (k > m_length)
+				k = m_length;
+			result += k;
+			
+			memcpy(m_data, data, k);
 
-		for (int i = 0; i < 4; ++i)
-			m_length = m_length << 8 | static_cast<uint8>(data[i]);
-
-		if (m_length > kMaxPacketSize)
-			throw packet_exception();
-		
-		m_padding = 0;
-		m_owned = true;
-		m_offset = 1;
-		m_data = new uint8[m_length];
-		
-		result = size;
-		if (result > m_length + 4)
-			result = m_length + 4;
-		
-		std::copy(data + 4, data + result, m_data);
-		m_offset = size - 4;
+			m_offset = k;
+		}
 	}
 	else
 	{
@@ -484,8 +493,8 @@ size_t ipacket::read(const char* data, size_t size)
 		if (result > size)
 			result = size;
 
-		for (size_t i = 0; i < result; ++i, ++m_offset)
-			m_data[m_offset] = data[i];
+		memcpy(m_data + m_offset, data, result);
+		m_offset += result;
 	}
 
 	if (m_offset == m_length)	// this was the last block

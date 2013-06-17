@@ -166,7 +166,7 @@ class ipacket
 
 	void			decompress(compression_helper& decompressor, boost::system::error_code& ec);
 	
-	size_t			size() const						{ return m_length; }
+	uint32			size() const						{ return m_length; }
 	
 	void			append(const std::vector<uint8>& block);
 	std::size_t		read(const char* data, std::size_t size);
