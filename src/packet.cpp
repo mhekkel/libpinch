@@ -466,7 +466,6 @@ size_t ipacket::read(const char* data, size_t size)
 		if (m_length > kMaxPacketSize)
 			throw packet_exception();
 		
-		m_message = static_cast<message_type>(data[4]);
 		m_padding = 0;
 		m_owned = true;
 		m_offset = 1;
@@ -491,6 +490,7 @@ size_t ipacket::read(const char* data, size_t size)
 
 	if (m_offset == m_length)	// this was the last block
 	{
+		m_message = static_cast<message_type>(m_data[0]);
 		m_complete = true;
 		m_offset = 1;
 	}
