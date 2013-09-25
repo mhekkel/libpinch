@@ -129,7 +129,7 @@ bool x11_channel::check_validation()
 {
 	bool result = false;
 	
-	if (m_packet.size() > 12)
+	if (m_packet.size() >= 12)
 	{
 		uint16 pl, dl;
 		
