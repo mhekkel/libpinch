@@ -45,7 +45,7 @@ class basic_connection
 	template<typename Handler>
 	void			async_connect(Handler&& handler, channel* opening_channel = nullptr)
 					{
-					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
+//					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
 					    m_connect_handlers.push_back(new connect_handler<Handler>(std::move(handler), opening_channel));
 				    	start_handshake();
 					}
