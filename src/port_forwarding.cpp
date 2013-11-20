@@ -363,6 +363,7 @@ class socks5_proxy_channel : public basic_forwarding_channel
 	void wrote_handshake(const boost::system::error_code& ec, size_t bytes_transferred);
 	void read_request_1(const boost::system::error_code& ec, size_t bytes_transferred);
 	void read_request_addr(const boost::system::error_code& ec, size_t bytes_transferred, uint8 atyp);
+	void read_request_domain_name(const boost::system::error_code& ec, size_t bytes_transferred, uint8 atyp);
 	
 	void write_error(uint8 error_code);
 	void wrote_error();
@@ -470,6 +471,14 @@ void socks5_proxy_channel::read_request_addr(const boost::system::error_code& ec
 {
 	if (ec)
 		m_connection.get_io_service().post([this]() { delete this; });
+	else if (m_buffer.size() == 1)
+	{
+		m_buffer.resize(uint32(m_buffer[0]) + 2);
+
+		boost::asio::async_read(m_socket, boost::asio::buffer(m_buffer),
+			boost::bind(&socks5_proxy_channel::read_request_domain_name, this,
+				boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred, atyp));
+	}
 	else
 	{
 		uint8* p = &m_buffer[0];
@@ -493,13 +502,27 @@ void socks5_proxy_channel::read_request_addr(const boost::system::error_code& ec
 				p += 16;
 				break;
 			}
-	
-			default:
-				m_remote_address.assign(p, p + m_buffer.size() - 2);
-				p += m_buffer.size() - 2;
-				break;
 		}
 		
+		m_remote_port = *p++;
+		m_remote_port = (m_remote_port << 8) | *p;
+		
+		// OK, got an address, try to open it
+		open();
+	}
+}
+
+void socks5_proxy_channel::read_request_domain_name(const boost::system::error_code& ec, size_t bytes_transferred, uint8 atyp)
+{
+	if (ec)
+		m_connection.get_io_service().post([this]() { delete this; });
+	else
+	{
+		uint8* p = &m_buffer[0];
+		
+		m_remote_address.assign(p, p + m_buffer.size() - 2);
+		p += m_buffer.size() - 2;
+
 		m_remote_port = *p++;
 		m_remote_port = (m_remote_port << 8) | *p;
 		
