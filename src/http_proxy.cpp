@@ -90,20 +90,22 @@ void http_proxy_channel::handle_request()
 			m_request.method != "TRACE")
 			break;
 
+		string host, port;
+
 		if (m_request.http_version_minor == 1)
 		{
-			m_remote_address = m_request.get_header("Host");
-			if (m_remote_address.empty())
+			host = m_request.get_header("Host");
+			if (host.empty())
 				break;
 
-			string::size_type cp = m_remote_address.find(':');
+			string::size_type cp = host.find(':');
 			if (cp != string::npos)
 			{
-				m_remote_port = boost::lexical_cast<uint16>(m_remote_address.substr(cp + 1));
-				m_remote_address.erase(cp, string::npos);
+				port = host.substr(cp + 1);
+				host.erase(cp, string::npos);
 			}
 			else
-				m_remote_port = 80;
+				port = "80";
 		}
 		else
 		{
@@ -126,20 +128,34 @@ void http_proxy_channel::handle_request()
 
 			string username = m[1];
 			string password = m[2];
-			string host = m[3];
-			string port = m[4];
+			host = m[3];
+			port = m[4];
 			string file = m[5];
 
 			if (port.empty())
 				port = (scheme == "http") ? "80" : "443";
-
-			m_remote_address = host;
-			m_remote_port = boost::lexical_cast<uint16>(port);
 		}
 
-		// we now have the remote host/port, connect!
-		open();
 		ok = true;
+
+		// we now have the remote host/port, connect if needed, else reuse the channel if it is for the same host
+		if (is_open())
+		{
+			if (host != m_remote_address or boost::lexical_cast<uint16>(port) != m_remote_port)
+			{
+				m_reply = zh::reply::stock_reply(zh::service_unavailable);
+				reply_error();
+			}
+			else
+				forward_request();
+		}
+		else
+		{
+			m_remote_address = host;
+			m_remote_port = boost::lexical_cast<uint16>(port);
+
+			open();
+		}
 
 		break;
 	}
@@ -153,27 +169,27 @@ void http_proxy_channel::handle_request()
 
 void http_proxy_channel::opened()
 {
-	vector<boost::asio::const_buffer> buffers;
-
-	// remove keep alive
-	m_request.headers.erase(remove_if(m_request.headers.begin(), m_request.headers.end(), [](const zh::header& h) -> bool { return h.name == "Connection"; }), m_request.headers.end());
-	m_request.http_version_minor = 0;
-	
-	m_request.to_buffers(buffers);
-
-	shared_ptr<boost::asio::mutable_buffer> b(new boost::asio::mutable_buffer(new char[buffer_size(buffers)], buffer_size(buffers)));
-	boost::asio::buffer_copy(*b, buffers);
-
-	boost::asio::async_write(*this, boost::asio::buffer(*b), [this, b](const boost::system::error_code& ec, size_t)
-	{
-		this->handle_write_server(ec);
-	});
-
 	basic_forwarding_channel::opened();
 
 	// start reading data channel
 	boost::asio::async_read(get_socket(), m_response, boost::asio::transfer_at_least(1),
 		boost::bind(&basic_forwarding_channel::receive_raw, this, boost::asio::placeholders::error));
+
+	forward_request();
+}
+
+void http_proxy_channel::forward_request()
+{
+	boost::asio::streambuf* buffer = new boost::asio::streambuf;
+
+	iostream out(buffer);
+	out << m_request;
+
+	boost::asio::async_write(*this, *buffer, [this, buffer](const boost::system::error_code& ec, size_t s)
+	{
+		delete buffer;
+		this->handle_write_server(ec);
+	});
 }
 
 void http_proxy_channel::handle_write_server(const boost::system::error_code& ec)
@@ -183,27 +199,19 @@ void http_proxy_channel::handle_write_server(const boost::system::error_code& ec
 		m_reply = zh::reply::stock_reply(zh::internal_server_error);
 		reply_error();
 	}
-	else if (not ec)
+	else
 	{
-		//vector<boost::asio::const_buffer> buffers;
-		//
-		//if (m_reply.data_to_buffers(buffers))
-		//{
-		//	boost::asio::async_write(m_socket, buffers,
-		//		boost::bind(&http_proxy_channel::handle_write_server, this,
-		//			boost::asio::placeholders::error));
-		//}
-		//else if (m_request.http_version_minor >= 1 and not m_request.close)
-		//{
-		//	m_request_parser.reset();
-		//	m_request = zh::request();
-		//	m_reply = zh::reply();
+		if (m_request.http_version_minor >= 1 and not m_request.close)
+		{
+			m_request_parser.reset();
+			m_request = zh::request();
+			m_reply = zh::reply();
 
-		//	m_socket.async_read_some(boost::asio::buffer(m_buffer),
-		//		boost::bind(&http_proxy_channel::handle_read_client, this,
-		//			boost::asio::placeholders::error,
-		//			boost::asio::placeholders::bytes_transferred));
-		//}
+			m_socket.async_read_some(boost::asio::buffer(m_buffer),
+				boost::bind(&http_proxy_channel::handle_read_client, this,
+					boost::asio::placeholders::error,
+					boost::asio::placeholders::bytes_transferred));
+		}
 	}
 }
 
@@ -215,7 +223,13 @@ void http_proxy_channel::reply_error()
 	boost::asio::async_write(m_socket, *buffers,
 		[this,buffers](const boost::system::error_code& ec, size_t)
 		{
-			close();
+			if (not ec and is_open())
+			{
+				opacket out(msg_channel_eof);
+				out	<< m_host_channel_id;
+				send_data(out);
+			}
+			//close();
 		});
 }
 

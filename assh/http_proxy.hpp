@@ -37,6 +37,7 @@ class http_proxy_channel : public basic_forwarding_channel
 	void reply_error();
 
 	void handle_request();
+	void forward_request();
 
 	zeep::http::request_parser m_request_parser;
 	boost::array<char,8192> m_buffer;						
