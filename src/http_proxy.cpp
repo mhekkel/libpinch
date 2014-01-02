@@ -201,17 +201,22 @@ void http_proxy_channel::handle_write_server(const boost::system::error_code& ec
 	}
 	else
 	{
-		if (m_request.http_version_minor >= 1 and not m_request.close)
-		{
-			m_request_parser.reset();
-			m_request = zh::request();
-			m_reply = zh::reply();
+//		if (m_request.http_version_minor >= 1 and not m_request.close)
+//		{
+//			m_request_parser.reset();
+//			m_request = zh::request();
+//			m_reply = zh::reply();
+//
+//			m_socket.async_read_some(boost::asio::buffer(m_buffer),
+//				boost::bind(&http_proxy_channel::handle_read_client, this,
+//					boost::asio::placeholders::error,
+//					boost::asio::placeholders::bytes_transferred));
+//		}
 
-			m_socket.async_read_some(boost::asio::buffer(m_buffer),
-				boost::bind(&http_proxy_channel::handle_read_client, this,
-					boost::asio::placeholders::error,
-					boost::asio::placeholders::bytes_transferred));
-		}
+		// mimic a HTTP/1.0 server
+		opacket out(msg_channel_eof);
+		out	<< m_host_channel_id;
+		send_data(out);
 	}
 }
 

@@ -11,7 +11,7 @@
 
 #include <zeep/http/request.hpp>
 #include <zeep/http/reply.hpp>
-#include <zeep/http/request_parser.hpp>
+#include <zeep/http/message_parser.hpp>
 
 namespace assh
 {
