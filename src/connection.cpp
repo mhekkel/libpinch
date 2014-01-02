@@ -242,6 +242,13 @@ void basic_connection::forward_port(const string& local_address, uint16 local_po
 	m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
 }
 
+void basic_connection::forward_socks5(const string& local_address, uint16 local_port)
+{
+	if (m_port_forwarder == nullptr)
+		m_port_forwarder = new port_forward_listener(*this);
+	m_port_forwarder->forward_socks5(local_address, local_port);
+}
+
 void basic_connection::forward_http(const string& local_address, uint16 local_port)
 {
 	if (m_port_forwarder == nullptr)

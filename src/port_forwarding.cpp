@@ -14,41 +14,13 @@
 
 #include <assh/port_forwarding.hpp>
 #include <assh/connection.hpp>
+#include <assh/http_proxy.hpp>
 
 using namespace std;
 namespace ip = boost::asio::ip;
 
 namespace assh
 {
-
-// --------------------------------------------------------------------
-
-class basic_forwarding_channel : public channel
-{
-  public:
-
-	basic_forwarding_channel(basic_connection& inConnection);
-
-	boost::asio::ip::tcp::socket& get_socket()		{ return m_socket; }
-
-	virtual void start() = 0;
-
-	virtual std::string channel_type() const		{ return "direct-tcpip"; }
-	virtual void fill_open_opacket(opacket& out);
-
-	virtual void closed();
-
-	virtual void receive_data(const char* data, std::size_t size);
-	virtual void receive_raw(const boost::system::error_code& ec);
-
-  protected:
-
-	boost::asio::streambuf				m_response;
-	boost::asio::ip::tcp::socket		m_socket;
-	std::vector<uint8>					m_packet;
-	std::string							m_remote_address;
-	uint16								m_remote_port;
-};
 
 // --------------------------------------------------------------------
 
@@ -62,14 +34,14 @@ struct bound_port
 
 	virtual void handle_accept(const boost::system::error_code& ec);
 	
-	basic_connection&					m_connection;
-	port_forward_listener&				m_listener;
-	ip::tcp::acceptor					m_acceptor;
-	ip::tcp::resolver					m_resolver;
-	unique_ptr<basic_forwarding_channel>	m_new_channel;
-	string								m_local_address;
-	uint16								m_local_port;
-	channel_factory						m_channel_factory;
+	basic_connection& m_connection;
+	port_forward_listener& m_listener;
+	ip::tcp::acceptor m_acceptor;
+	ip::tcp::resolver m_resolver;
+	unique_ptr<basic_forwarding_channel> m_new_channel;
+	string m_local_address;
+	uint16 m_local_port;
+	channel_factory m_channel_factory;
 };
 
 bound_port::bound_port(basic_connection& connection, port_forward_listener& listener,
@@ -106,9 +78,8 @@ void bound_port::handle_accept(const boost::system::error_code& ec)
 	else
 	{
 		basic_forwarding_channel* channel = m_new_channel.release();
-		
 		channel->start();
-		
+
 		m_new_channel.reset(m_channel_factory());
 		m_acceptor.async_accept(m_new_channel->get_socket(),
 			boost::bind(&bound_port::handle_accept, this, boost::asio::placeholders::error));
@@ -127,9 +98,9 @@ void basic_forwarding_channel::fill_open_opacket(opacket& out)
 {
 	channel::fill_open_opacket(out);
 
-	boost::asio::ip::address originator = m_socket.remote_endpoint().address();
+	boost::asio::ip::address originator = get_socket().remote_endpoint().address();
 	string originator_address = boost::lexical_cast<string>(originator);
-	uint16 originator_port = m_socket.remote_endpoint().port();
+	uint16 originator_port = get_socket().remote_endpoint().port();
 
 	out << m_remote_address << uint32(m_remote_port) << originator_address << uint32(originator_port);
 }
@@ -138,7 +109,7 @@ void basic_forwarding_channel::closed()
 {
 	channel::closed();
 	
-	if (not m_socket.is_open())
+	if (not get_socket().is_open())
 	{
 		m_connection.get_io_service().post([this]
 		{
@@ -154,7 +125,7 @@ void basic_forwarding_channel::receive_data(const char* data, size_t size)
 	
 	out.write(data, size);
 	
-	boost::asio::async_write(m_socket, *buffer,
+	boost::asio::async_write(get_socket(), *buffer,
 		[this, buffer](const boost::system::error_code& ec, size_t)
 		{
 			if (ec)
@@ -166,7 +137,7 @@ void basic_forwarding_channel::receive_raw(const boost::system::error_code& ec)
 {
 	if (ec)
 	{
-		m_socket.close();
+		get_socket().close();
 		close();
 	}
 	else
@@ -189,7 +160,7 @@ void basic_forwarding_channel::receive_raw(const boost::system::error_code& ec)
 				});
 		}
 		
-		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
+		boost::asio::async_read(get_socket(), m_response, boost::asio::transfer_at_least(1),
 			boost::bind(&basic_forwarding_channel::receive_raw, this, boost::asio::placeholders::error));
 	}
 }
@@ -224,128 +195,6 @@ class port_forwarding_channel : public basic_forwarding_channel
 	}
 };
 
-//// --------------------------------------------------------------------
-//
-//class http_proxy_channel : public basic_forwarding_channel
-//{
-//  public:
-//
-//	http_proxy_channel(basic_connection& inConnection)
-//		: basic_forwarding_channel(inConnection), m_accepted(false) {}
-//
-//	virtual void opened();
-//	virtual void closed();
-//
-//	virtual void start();
-//
-//	void read_connect(const boost::system::error_code& ec, size_t bytes_transferred);
-//	void read_header(const boost::system::error_code& ec, size_t bytes_transferred);
-//	
-//	void write_error(const string& message);
-//
-//	bool m_accepted;
-//};
-//
-//void http_proxy_channel::start()
-//{
-//	boost::asio::async_read_until(m_socket, m_response, "\r\n",
-//		boost::bind(&http_proxy_channel::read_connect, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-//}
-//
-//void http_proxy_channel::read_connect(const boost::system::error_code& ec, size_t bytes_transferred)
-//{
-//	if (ec)
-//	{
-//		write_error(ec.message());
-//		m_connection.get_io_service().post([this]() { delete this; });
-//	}
-//	else
-//	{
-//		istream in(&m_response);
-//		
-//		string request;
-//		getline(in, request);
-//		
-//		boost::regex rx("CONNECT ([-[:alnum:].]*)(?::(\\d+))? HTTP/1\\.(0|1)\r\n");
-//		boost::smatch m;
-//		if (not boost::regex_match(request, m, rx))
-//			write_error("invalid request");
-//		else
-//		{
-//			m_remote_address = m[1];
-//			if (m[2].matched)
-//				m_remote_port = boost::lexical_cast<uint16>(m[2]);
-//			else
-//				m_remote_port = 80;
-//			
-//			boost::asio::async_read_until(m_socket, m_response, "\r\n",
-//				boost::bind(&http_proxy_channel::read_header, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-//		}
-//	}
-//}
-//
-//void http_proxy_channel::read_header(const boost::system::error_code& ec, size_t bytes_transferred)
-//{
-//	if (ec)
-//	{
-//		write_error(ec.message());
-//		m_connection.get_io_service().post([this]() { delete this; });
-//	}
-//	else
-//	{
-//		istream in(&m_response);
-//		
-//		string request;
-//		getline(in, request);
-//
-//		if (request.empty())
-//			open();
-//		else
-//			boost::asio::async_read_until(m_socket, m_response, "\r\n",
-//				boost::bind(&http_proxy_channel::read_header, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-//	}
-//}
-//
-//void http_proxy_channel::opened()
-//{
-//	m_accepted = true;
-//	
-//	boost::asio::streambuf* request(new boost::asio::streambuf);
-//	ostream out(request);
-//	out << "HTTP/1.1 200 OK" << "\r\n"
-//		<< "Server: salt-3.0" << "\r\n"
-//		<< "\r\n";
-//
-//	boost::asio::async_write(m_socket, *request,
-//		[this, request](const boost::system::error_code& ec, size_t bytes_transferred) { delete request; });
-//	
-//	// start the read loop
-//	boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
-//		boost::bind(&port_forwarding_channel::receive_raw, this,
-//			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-//}
-//
-//void http_proxy_channel::closed()
-//{
-//	if (not m_accepted and m_socket.is_open())
-//		write_error("connection closed");
-//}
-//
-//void http_proxy_channel::write_error(const string& message)
-//{
-//	boost::asio::streambuf* request(new boost::asio::streambuf);
-//	ostream out(request);
-//	out << "HTTP/1.1 503 " << message << "\r\n"
-//		<< "Server: salt-3.0" << "\r\n"
-//		<< "\r\n";
-//
-//	boost::asio::async_write(m_socket, *request,
-//		[this, request](const boost::system::error_code& ec, size_t bytes_transferred) { delete request; });
-//	
-//	m_socket.close();
-//	m_accepted = false;
-//}
-
 // --------------------------------------------------------------------
 
 class socks5_proxy_channel : public basic_forwarding_channel
@@ -367,7 +216,7 @@ class socks5_proxy_channel : public basic_forwarding_channel
 	
 	void write_error(uint8 error_code);
 	void wrote_error();
-	
+
 	bool m_accepted;
 	vector<uint8> m_buffer;
 };
@@ -584,6 +433,13 @@ void port_forward_listener::forward_port(const string& local_addr, uint16 local_
 }
 
 void port_forward_listener::forward_http(const string& local_addr, uint16 local_port)
+{
+	m_bound_ports.push_back(
+		new bound_port(m_connection, *this, local_addr, local_port,
+			[this]() -> basic_forwarding_channel* { return new http_proxy_channel(m_connection); }));
+}
+
+void port_forward_listener::forward_socks5(const string& local_addr, uint16 local_port)
 {
 	m_bound_ports.push_back(
 		new bound_port(m_connection, *this, local_addr, local_port,
