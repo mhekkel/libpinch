@@ -434,9 +434,8 @@ void port_forward_listener::forward_port(const string& local_addr, uint16 local_
 
 void port_forward_listener::forward_http(const string& local_addr, uint16 local_port)
 {
-	m_bound_ports.push_back(
-		new bound_port(m_connection, *this, local_addr, local_port,
-			[this]() -> basic_forwarding_channel* { return new http_proxy_channel(m_connection); }));
+	m_http_proxy.reset(new http_proxy::server(m_connection));
+	m_http_proxy->listen(local_port);
 }
 
 void port_forward_listener::forward_socks5(const string& local_addr, uint16 local_port)

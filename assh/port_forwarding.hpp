@@ -15,6 +15,10 @@
 namespace assh
 {
 
+// forward declaration
+namespace http_proxy { class server; }
+
+
 struct bound_port;
 class basic_connection;
 
@@ -44,6 +48,7 @@ class port_forward_listener
 	
 	basic_connection&	m_connection;
 	bound_port_list		m_bound_ports;
+	std::shared_ptr<http_proxy::server> m_http_proxy;
 };
 
 // --------------------------------------------------------------------
