@@ -428,7 +428,8 @@ void server::set_log_flags(uint32 log_flags)
 
 void server::listen(uint16 port)
 {
-	*m_log << "Starting proxy service" << endl;
+	if (m_log)
+		*m_log << "Starting proxy service" << endl;
 
 	string address = "0.0.0.0";
 	
@@ -545,7 +546,8 @@ void server::handle_request(zh::request& request, zh::reply& reply, shared_ptr<p
 	}
 	catch (exception& e)
 	{
-		*m_log << "ERROR: " << e.what() << endl;
+		if (m_log)
+			*m_log << "ERROR: " << e.what() << endl;
 		conn->reply_with_error(zh::internal_server_error, e.what());
 	}
 }
@@ -596,12 +598,14 @@ void server::log_request(const string& client,
 
 void server::log_error(const std::exception& e)
 {
-	*m_log << "ERROR: " << e.what() << endl;
+	if (m_log)
+		*m_log << "ERROR: " << e.what() << endl;
 }
 
 void server::log_error(const boost::system::error_code& ec)
 {
-	*m_log << "ERROR: " << ec << endl;
+	if (m_log)
+		*m_log << "ERROR: " << ec << endl;
 }
 
 void server::channel_closed(proxy_channel* ch)
