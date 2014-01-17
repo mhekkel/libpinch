@@ -18,12 +18,26 @@
 #include <boost/date_time/local_time/local_time.hpp>
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
+#include <boost/asio/spawn.hpp>
 
 #include <assh/http_proxy.hpp>
 #include <assh/connection.hpp>
 
 #include <zeep/http/server.hpp>
 #include <zeep/http/message_parser.hpp>
+
+#if defined(_MSC_VER)
+
+#define BOOST_LIB_NAME boost_coroutine
+
+// tell the auto-link code to select a dll when required:
+#if defined(BOOST_ALL_DYN_LINK) || defined(BOOST_WAVE_DYN_LINK)
+#define BOOST_DYN_LINK
+#endif
+
+#include <boost/config/auto_link.hpp>
+
+#endif
 
 using namespace std;
 namespace ip = boost::asio::ip;
@@ -35,18 +49,63 @@ namespace http_proxy {
 
 using namespace boost::posix_time;
 
+class proxy_connection;
+
+// --------------------------------------------------------------------
+
+class proxy_channel : public channel, public enable_shared_from_this<proxy_channel>
+{
+  public:
+	proxy_channel(basic_connection& inConnection,
+		const std::string& remote_addr, uint16 remote_port,
+		shared_ptr<server> proxy)
+		: channel(inConnection), m_proxy(proxy)
+		, m_remote_address(remote_addr), m_remote_port(remote_port) {}
+
+	virtual void closed();
+
+	virtual string channel_type() const				{ return "direct-tcpip"; }
+	virtual void fill_open_opacket(opacket& out)
+	{
+		channel::fill_open_opacket(out);
+	
+		//boost::asio::ip::address originator = get_socket().remote_endpoint().address();
+		//string originator_address = boost::lexical_cast<string>(originator);
+		//uint16 originator_port = get_socket().remote_endpoint().port();
+		string originator_address = "127.0.0.1";
+		uint16 originator_port = 80;
+	
+		out << m_remote_address << uint32(m_remote_port) << originator_address << uint32(originator_port);
+	}
+
+	void process_request(shared_ptr<proxy_connection> proxy_connection);
+
+  private:
+
+	void handle_write(const boost::system::error_code& ec, shared_ptr<proxy_connection> conn);
+	void handle_read(const boost::system::error_code& ec, size_t size, shared_ptr<proxy_connection> conn);
+
+	string m_remote_address;
+	uint16 m_remote_port;
+	shared_ptr<server> m_proxy;
+	boost::array<char,8192> m_buffer;
+	zh::reply_parser m_reply_parser;
+};
+
 // --------------------------------------------------------------------
 
 class proxy_connection : public std::tr1::enable_shared_from_this<proxy_connection>
 {
   public:
 	proxy_connection(basic_connection& ssh_connection, shared_ptr<server> proxy)
-		: m_ssh_connection(ssh_connection), m_proxy(proxy), m_socket(m_ssh_connection.get_io_service()) {}
+		: m_ssh_connection(ssh_connection), m_proxy(proxy), m_socket(m_ssh_connection.get_io_service())
+		, m_strand(m_ssh_connection.get_io_service()) {}
 
 	void start();
 	void reply_with_error(zh::status_type err, const string& message);
 	void reply();
-
+	void connect(shared_ptr<channel> channel);
+	
 	boost::asio::ip::tcp::socket& get_socket() { return m_socket; }
 	
 	zh::reply& get_reply() { return m_reply; }
@@ -56,6 +115,9 @@ class proxy_connection : public std::tr1::enable_shared_from_this<proxy_connecti
 
 	void handle_read(const boost::system::error_code& ec, size_t bytes_transferred);
 	void handle_write(const boost::system::error_code& ec);
+
+	void connect_copy_c2s(boost::asio::yield_context yield, shared_ptr<channel> channel);
+	void connect_copy_s2c(boost::asio::yield_context yield, shared_ptr<channel> channel);
 	
 	basic_connection& m_ssh_connection;
 	shared_ptr<server> m_proxy;
@@ -66,6 +128,9 @@ class proxy_connection : public std::tr1::enable_shared_from_this<proxy_connecti
 	zh::reply m_reply;
 	bool m_keep_alive;
 	ptime m_start;
+	
+	shared_ptr<channel> m_connect_channel;
+	boost::asio::io_service::strand m_strand;
 };
 
 void proxy_connection::start()
@@ -184,48 +249,89 @@ void proxy_connection::handle_write(const boost::system::error_code& ec)
 	}
 }
 
+void proxy_connection::connect(shared_ptr<channel> channel)
+{
+	m_reply = zh::reply::stock_reply(zh::ok);
+
+	string client;
+	
+	try		// asking for the remote endpoint address failed sometimes
+			// causing aborting exceptions, so I moved it here.
+	{
+		boost::asio::ip::address addr = m_socket.remote_endpoint().address();
+		client = boost::lexical_cast<string>(addr);
+	}
+	catch (...)
+	{
+		client = "unknown";
+	}
+
+	m_proxy->log_request(client, m_request, m_reply, m_start);
+
+	vector<boost::asio::const_buffer> buffers;
+	m_reply.to_buffers(buffers);
+	
+	shared_ptr<proxy_connection> self(shared_from_this());
+
+	boost::asio::async_write(m_socket, buffers, [this, self, channel](const boost::system::error_code& ec, size_t bytes_transferred)
+	{
+		if (ec)
+			self->m_proxy->log_error(ec);
+		else
+		{
+			boost::asio::spawn(self->m_strand, boost::bind(&proxy_connection::connect_copy_s2c, self, _1, channel));
+			boost::asio::spawn(self->m_strand, boost::bind(&proxy_connection::connect_copy_c2s, self, _1, channel));
+		}
+	});
+}
+
+void proxy_connection::connect_copy_c2s(boost::asio::yield_context yield, shared_ptr<channel> channel)
+{
+	try
+	{
+		char data[1024];
+
+		for (;;)
+		{
+			size_t length = m_socket.async_read_some(boost::asio::buffer(data), yield);
+			if (length == 0)
+				break;
+			boost::asio::async_write(*channel, boost::asio::buffer(data, length), yield);
+		}
+	}
+	catch (exception& e)
+	{
+		m_proxy->log_error(e);
+	}
+}
+
+void proxy_connection::connect_copy_s2c(boost::asio::yield_context yield, shared_ptr<channel> channel)
+{
+	try
+	{
+		char data[1024];
+
+		for (;;)
+		{
+			size_t length = boost::asio::async_read(*channel, boost::asio::buffer(data), boost::asio::transfer_at_least(1), yield);
+			if (length == 0)
+				break;
+			boost::asio::async_write(m_socket, boost::asio::buffer(data, length), yield);
+		}
+	}
+	catch (exception& e)
+	{
+		m_proxy->log_error(e);
+	}
+}
+
 // --------------------------------------------------------------------
 
-class proxy_channel : public channel, public enable_shared_from_this<proxy_channel>
+void proxy_channel::closed()
 {
-  public:
-	proxy_channel(basic_connection& inConnection,
-		const std::string& remote_addr, uint16 remote_port,
-		shared_ptr<server> proxy)
-		: channel(inConnection), m_proxy(proxy)
-		, m_remote_address(remote_addr), m_remote_port(remote_port) {}
+	channel::closed();
 
-	void process_request(shared_ptr<proxy_connection> proxy_connection);
-
-	virtual string channel_type() const				{ return "direct-tcpip"; }
-	virtual void fill_open_opacket(opacket& out);
-
-	const string& remote_address() const			{ return m_remote_address; }
-	uint16 remote_port() const						{ return m_remote_port; }
-
-  private:
-
-	void handle_write(const boost::system::error_code& ec, shared_ptr<proxy_connection> conn);
-	void handle_read(const boost::system::error_code& ec, size_t size, shared_ptr<proxy_connection> conn);
-
-	string m_remote_address;
-	uint16 m_remote_port;
-	shared_ptr<server> m_proxy;
-	boost::array<char,8192> m_buffer;
-	zh::reply_parser m_reply_parser;
-};
-
-void proxy_channel::fill_open_opacket(opacket& out)
-{
-	channel::fill_open_opacket(out);
-
-	//boost::asio::ip::address originator = get_socket().remote_endpoint().address();
-	//string originator_address = boost::lexical_cast<string>(originator);
-	//uint16 originator_port = get_socket().remote_endpoint().port();
-	string originator_address = "127.0.0.1";
-	uint16 originator_port = 80;
-
-	out << m_remote_address << uint32(m_remote_port) << originator_address << uint32(originator_port);
+	m_proxy->channel_closed(this);
 }
 
 void proxy_channel::process_request(shared_ptr<proxy_connection> proxy_connection)
@@ -240,10 +346,10 @@ void proxy_channel::process_request(shared_ptr<proxy_connection> proxy_connectio
 	shared_ptr<proxy_channel> self(shared_from_this());
 
 	boost::asio::async_write(*this, *buffer,
-		[self, buffer, proxy_connection](const boost::system::error_code& ec, size_t s)
+		[this, self, buffer, proxy_connection](const boost::system::error_code& ec, size_t s)
 	{
 		delete buffer;
-		self->handle_write(ec, proxy_connection);
+		this->handle_write(ec, proxy_connection);
 	});
 }
 
@@ -299,14 +405,25 @@ void proxy_channel::handle_read(const boost::system::error_code& ec, size_t byte
 
 server::server(basic_connection& ssh_connection)
 	: m_connection(ssh_connection)
-	, m_log_flags(e_log_request)
+	, m_log_flags(0)
 {
-	using namespace boost::local_time;
+}
 
-	m_log.reset(new ofstream("proxy.log", ios::app | ios::binary));
+void server::set_log_flags(uint32 log_flags)
+{
+	m_log_flags = log_flags;
 
-	local_time_facet* lf(new local_time_facet("[%d/%b/%Y:%H:%M:%S %z]"));
-	m_log->imbue(locale(cout.getloc(), lf));
+	if (m_log_flags)
+	{
+		using namespace boost::local_time;
+
+		m_log.reset(new ofstream("proxy.log", ios::app));
+
+		local_time_facet* lf(new local_time_facet("[%d/%b/%Y:%H:%M:%S %z]"));
+		m_log->imbue(locale(cout.getloc(), lf));
+	}
+	else
+		m_log.reset();
 }
 
 void server::listen(uint16 port)
@@ -345,55 +462,78 @@ void server::handle_request(zh::request& request, zh::reply& reply, shared_ptr<p
 {
 	try	// do the actual work.
 	{
-		if (request.method != "OPTIONS" and request.method != "HEAD" and request.method != "POST" and
-			request.method != "GET" and request.method != "PUT" and request.method != "DELETE" and
-			request.method != "TRACE")
-			throw logic_error("invalid method");
-
-		string host = request.get_header("Host");
-		uint16 port = 80;
-		
-		boost::regex re("^(?:https?://)?(?:([-$_.+!*'(),[:alnum:];?&=]+)(?::([-$_.+!*'(),[:alnum:];?&=]+))?@)?([-[:alnum:].]+)(?::(\\d+))?(/.*)");
-		boost::smatch m;
-
-		if (not boost::regex_match(request.uri, m, re))
-			throw logic_error("invalid request");
-
-		if (host.empty())
+		if (request.method == "CONNECT")
 		{
-			if (m[3].matched)
-				host = m[3];
-			else
-				host = "localhost";
+			string host = request.uri;
+			uint16 port = 443;
 
-			if (m[4].matched)
-				port = boost::lexical_cast<uint16>(m[4]);
-		}
-		else
-		{
 			string::size_type cp = host.find(':');
 			if (cp != string::npos)
 			{
 				port = boost::lexical_cast<uint16>(host.substr(cp + 1));
 				host.erase(cp, string::npos);
 			}
-		}
 
-		// drop the username and password... is that OK?
-		request.uri = m[5];
-		
-//		proxy_channel* channel = get_proxy_channel(host, port);
-//		channel->process_request(request, reply, conn);
-		shared_ptr<proxy_channel> channel(new proxy_channel(m_connection, host, port, shared_from_this()));
-		channel->open([conn, channel](const boost::system::error_code& ec)
+			shared_ptr<proxy_channel> channel(new proxy_channel(m_connection, host, port, shared_from_this()));
+			channel->open([conn, channel](const boost::system::error_code& ec)
+			{
+				if (ec)
+					conn->reply_with_error(/* ec */zh::service_unavailable, "");
+				else
+					conn->connect(channel);
+			});
+			
+			m_channels.push_back(channel);
+		}
+		else if (request.method == "OPTIONS" or request.method == "HEAD" or request.method == "POST" or
+				 request.method == "GET" or request.method == "PUT" or request.method == "DELETE" or
+				 request.method == "TRACE")
 		{
-			if (ec)
-				conn->reply_with_error(/* ec */zh::service_unavailable, "");
+			string host = request.get_header("Host");
+			uint16 port = 80;
+
+			boost::regex re("^(?:http://)?(?:([-$_.+!*'(),[:alnum:];?&=]+)(?::([-$_.+!*'(),[:alnum:];?&=]+))?@)?([-[:alnum:].]+)(?::(\\d+))?(/.*)?");
+			boost::smatch m;
+
+			if (not boost::regex_match(request.uri, m, re))
+				throw logic_error("invalid request");
+
+			if (host.empty())
+			{
+				if (m[3].matched)
+					host = m[3];
+				else
+					host = "localhost";
+
+				if (m[4].matched)
+					port = boost::lexical_cast<uint16>(m[4]);
+			}
 			else
-				channel->process_request(conn);
-		});
-		
-		m_channels.push_back(channel);
+			{
+				string::size_type cp = host.find(':');
+				if (cp != string::npos)
+				{
+					port = boost::lexical_cast<uint16>(host.substr(cp + 1));
+					host.erase(cp, string::npos);
+				}
+			}
+	
+			// drop the username and password... is that OK?
+			request.uri = m[5];
+			
+			shared_ptr<proxy_channel> channel(new proxy_channel(m_connection, host, port, shared_from_this()));
+			channel->open([conn, channel](const boost::system::error_code& ec)
+			{
+				if (ec)
+					conn->reply_with_error(/* ec */zh::service_unavailable, "");
+				else
+					channel->process_request(conn);
+			});
+			
+			m_channels.push_back(channel);
+		}
+		else
+			conn->reply_with_error(zh::bad_request, "Invalid method requested");
 		
 //		// work around buggy IE... also, using req.accept() doesn't work since it contains */* ... duh
 //		if (ba::starts_with(rep.get_content_type(), "application/xhtml+xml") and
@@ -452,6 +592,24 @@ void server::log_request(const string& client,
 		}
 	}
 	catch (...) {}
+}
+
+void server::log_error(const std::exception& e)
+{
+	*m_log << "ERROR: " << e.what() << endl;
+}
+
+void server::log_error(const boost::system::error_code& ec)
+{
+	*m_log << "ERROR: " << ec << endl;
+}
+
+void server::channel_closed(proxy_channel* ch)
+{
+	m_channels.erase(remove_if(m_channels.begin(), m_channels.end(), [ch](const shared_ptr<channel>& p) -> bool
+	{
+		return p.get() == ch;
+	}), m_channels.end());
 }
 
 }

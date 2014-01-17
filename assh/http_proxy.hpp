@@ -33,7 +33,7 @@ class server : public std::tr1::enable_shared_from_this<server>
 	server(basic_connection& connection);
 	
 	void listen(uint16 port);
-	void set_log_flags(uint32 log_flags)							{ m_log_flags = log_flags; }
+	void set_log_flags(uint32 log_flags);
 
 	void handle_request(zeep::http::request& request,
 		zeep::http::reply& reply, std::shared_ptr<proxy_connection> conn);
@@ -41,6 +41,10 @@ class server : public std::tr1::enable_shared_from_this<server>
 	void log_request(const std::string& client,
 		const zeep::http::request& req, const zeep::http::reply& rep,
 		const boost::posix_time::ptime& start);
+	void log_error(const std::exception& e);
+	void log_error(const boost::system::error_code& ec);
+
+	void channel_closed(proxy_channel* channel);
 
   private:
 
@@ -50,7 +54,7 @@ class server : public std::tr1::enable_shared_from_this<server>
 	std::shared_ptr<proxy_connection> m_new_connection;
 	std::shared_ptr<std::ostream> m_log;
 	std::shared_ptr<boost::asio::ip::tcp::acceptor> m_acceptor;
-	std::list<std::shared_ptr<proxy_channel>> m_channels;
+	std::list<std::shared_ptr<channel>> m_channels;
 	uint32 m_log_flags;
 };
 
