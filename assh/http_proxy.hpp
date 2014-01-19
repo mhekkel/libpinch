@@ -30,7 +30,7 @@ enum log_options
 class server : public std::tr1::enable_shared_from_this<server>
 {
   public:
-	server(basic_connection& connection);
+	server(basic_connection& connection, uint32 log_flags = 0);
 	
 	void listen(uint16 port);
 	void set_log_flags(uint32 log_flags);

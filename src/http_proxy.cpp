@@ -53,47 +53,6 @@ class proxy_connection;
 
 // --------------------------------------------------------------------
 
-class proxy_channel : public channel, public enable_shared_from_this<proxy_channel>
-{
-  public:
-	proxy_channel(basic_connection& inConnection,
-		const std::string& remote_addr, uint16 remote_port,
-		shared_ptr<server> proxy)
-		: channel(inConnection), m_proxy(proxy)
-		, m_remote_address(remote_addr), m_remote_port(remote_port) {}
-
-	virtual void closed();
-
-	virtual string channel_type() const				{ return "direct-tcpip"; }
-	virtual void fill_open_opacket(opacket& out)
-	{
-		channel::fill_open_opacket(out);
-	
-		//boost::asio::ip::address originator = get_socket().remote_endpoint().address();
-		//string originator_address = boost::lexical_cast<string>(originator);
-		//uint16 originator_port = get_socket().remote_endpoint().port();
-		string originator_address = "127.0.0.1";
-		uint16 originator_port = 80;
-	
-		out << m_remote_address << uint32(m_remote_port) << originator_address << uint32(originator_port);
-	}
-
-	void process_request(shared_ptr<proxy_connection> proxy_connection);
-
-  private:
-
-	void handle_write(const boost::system::error_code& ec, shared_ptr<proxy_connection> conn);
-	void handle_read(const boost::system::error_code& ec, size_t size, shared_ptr<proxy_connection> conn);
-
-	string m_remote_address;
-	uint16 m_remote_port;
-	shared_ptr<server> m_proxy;
-	boost::array<char,8192> m_buffer;
-	zh::reply_parser m_reply_parser;
-};
-
-// --------------------------------------------------------------------
-
 class proxy_connection : public std::tr1::enable_shared_from_this<proxy_connection>
 {
   public:
@@ -107,6 +66,7 @@ class proxy_connection : public std::tr1::enable_shared_from_this<proxy_connecti
 	void connect(shared_ptr<channel> channel);
 	
 	boost::asio::ip::tcp::socket& get_socket() { return m_socket; }
+	boost::asio::io_service::strand& get_strand() { return m_strand; }
 	
 	zh::reply& get_reply() { return m_reply; }
 	zh::request& get_request() { return m_request; }
@@ -294,14 +254,13 @@ void proxy_connection::connect_copy_c2s(boost::asio::yield_context yield, shared
 		for (;;)
 		{
 			size_t length = m_socket.async_read_some(boost::asio::buffer(data), yield);
-			if (length == 0)
-				break;
 			boost::asio::async_write(*channel, boost::asio::buffer(data, length), yield);
 		}
 	}
 	catch (exception& e)
 	{
 		m_proxy->log_error(e);
+		channel->close();
 	}
 }
 
@@ -314,98 +273,120 @@ void proxy_connection::connect_copy_s2c(boost::asio::yield_context yield, shared
 		for (;;)
 		{
 			size_t length = boost::asio::async_read(*channel, boost::asio::buffer(data), boost::asio::transfer_at_least(1), yield);
-			if (length == 0)
-				break;
 			boost::asio::async_write(m_socket, boost::asio::buffer(data, length), yield);
 		}
 	}
 	catch (exception& e)
 	{
 		m_proxy->log_error(e);
+		channel->close();
 	}
 }
+
+// --------------------------------------------------------------------
+
+class proxy_channel : public channel
+{
+  public:
+	proxy_channel(basic_connection& inConnection,
+		const std::string& remote_addr, uint16 remote_port,
+		shared_ptr<server> proxy)
+		: channel(inConnection), m_proxy(proxy)
+		, m_remote_address(remote_addr), m_remote_port(remote_port) {}
+
+	virtual void closed();
+
+	virtual string channel_type() const				{ return "direct-tcpip"; }
+	virtual void fill_open_opacket(opacket& out)
+	{
+		channel::fill_open_opacket(out);
+	
+		//boost::asio::ip::address originator = get_socket().remote_endpoint().address();
+		//string originator_address = boost::lexical_cast<string>(originator);
+		//uint16 originator_port = get_socket().remote_endpoint().port();
+		string originator_address = "127.0.0.1";
+		uint16 originator_port = 80;
+	
+		out << m_remote_address << uint32(m_remote_port) << originator_address << uint32(originator_port);
+	}
+
+	void process_request(shared_ptr<proxy_connection> proxy_connection);
+
+  private:
+	
+	void proxy_channel::process_request(boost::asio::yield_context yield, channel_ptr, shared_ptr<boost::asio::streambuf>,
+		shared_ptr<proxy_connection> proxy_connection);
+
+	string m_remote_address;
+	uint16 m_remote_port;
+	shared_ptr<server> m_proxy;
+};
 
 // --------------------------------------------------------------------
 
 void proxy_channel::closed()
 {
 	channel::closed();
-
 	m_proxy->channel_closed(this);
 }
 
 void proxy_channel::process_request(shared_ptr<proxy_connection> proxy_connection)
 {
-	m_reply_parser.reset();
-	
-	boost::asio::streambuf* buffer = new boost::asio::streambuf;
+	shared_ptr<boost::asio::streambuf> buffer(new boost::asio::streambuf);
 
-	iostream out(buffer);
+	iostream out(buffer.get());
 	out << proxy_connection->get_request();
 
-	shared_ptr<proxy_channel> self(shared_from_this());
-
-	boost::asio::async_write(*this, *buffer,
-		[this, self, buffer, proxy_connection](const boost::system::error_code& ec, size_t s)
-	{
-		delete buffer;
-		this->handle_write(ec, proxy_connection);
-	});
+	boost::asio::spawn(proxy_connection->get_strand(),
+		boost::bind(&proxy_channel::process_request, this, _1, shared_from_this(), buffer, proxy_connection));
 }
 
-void proxy_channel::handle_write(const boost::system::error_code& ec, shared_ptr<proxy_connection> conn)
+void proxy_channel::process_request(boost::asio::yield_context yield, shared_ptr<channel> self,
+	shared_ptr<boost::asio::streambuf> buffer, shared_ptr<proxy_connection> proxy_connection)
 {
-	if (ec)
-		conn->reply_with_error(/*ec*/ zh::internal_server_error, "");
-	else
+	try
 	{
-		boost::asio::async_read(*this, boost::asio::buffer(m_buffer),
-			boost::asio::transfer_at_least(1),
-			boost::bind(&proxy_channel::handle_read, shared_from_this(),
-				boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred, conn));
-	}
-}
-
-void proxy_channel::handle_read(const boost::system::error_code& ec, size_t bytes_transferred,
-	shared_ptr<proxy_connection> conn)
-{
-	if (ec)
-		conn->reply_with_error(/*ec*/ zh::internal_server_error, "");
-	else
-	{
-		boost::tribool result;
-		size_t used;
-
-		tr1::tie(result, used) = m_reply_parser.parse(
-			conn->get_reply(), m_buffer.data(), bytes_transferred);
-
-		if (result)
+		boost::asio::async_write(*this, *buffer, yield);
+		
+		zh::reply_parser p;
+		char data[1024];
+		
+		for (;;)
 		{
-			// we have a valid and complete reply
-			conn->reply();
-			close();
-		}
-		else if (not result)
-		{
-			// invalid reply
-			conn->reply_with_error(zh::internal_server_error, "");
-			close();
-		}
-		else
-		{
-			boost::asio::async_read(*this, boost::asio::buffer(m_buffer),
-				boost::asio::transfer_at_least(1),
-				boost::bind(&proxy_channel::handle_read, shared_from_this(),
-					boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred, conn));
+			boost::system::error_code ec;
+			size_t l = boost::asio::async_read(*this, boost::asio::buffer(data), boost::asio::transfer_at_least(1), yield);
+			
+			boost::tribool result;
+			size_t consumed;
+			
+			tr1::tie(result, consumed) = p.parse(proxy_connection->get_reply(), data, l);
+			if (result)
+			{
+				proxy_connection->reply();
+				break;
+			}
+			else if (not result)
+			{
+				proxy_connection->reply_with_error(zh::internal_server_error, "");
+				break;
+			}
+			else
+				continue;
 		}
 	}
+	catch (exception& e)
+	{
+		m_proxy->log_error(e);
+	}
+		
+	close();
 }
 
 // --------------------------------------------------------------------
 
-server::server(basic_connection& ssh_connection)
+server::server(basic_connection& ssh_connection, uint32 log_flags)
 	: m_connection(ssh_connection)
-	, m_log_flags(0)
+	, m_log_flags(log_flags)
 {
 }
 

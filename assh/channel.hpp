@@ -29,7 +29,10 @@ const uint32
 	kMaxPacketSize = 0x8000,
 	kWindowSize = 4 * kMaxPacketSize;
 
-class channel
+class channel;
+typedef std::shared_ptr<channel> channel_ptr;
+
+class channel : public std::enable_shared_from_this<channel>
 {
   public:
 	struct environment_variable

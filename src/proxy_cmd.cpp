@@ -70,7 +70,7 @@ void proxied_connection::start_handshake()
 				handle_connect_result(ec);
 			else
 				start_handshake();
-		});
+		}, channel_ptr());
 	}
 	else if (not m_channel->is_open())
 	{

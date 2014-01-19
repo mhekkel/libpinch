@@ -183,8 +183,8 @@ void basic_connection::disconnect()
 	reset();
 	
 	// copy the list since calling Close will change it
-	list<channel*> channels(m_channels);
-	for_each(channels.begin(), channels.end(), [](channel* c) { c->close(); });
+	list<channel_ptr> channels(m_channels);
+	for_each(channels.begin(), channels.end(), [](channel_ptr c) { c->close(); });
 }
 
 void basic_connection::handle_error(const boost::system::error_code& ec)
@@ -195,7 +195,7 @@ void basic_connection::handle_error(const boost::system::error_code& ec)
 		cerr << ec << endl;
 #endif
 
-		for_each(m_channels.begin(), m_channels.end(), [&ec] (channel* ch) { ch->error(ec.message(), ""); });
+		for_each(m_channels.begin(), m_channels.end(), [&ec] (channel_ptr ch) { ch->error(ec.message(), ""); });
 		
 		disconnect();
 		handle_connect_result(ec);
@@ -770,7 +770,7 @@ void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost:
 	string msg, lang;
 	in >> msg >> lang;
 	
-	for_each(m_channels.begin(), m_channels.end(), [msg, lang](channel* c) { c->banner(msg, lang); });
+	for_each(m_channels.begin(), m_channels.end(), [msg, lang](channel_ptr c) { c->banner(msg, lang); });
 }
 
 void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -914,13 +914,13 @@ void basic_connection::async_write_packet_int(opacket&& p, basic_write_op* op)
 	async_write_int(request, op);
 }
 
-void basic_connection::open_channel(channel* ch, uint32 channel_id)
+void basic_connection::open_channel(channel_ptr ch, uint32 channel_id)
 {
 	if (find(m_channels.begin(), m_channels.end(), ch) == m_channels.end())
 	{
 		// some sanity check first
 		assert(find_if(m_channels.begin(), m_channels.end(),
-			[channel_id](const channel* ch) -> bool { return ch->my_channel_id() == channel_id; } ) == m_channels.end());
+			[channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; } ) == m_channels.end());
 		assert(not ch->is_open());
 
 		m_channels.push_back(ch);
@@ -934,7 +934,7 @@ void basic_connection::open_channel(channel* ch, uint32 channel_id)
 	}
 }
 
-void basic_connection::close_channel(channel* ch, uint32 channel_id)
+void basic_connection::close_channel(channel_ptr ch, uint32 channel_id)
 {
 	if (ch->is_open())
 	{
@@ -974,7 +974,7 @@ bool basic_connection::has_open_channels()
 {
 	bool channel_open = false;
 
-	foreach (channel* c, m_channels)
+	foreach (channel_ptr c, m_channels)
 	{
 		if (c->is_open())
 		{
@@ -988,7 +988,7 @@ bool basic_connection::has_open_channels()
 
 void basic_connection::process_channel_open(ipacket& in, opacket& out)
 {
-	channel* c = nullptr;
+	channel_ptr c;
 	
 	string type;
 
@@ -997,13 +997,13 @@ void basic_connection::process_channel_open(ipacket& in, opacket& out)
 	try
 	{
 		if (type == "x11")
-			c = new x11_channel(*this);
+			c.reset(new x11_channel(*this));
 		else if (type == "auth-agent@openssh.com" and m_forward_agent)
-			c = new ssh_agent_channel(*this);
+			c.reset(new ssh_agent_channel(*this));
 	}
 	catch (...) {}
 	
-	if (c != nullptr)
+	if (c)
 	{
 		in.message(msg_channel_open_confirmation);
 		c->process(in);
@@ -1027,7 +1027,7 @@ void basic_connection::process_channel(ipacket& in, opacket& out, boost::system:
 		uint32 channel_id;
 		in >> channel_id;
 	
-		foreach (channel* c, m_channels)
+		foreach (channel_ptr c, m_channels)
 		{
 			if (c->my_channel_id() == channel_id)
 			{

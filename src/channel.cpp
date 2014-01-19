@@ -76,13 +76,13 @@ void channel::open()
 			}
 			else
 				this->open();
-		}, this);
+		}, shared_from_this());
 	}
 	else
 	{
 		m_my_window_size = kWindowSize;
 		m_my_channel_id = s_next_channel_id++;
-		m_connection.open_channel(this, m_my_channel_id);
+		m_connection.open_channel(shared_from_this(), m_my_channel_id);
 	}
 }
 
@@ -105,7 +105,7 @@ void channel::close()
 		handler->handle_open_result(make_error_code(error::by_application));
 	}
 
-	m_connection.close_channel(this, m_host_channel_id);
+	m_connection.close_channel(shared_from_this(), m_host_channel_id);
 }
 
 void channel::closed()
@@ -242,7 +242,7 @@ void channel::process(ipacket& in)
 			
 			error(reason, "en");
 
-			m_connection.close_channel(this, 0);
+			m_connection.close_channel(shared_from_this(), 0);
 			
 			if (m_open_handler)
 			{
@@ -256,7 +256,7 @@ void channel::process(ipacket& in)
 
 		case msg_channel_close:
 			closed();
-			m_connection.close_channel(this, 0);
+			m_connection.close_channel(shared_from_this(), 0);
 			break;
 
 		case msg_channel_success:

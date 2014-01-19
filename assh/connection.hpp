@@ -18,6 +18,7 @@ namespace assh
 
 class key_exchange;
 class channel;
+typedef std::shared_ptr<channel> channel_ptr;
 class port_forward_listener;
 	
 extern const std::string kSSHVersionString;
@@ -43,7 +44,7 @@ class basic_connection
 	void			set_password_callback(const password_callback_type& cb);
 	
 	template<typename Handler>
-	void			async_connect(Handler&& handler, channel* opening_channel = nullptr)
+	void			async_connect(Handler&& handler, channel_ptr opening_channel)
 					{
 //					    BOOST_ASIO_CONNECT_HANDLER_CHECK(ConnectHandler, handler) type_check;
 					    m_connect_handlers.push_back(new connect_handler<Handler>(std::move(handler), opening_channel));
@@ -56,8 +57,8 @@ class basic_connection
 	virtual void	disconnect();
 	virtual void	rekey();
 
-	void			open_channel(channel* ch, uint32 id);
-	void			close_channel(channel* ch, uint32 id);
+	void			open_channel(channel_ptr ch, uint32 id);
+	void			close_channel(channel_ptr ch, uint32 id);
 
 	bool			has_open_channels();
 
@@ -103,12 +104,12 @@ class basic_connection
 
 	struct basic_connect_handler
 	{
-							basic_connect_handler(channel* opening_channel) : m_opening_channel(opening_channel) {}
+							basic_connect_handler(channel_ptr opening_channel) : m_opening_channel(opening_channel) {}
 		virtual				~basic_connect_handler() {}
 		
 		virtual void		handle_connect(const boost::system::error_code& ec, boost::asio::io_service& io_service) = 0;
 		//virtual void		handle_connect(const boost::system::error_code& ec) = 0;
-		channel*			m_opening_channel;
+		channel_ptr			m_opening_channel;
 	};
 	
 	typedef std::list<basic_connect_handler*>	connect_handler_list;
@@ -116,9 +117,9 @@ class basic_connection
 	template<class Handler>
 	struct connect_handler : public basic_connect_handler
 	{
-							connect_handler(Handler&& handler, channel* opening_channel)
+							connect_handler(Handler&& handler, channel_ptr opening_channel)
 								: basic_connect_handler(opening_channel), m_handler(std::move(handler)) {}
-							connect_handler(Handler&& handler, channel* opening_channel, const boost::system::error_code& ec)
+							connect_handler(Handler&& handler, channel_ptr opening_channel, const boost::system::error_code& ec)
 								: basic_connect_handler(opening_channel)
 								, m_handler(std::move(handler)), m_ec(ec) {}
 		
@@ -294,7 +295,7 @@ class basic_connection
 								m_read_handlers;
 	std::deque<opacket>			m_private_keys;
 
-	std::list<channel*>			m_channels;
+	std::list<channel_ptr>		m_channels;
 	bool						m_forward_agent;
 	port_forward_listener*		m_port_forwarder;
 
