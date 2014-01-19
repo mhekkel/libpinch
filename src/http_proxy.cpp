@@ -7,6 +7,8 @@
 
 #include <fstream>
 
+#include <../Lib/MResources.h>
+
 #include <boost/bind.hpp>
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
@@ -385,8 +387,7 @@ void proxy_channel::process_request(boost::asio::yield_context yield, shared_ptr
 // --------------------------------------------------------------------
 
 server::server(basic_connection& ssh_connection, uint32 log_flags)
-	: m_connection(ssh_connection)
-	, m_log_flags(log_flags)
+	: template_processor("http://www.hekkelman.com/ns/salt"), m_connection(ssh_connection), m_log_flags(log_flags)
 {
 }
 
@@ -405,6 +406,16 @@ void server::set_log_flags(uint32 log_flags)
 	}
 	else
 		m_log.reset();
+}
+
+void server::load_template(const std::string& file, zeep::xml::document& doc)
+{
+	mrsrc::rsrc rsrc(string("templates/") + file);
+	if (not rsrc)
+		throw runtime_error("missing template");
+	
+	string data(rsrc.data(), rsrc.size());
+	doc.read(data);
 }
 
 void server::listen(uint16 port)
@@ -503,16 +514,25 @@ void server::handle_request(zh::request& request, zh::reply& reply, shared_ptr<p
 			// drop the username and password... is that OK?
 			request.uri = m[5];
 			
-			shared_ptr<proxy_channel> channel(new proxy_channel(m_connection, host, port, shared_from_this()));
-			channel->open([conn, channel](const boost::system::error_code& ec)
+			if (host == "proxy.hekkelman.net" and port == 80)
 			{
-				if (ec)
-					conn->reply_with_error(/* ec */zh::service_unavailable, "");
-				else
-					channel->process_request(conn);
-			});
+				zh::el::scope scope(request);
+				create_reply_from_template("index.xhtml", scope, conn->get_reply());
+				conn->reply();
+			}
+			else
+			{
+				shared_ptr<proxy_channel> channel(new proxy_channel(m_connection, host, port, shared_from_this()));
+				channel->open([conn, channel](const boost::system::error_code& ec)
+				{
+					if (ec)
+						conn->reply_with_error(/* ec */zh::service_unavailable, "");
+					else
+						channel->process_request(conn);
+				});
 			
-			m_channels.push_back(channel);
+				m_channels.push_back(channel);
+			}
 		}
 		else
 			conn->reply_with_error(zh::bad_request, "Invalid method requested");
