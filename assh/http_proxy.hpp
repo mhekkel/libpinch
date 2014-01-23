@@ -14,7 +14,7 @@
 #include <zeep/http/request.hpp>
 #include <zeep/http/reply.hpp>
 #include <zeep/http/message_parser.hpp>
-#include <zeep/http/template_processor.hpp>
+#include <zeep/http/webapp.hpp>
 
 namespace assh {
 namespace http_proxy {
@@ -29,7 +29,7 @@ enum log_options
 };
 
 class server : public std::tr1::enable_shared_from_this<server>,
-	public zeep::http::template_processor
+	public zeep::http::basic_webapp
 {
   public:
 	server(basic_connection& connection, uint32 log_flags = 0);
@@ -52,6 +52,9 @@ class server : public std::tr1::enable_shared_from_this<server>,
 
 	virtual void load_template(const std::string& file, zeep::xml::document& doc);
 	void handle_accept(const boost::system::error_code& ec);
+
+	void welcome(const zeep::http::request& request, const zeep::http::el::scope& scope, zeep::http::reply& reply);
+	void status(const zeep::http::request& request, const zeep::http::el::scope& scope, zeep::http::reply& reply);
 
 	basic_connection& m_connection;
 	std::shared_ptr<proxy_connection> m_new_connection;

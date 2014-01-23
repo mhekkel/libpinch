@@ -382,8 +382,10 @@ void channel::send_pending()
 		opacket out(move(op->m_packets.front()));
 		op->m_packets.pop_front();
 
+		channel_ptr self(shared_from_this());
+
 		m_connection.async_write(move(out),
-			[this, op](const boost::system::error_code& ec, size_t bytes_transferred)
+			[this, self, op](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			this->m_send_pending = false;
 			if (ec)

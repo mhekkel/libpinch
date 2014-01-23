@@ -25,7 +25,7 @@
 #include <assh/http_proxy.hpp>
 #include <assh/connection.hpp>
 
-#include <zeep/http/server.hpp>
+#include <zeep/http/webapp/el.hpp>
 #include <zeep/http/message_parser.hpp>
 
 #if defined(_MSC_VER)
@@ -44,6 +44,7 @@
 using namespace std;
 namespace ip = boost::asio::ip;
 namespace zh = zeep::http;
+namespace el = zeep::http::el;
 namespace ba = boost::algorithm;
 
 namespace assh {
@@ -74,6 +75,15 @@ class proxy_connection : public std::tr1::enable_shared_from_this<proxy_connecti
 	zh::request& get_request() { return m_request; }
 
   private:
+
+	void close()
+	{
+		if (m_socket.is_open())
+			m_socket.close();
+
+		if (m_connect_channel and m_connect_channel->is_open())
+			m_connect_channel->close();
+	}
 
 	void handle_read(const boost::system::error_code& ec, size_t bytes_transferred);
 	void handle_write(const boost::system::error_code& ec);
@@ -112,7 +122,9 @@ void proxy_connection::start()
 void proxy_connection::handle_read(
 	const boost::system::error_code& ec, size_t bytes_transferred)
 {
-	if (not ec)
+	if (ec)
+		close();
+	else
 	{
 		size_t consumed = 0;
 		while (consumed < bytes_transferred)
@@ -152,8 +164,7 @@ void proxy_connection::handle_read(
 
 void proxy_connection::reply_with_error(zh::status_type err, const string& message)
 {
-	m_reply.set_content(message, "text/plain");
-	m_reply.set_status(err);
+	m_proxy->create_error_reply(m_request, err, message, m_reply);
 	
 	reply();
 }
@@ -185,7 +196,9 @@ void proxy_connection::reply()
 
 void proxy_connection::handle_write(const boost::system::error_code& ec)
 {
-	if (not ec)
+	if (ec)
+		close();
+	else
 	{
 		vector<boost::asio::const_buffer> buffers;
 		
@@ -238,7 +251,10 @@ void proxy_connection::connect(shared_ptr<channel> channel)
 	boost::asio::async_write(m_socket, buffers, [this, self, channel](const boost::system::error_code& ec, size_t bytes_transferred)
 	{
 		if (ec)
+		{
 			self->m_proxy->log_error(ec);
+			close();
+		}
 		else
 		{
 			boost::asio::spawn(self->m_strand, boost::bind(&proxy_connection::connect_copy_s2c, self, _1, channel));
@@ -262,7 +278,7 @@ void proxy_connection::connect_copy_c2s(boost::asio::yield_context yield, shared
 	catch (exception& e)
 	{
 		m_proxy->log_error(e);
-		channel->close();
+		close();
 	}
 }
 
@@ -281,7 +297,7 @@ void proxy_connection::connect_copy_s2c(boost::asio::yield_context yield, shared
 	catch (exception& e)
 	{
 		m_proxy->log_error(e);
-		channel->close();
+		close();
 	}
 }
 
@@ -387,8 +403,37 @@ void proxy_channel::process_request(boost::asio::yield_context yield, shared_ptr
 // --------------------------------------------------------------------
 
 server::server(basic_connection& ssh_connection, uint32 log_flags)
-	: template_processor("http://www.hekkelman.com/ns/salt"), m_connection(ssh_connection), m_log_flags(log_flags)
+	: zh::basic_webapp("http://proxy.hekkelman.com/ml"), m_connection(ssh_connection), m_log_flags(log_flags)
 {
+#if DEBUG
+	set_docroot("C:\\Users\\maarten\\projects\\salt\\Resources\\templates");
+#endif
+	mount("", boost::bind(&server::welcome, this, _1, _2, _3));
+	mount("status", boost::bind(&server::status, this, _1, _2, _3));
+	mount("style.css", boost::bind(&server::handle_file, this, _1, _2, _3));
+}
+
+void server::welcome(const zeep::http::request& request, const zeep::http::el::scope& scope, zeep::http::reply& reply)
+{
+	create_reply_from_template("index.html", scope, reply);
+}
+
+void server::status(const zeep::http::request& request, const zeep::http::el::scope& scope, zeep::http::reply& reply)
+{
+	// put the http headers in the scope
+	
+	el::scope sub(scope);
+	vector<el::object> headers;
+	foreach (const zh::header& h, request.headers)
+	{
+		el::object header;
+		header["name"] = h.name;
+		header["value"] = h.value;
+		headers.push_back(header);	
+	}
+	sub.put("headers", headers);
+	
+	create_reply_from_template("status.html", sub, reply);
 }
 
 void server::set_log_flags(uint32 log_flags)
@@ -410,12 +455,16 @@ void server::set_log_flags(uint32 log_flags)
 
 void server::load_template(const std::string& file, zeep::xml::document& doc)
 {
+#if DEBUG
+	basic_webapp::load_template(file, doc);
+#else
 	mrsrc::rsrc rsrc(string("templates/") + file);
 	if (not rsrc)
 		throw runtime_error("missing template");
 	
 	string data(rsrc.data(), rsrc.size());
 	doc.read(data);
+#endif
 }
 
 void server::listen(uint16 port)
@@ -516,17 +565,16 @@ void server::handle_request(zh::request& request, zh::reply& reply, shared_ptr<p
 			
 			if (host == "proxy.hekkelman.net" and port == 80)
 			{
-				zh::el::scope scope(request);
-				create_reply_from_template("index.xhtml", scope, conn->get_reply());
+				basic_webapp::handle_request(request, conn->get_reply());
 				conn->reply();
 			}
 			else
 			{
 				shared_ptr<proxy_channel> channel(new proxy_channel(m_connection, host, port, shared_from_this()));
-				channel->open([conn, channel](const boost::system::error_code& ec)
+				channel->open([conn, host, channel](const boost::system::error_code& ec)
 				{
 					if (ec)
-						conn->reply_with_error(/* ec */zh::service_unavailable, "");
+						conn->reply_with_error(zh::service_unavailable, (boost::format("Could not open connection to host %1%") % host).str());
 					else
 						channel->process_request(conn);
 				});
