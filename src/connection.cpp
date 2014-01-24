@@ -249,13 +249,6 @@ void basic_connection::forward_socks5(const string& local_address, uint16 local_
 	m_port_forwarder->forward_socks5(local_address, local_port);
 }
 
-void basic_connection::forward_http(const string& local_address, uint16 local_port)
-{
-	if (m_port_forwarder == nullptr)
-		m_port_forwarder = new port_forward_listener(*this);
-	m_port_forwarder->forward_http(local_address, local_port);
-}
-
 string basic_connection::get_connection_parameters(direction dir) const
 {
 	string result;

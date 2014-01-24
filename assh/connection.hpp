@@ -81,7 +81,6 @@ class basic_connection
 	void			forward_agent(bool forward);
 	void			forward_port(const std::string& local_address, uint16 local_port,
 						const std::string& remote_address, uint16 remote_port);
-	void			forward_http(const std::string& local_address, uint16 local_port);
 	void			forward_socks5(const std::string& local_address, uint16 local_port);
 
 	virtual boost::asio::io_service&

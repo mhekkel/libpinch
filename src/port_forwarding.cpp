@@ -14,7 +14,6 @@
 
 #include <assh/port_forwarding.hpp>
 #include <assh/connection.hpp>
-#include <assh/http_proxy.hpp>
 
 using namespace std;
 namespace ip = boost::asio::ip;
@@ -430,12 +429,6 @@ void port_forward_listener::forward_port(const string& local_addr, uint16 local_
 			{
 				return new port_forwarding_channel(m_connection, remote_address, remote_port);
 			}));
-}
-
-void port_forward_listener::forward_http(const string& local_addr, uint16 local_port)
-{
-	m_http_proxy.reset(new http_proxy::server(m_connection));
-	m_http_proxy->listen(local_port);
 }
 
 void port_forward_listener::forward_socks5(const string& local_addr, uint16 local_port)

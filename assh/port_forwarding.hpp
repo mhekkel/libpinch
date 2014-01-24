@@ -15,10 +15,6 @@
 namespace assh
 {
 
-// forward declaration
-namespace http_proxy { class server; }
-
-
 struct bound_port;
 class basic_connection;
 
@@ -31,7 +27,6 @@ class port_forward_listener
 	void		forward_port(
 					const std::string& local_addr, uint16 local_port,
 					const std::string& remote_addr, uint16 remote_port);
-	void		forward_http(const std::string& local_addr, uint16 local_port);
 	void		forward_socks5(const std::string& local_addr, uint16 local_port);
 
 	void		remove_port_forward(uint16 local_port);
@@ -48,7 +43,6 @@ class port_forward_listener
 	
 	basic_connection&	m_connection;
 	bound_port_list		m_bound_ports;
-	std::shared_ptr<http_proxy::server> m_http_proxy;
 };
 
 // --------------------------------------------------------------------
