@@ -13,9 +13,12 @@
 #include <string>
 #include <deque>
 #include <numeric>
+#include <future>
 
 #include <boost/type_traits.hpp>
 #include <boost/asio.hpp>
+#include <boost/asio/use_future.hpp>
+#include <boost/asio/spawn.hpp>
 
 #include <assh/error.hpp>
 #include <assh/packet.hpp>
@@ -70,6 +73,42 @@ class channel : public std::enable_shared_from_this<channel>
 						m_open_handler = new open_handler<Handler>(std::move(handler));
 						open();
 					}
+
+	class open_op : public basic_open_handler
+	{
+	  public:
+		  open_op(channel& stream, boost::asio::detail::async_result_init<boost::asio::yield_context, void(boost::system::error_code)>& init)
+			: stream_(stream), init_(init) {}
+
+		open_op(const open_op& other)
+			: stream_(other.stream_), init_(other.init_) {}
+
+		open_op(open_op&& other)
+			: stream_(other.stream_), init_(other.init_) {}
+
+		void operator()(const boost::system::error_code& ec)
+		{
+			init_.handler(ec);
+		}
+
+		void handle_open_result(const boost::system::error_code& ec)
+		{
+			init_.handler(ec);
+		}
+
+		//private:
+		channel& stream_;
+		boost::asio::detail::async_result_init<boost::asio::yield_context, void(boost::system::error_code)> init_;
+	};
+
+	void async_open(boost::asio::yield_context yield)
+	{
+		boost::asio::detail::async_result_init<boost::asio::yield_context, void(boost::system::error_code)> init(std::move(yield));
+		m_open_handler = new open_op(*this, init);
+		open();
+
+		return init.result.get();
+	}
 
 	void			open();
 	void			close();
