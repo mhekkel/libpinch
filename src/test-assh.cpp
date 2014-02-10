@@ -28,31 +28,31 @@ class client
 {
   public:
 			client(assh::basic_connection& connection)
-				: m_channel(connection)
-				, m_sftp_channel(connection)
-				, m_first(true)
+				: m_first(true)
 			{
-//				m_channel.open_with_pty(80, 24, "xterm", true, true, [this](const boost::system::error_code& ec)
-//				{
-//					if (ec)
-//					{
-//						cerr << "error opening channel: " << ec.message() << endl;
-//						m_channel.close();
-//					}
-//					else
-//						this->received(ec, 0);
-//				});
+				m_channel.reset(new assh::terminal_channel(connection));
+				m_channel->open_with_pty(80, 24, "xterm", true, true, [this](const boost::system::error_code& ec)
+				{
+					if (ec)
+					{
+						cerr << "error opening channel: " << ec.message() << endl;
+						m_channel->close();
+					}
+					else
+						this->received(ec, 0);
+				});
 				
-				m_sftp_channel.open([this](const boost::system::error_code& ec)
+				m_sftp_channel.reset(new assh::sftp_channel(connection));
+				m_sftp_channel->async_open([this](const boost::system::error_code& ec)
 				{
 					if (ec)
 					{
 						cerr << "error sftp opening channel: " << ec.message() << endl;
-						m_sftp_channel.close();
+						m_sftp_channel->close();
 					}
 					else
 					{
-						m_sftp_channel.read_dir("/home/maarten", boost::bind(&client::read_dir, this, _1, _2, _3, _4));
+						m_sftp_channel->read_dir("/home/maarten", boost::bind(&client::read_dir, this, _1, _2, _3, _4));
 
 						//m_sftp_channel.read_dir("/home/maarten", []
 						//		(const boost::system::error_code& ec, const string& name, const string& longname,
@@ -83,7 +83,7 @@ class client
 				if (ec)
 				{
 					cerr << "error writing channel: " << ec.message() << endl;
-					m_channel.close();
+					m_channel->close();
 				}
 			}
 	
@@ -94,7 +94,7 @@ class client
 					cerr << endl
 						 << "error reading channel: " << ec.message() << endl
 						 << endl;
-					m_channel.close();
+					m_channel->close();
 				}
 				else
 				{
@@ -116,7 +116,7 @@ class client
 					istream in(&m_response);
 					io::copy(in, cout);
 				
-					boost::asio::async_read(m_channel, m_response,
+					boost::asio::async_read(*m_channel, m_response,
 						boost::asio::transfer_at_least(1),
 						[this](const boost::system::error_code& ec, size_t bytes_transferred)
 					{
@@ -125,10 +125,10 @@ class client
 				}
 			}
 	
-	assh::terminal_channel	m_channel;
-	assh::sftp_channel		m_sftp_channel;
-	boost::asio::streambuf	m_response;
-	bool					m_first;
+	shared_ptr<assh::terminal_channel> m_channel;
+	shared_ptr<assh::sftp_channel> m_sftp_channel;
+	boost::asio::streambuf m_response;
+	bool m_first;
 };
 
 int main(int argc, char* const argv[])
@@ -155,16 +155,16 @@ int main(int argc, char* const argv[])
 
 		client* c = nullptr;
 		
-		connection.async_connect([&connection, &c](const boost::system::error_code& ec)
-		{
-			if (ec)
-			{
-				cerr << "error connecting: " << ec.message() << endl;
-				exit(1);
-			}
+//		connection.async_connect([&connection, &c](const boost::system::error_code& ec)
+//		{
+//			if (ec)
+//			{
+//				cerr << "error connecting: " << ec.message() << endl;
+//				exit(1);
+//			}
 			
 			c = new client(connection);
-		});
+//		});
 				
 		io_service.run();
 	}

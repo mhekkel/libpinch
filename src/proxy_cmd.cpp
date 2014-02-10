@@ -74,7 +74,7 @@ void proxied_connection::start_handshake()
 	}
 	else if (not m_channel->is_open())
 	{
-		m_channel->open([this](const boost::system::error_code& ec)
+		m_channel->async_open([this](const boost::system::error_code& ec)
 		{
 			if (ec)
 				handle_connect_result(ec);

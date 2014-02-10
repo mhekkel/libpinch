@@ -100,7 +100,7 @@ class sftp_channel : public channel
 		virtual void	handle_status(const boost::system::error_code& ec, 
 							const std::string& message, const std::string& language_tag)
 						{
-							if (ec != error::ssh_fx_eof)
+							if (ec != make_error_code(error::ssh_fx_eof))
 							{
 								file_attributes attr = {};
 								(void)m_handler(ec, "", "", attr);

@@ -133,9 +133,9 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 			out = opacket(SSH_AGENT_RSA_IDENTITIES_ANSWER) << uint32(0);
 			break;
 
-		case SSH_AGENTC_REQUEST_IDENTITIES:
+		case SSH2_AGENTC_REQUEST_IDENTITIES:
 		{
-			out = opacket(SSH_AGENT_IDENTITIES_ANSWER) << uint32(m_private_keys.size());
+			out = opacket(SSH2_AGENT_IDENTITIES_ANSWER) << uint32(m_private_keys.size());
 			
 			foreach (auto& key, m_private_keys)
 			{
@@ -146,7 +146,7 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 			break;
 		}
 		
-		case SSH_AGENTC_SIGN_REQUEST:
+		case SSH2_AGENTC_SIGN_REQUEST:
 		{
 			ipacket blob, data;
 			in >> blob >> data;
@@ -154,7 +154,7 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 			ssh_private_key key(blob);
 			
 			if (key)
-				out = opacket(SSH_AGENT_SIGN_RESPONSE) << key.sign(data, opacket());
+				out = opacket(SSH2_AGENT_SIGN_RESPONSE) << key.sign(data, opacket());
 			else
 				out = opacket(SSH_AGENT_FAILURE);
 			break;
@@ -206,7 +206,9 @@ void ssh_agent::unregister_connection(basic_connection* connection)
 
 void ssh_agent::expose_pageant(bool expose)
 {
+#if defined(_MSC_VER)
 	assh::expose_pageant(expose);
+#endif
 }
 
 // --------------------------------------------------------------------

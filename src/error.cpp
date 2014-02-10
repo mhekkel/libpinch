@@ -16,12 +16,12 @@ class ssh_category : public boost::system::error_category
 {
   public:
 
-	const char* name() const
+	const char* name() const BOOST_SYSTEM_NOEXCEPT
 	{
 		return "ssh";
 	}
 	
-	std::string message(int value) const
+	std::string message(int value) const 
 	{
 		switch (value)
 		{
@@ -57,7 +57,7 @@ class disconnect_category : public boost::system::error_category
 {
   public:
 
-	const char* name() const
+	const char* name() const BOOST_SYSTEM_NOEXCEPT
 	{
 		return "ssh.disconnect";
 	}

@@ -33,7 +33,7 @@ class terminal_channel : public channel
 						m_forward_agent = forward_agent;
 						m_forward_x11 = forward_x11;
 						
-						open(std::move(handler));
+						async_open(std::move(handler));
 					}
 
 	void			open_with_pty(uint32 width, uint32 height,

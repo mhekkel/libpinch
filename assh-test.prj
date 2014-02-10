@@ -1,14 +1,19 @@
 <project version="2.0">
+  <pkg-config>
+    <pkg tool="pkg-config">libcrypto++</pkg>
+  </pkg-config>
   <syspaths>
     <path>.</path>
-    <path>C:\Boost\include\boost-1_48</path>
+    <path>/home/maarten/projects/boost/include</path>
     <path>/usr/include</path>
   </syspaths>
   <userpaths>
     <path>.</path>
     <path>src</path>
   </userpaths>
-  <libpaths/>
+  <libpaths>
+    <path>/home/maarten/projects/boost/lib</path>
+  </libpaths>
   <files>
     <group name="assh">
       <file>channel.cpp</file>
@@ -19,25 +24,38 @@
       <file>packet.cpp</file>
       <file>ssh_agent.cpp</file>
       <file>terminal_channel.cpp</file>
+      <file>connection_pool.cpp</file>
+      <file>port_forwarding.cpp</file>
+      <file>posix_ssh_agent_impl.cpp</file>
+      <file>proxy_cmd.cpp</file>
+      <file>sftp_channel.cpp</file>
+      <file>x11_channel.cpp</file>
     </group>
     <group name="Sources">
       <file>test-assh.cpp</file>
+    </group>
+    <group name="Libraries">
+      <link>boost_system</link>
+      <link>boost_random</link>
+      <link>boost_regex</link>
+      <link>z</link>
+      <link>bz2</link>
     </group>
   </files>
   <targets>
     <target kind="Executable">
       <name>assh-test Debug</name>
       <linkTarget>assh-test</linkTarget>
-      <compiler>/usr/bin/g++-4.5</compiler>
+      <compiler>/usr/bin/c++</compiler>
       <defines>
         <define>DEBUG</define>
-        <define>BOOST_FILESYSTEM_VERSION=2</define>
+        <define>BOOST_ASIO_DISABLE_HANDLER_TYPE_REQUIREMENTS</define>
       </defines>
       <cflags>
         <cflag>-O0</cflag>
         <cflag>-pthread</cflag>
         <cflag>-gdwarf-2</cflag>
-        <cflag>-std=c++0x</cflag>
+        <cflag>-std=c++11</cflag>
       </cflags>
       <ldflags>
         <ldflag>-static-libgcc</ldflag>
@@ -58,7 +76,7 @@
       <cflags>
         <cflag>-gdwarf-2</cflag>
         <cflag>-O3</cflag>
-        <cflag>-std=c++0x</cflag>
+        <cflag>-std=c++11</cflag>
       </cflags>
       <ldflags>
         <ldflag>-static-libgcc</ldflag>

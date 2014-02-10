@@ -25,59 +25,12 @@ using namespace std;
 namespace assh
 {
 	
-enum
-{
-	/* Messages for the authentication agent connection. */
-	SSH_AGENTC_REQUEST_RSA_IDENTITIES =	1,
-	SSH_AGENT_RSA_IDENTITIES_ANSWER,
-	SSH_AGENTC_RSA_CHALLENGE,
-	SSH_AGENT_RSA_RESPONSE,
-	SSH_AGENT_FAILURE,
-	SSH_AGENT_SUCCESS,
-	SSH_AGENTC_ADD_RSA_IDENTITY,
-	SSH_AGENTC_REMOVE_RSA_IDENTITY,
-	SSH_AGENTC_REMOVE_ALL_RSA_IDENTITIES,
-	
-	/* private OpenSSH extensions for SSH2 */
-	SSH2_AGENTC_REQUEST_IDENTITIES = 11,
-	SSH2_AGENT_IDENTITIES_ANSWER,
-	SSH2_AGENTC_SIGN_REQUEST,
-	SSH2_AGENT_SIGN_RESPONSE,
-	SSH2_AGENTC_ADD_IDENTITY = 17,
-	SSH2_AGENTC_REMOVE_IDENTITY,
-	SSH2_AGENTC_REMOVE_ALL_IDENTITIES,
-	
-	/* smartcard */
-	SSH_AGENTC_ADD_SMARTCARD_KEY,
-	SSH_AGENTC_REMOVE_SMARTCARD_KEY,
-	
-	/* lock/unlock the agent */
-	SSH_AGENTC_LOCK,
-	SSH_AGENTC_UNLOCK,
-	
-	/* add key with constraints */
-	SSH_AGENTC_ADD_RSA_ID_CONSTRAINED,
-	SSH2_AGENTC_ADD_ID_CONSTRAINED,
-	SSH_AGENTC_ADD_SMARTCARD_KEY_CONSTRAINED,
-	
-	SSH_AGENT_CONSTRAIN_LIFETIME = 1,
-	SSH_AGENT_CONSTRAIN_CONFIRM,
-	
-	/* extended failure messages */
-	SSH2_AGENT_FAILURE = 30,
-	
-	/* additional error code for ssh.com's ssh-agent2 */
-	SSH_COM_AGENT2_FAILURE = 102,
-	
-	SSH_AGENT_OLD_SIGNATURE = 0x01
-};
-
 class ssh_agent_impl
 {
   public:
 	static ssh_agent_impl&	instance();
 
-	void			get_identities(vector<tr1::tuple<Integer,Integer,string>>& identities);
+	void			get_identities(vector<tuple<Integer,Integer,string>>& identities);
 	vector<uint8>	sign(const vector<uint8>& blob, const vector<uint8>& data);
 	
   private:
@@ -125,7 +78,7 @@ ssh_agent_impl::~ssh_agent_impl()
 		close(m_fd);
 }
 
-void ssh_agent_impl::get_identities(vector<tr1::tuple<Integer,Integer,string>>& identities)
+void ssh_agent_impl::get_identities(vector<tuple<Integer,Integer,string>>& identities)
 {
 	if (m_fd > 0)
 	{
@@ -152,7 +105,7 @@ void ssh_agent_impl::get_identities(vector<tr1::tuple<Integer,Integer,string>>& 
 				Integer e, n;
 				blob >> e >> n;
 				
-				identities.push_back(tr1::make_tuple(e, n, comment));
+				identities.push_back(make_tuple(e, n, comment));
 			}
 		}
 	}
@@ -226,7 +179,7 @@ class posix_ssh_private_key_impl : public ssh_private_key_impl
 
 	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
 
-	virtual string			get_hash() const;
+	virtual vector<uint8>	get_hash() const;
 	virtual string			get_comment() const				{ return m_comment; }
 
   private:
@@ -258,9 +211,9 @@ vector<uint8> posix_ssh_private_key_impl::sign(const vector<uint8>& session_id, 
 	return ssh_agent_impl::instance().sign(m_blob, data);
 }
 
-string posix_ssh_private_key_impl::get_hash() const
+vector<uint8> posix_ssh_private_key_impl::get_hash() const
 {
-	string hash;
+	vector<uint8> hash;
 
 //	// and create a hash for this key
 //	byte sha1[20];	// SHA1 hash is always 20 bytes
@@ -278,27 +231,27 @@ string posix_ssh_private_key_impl::get_hash() const
 }
 
 // --------------------------------------------------------------------
-
-ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
-{
-//	string hash;
 //
-//	Base64Decoder d(new StringSink(hash));
-//	d.Put(reinterpret_cast<const byte*>(inHash.c_str()), inHash.length());
-//	d.MessageEnd();
-//	
-////	CRYPT_HASH_BLOB k;
-////	k.cbData = hash.length();
-////	k.pbData = const_cast<byte*>(reinterpret_cast<const byte*>(hash.c_str()));
+//ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
+//{
+////	string hash;
+////
+////	Base64Decoder d(new StringSink(hash));
+////	d.Put(reinterpret_cast<const byte*>(inHash.c_str()), inHash.length());
+////	d.MessageEnd();
 ////	
-////	PCCERT_CONTEXT context = ::CertFindCertificateInStore(
-////		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-////		0, CERT_FIND_SHA1_HASH, &k, nullptr);
-////	
-////	return new ssh_private_key_impl(context);
-
-	return nullptr;
-}
+//////	CRYPT_HASH_BLOB k;
+//////	k.cbData = hash.length();
+//////	k.pbData = const_cast<byte*>(reinterpret_cast<const byte*>(hash.c_str()));
+//////	
+//////	PCCERT_CONTEXT context = ::CertFindCertificateInStore(
+//////		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+//////		0, CERT_FIND_SHA1_HASH, &k, nullptr);
+//////	
+//////	return new ssh_private_key_impl(context);
+//
+//	return nullptr;
+//}
 
 ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& blob)
 {
@@ -320,15 +273,15 @@ ssh_private_key_impl* ssh_private_key_impl::create_for_blob(ipacket& blob)
 
 void ssh_private_key_impl::create_list(vector<ssh_private_key>& keys)
 {
-	vector<tr1::tuple<Integer,Integer,string>> identities;
+	vector<tuple<Integer,Integer,string>> identities;
 	
 	ssh_agent_impl::instance().get_identities(identities);
 	
 	for_each(identities.begin(), identities.end(),
-		[&keys](tr1::tuple<Integer,Integer,string>& identity)
+		[&keys](tuple<Integer,Integer,string>& identity)
 		{
-			keys.push_back(new posix_ssh_private_key_impl(tr1::get<0>(identity),
-				tr1::get<1>(identity), tr1::get<2>(identity)));
+			keys.push_back(new posix_ssh_private_key_impl(get<0>(identity),
+				get<1>(identity), get<2>(identity)));
 		});
 }
 

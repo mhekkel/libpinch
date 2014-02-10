@@ -55,56 +55,27 @@ class channel : public std::enable_shared_from_this<channel>
 	template<typename Handler>
 	struct open_handler : public basic_open_handler
 	{
-						open_handler(Handler&& handler) : m_handler(std::move(handler)) {}
+		typedef typename boost::asio::detail::async_result_init<Handler, void(boost::system::error_code)> async_result_type;
+
+		open_handler(async_result_type& handler)	: m_handler(handler) {}
+		open_handler(const open_handler& rhs)		: m_handler(rhs.m_handler) {}
+		open_handler(open_handler&& rhs)			: m_handler(rhs.m_handler) {}
 		
-		virtual void	handle_open_result(const boost::system::error_code& ec)
-						{
-							m_handler(ec);
-						}
+		virtual void handle_open_result(const boost::system::error_code& ec)
+		{
+			m_handler.handler(ec);
+		}
 		
-		Handler			m_handler;
+		async_result_type m_handler;
 	};
 
 	virtual void	fill_open_opacket(opacket& out);
 
 	template<typename Handler>
-	void			open(Handler&& handler)
-					{
-						m_open_handler = new open_handler<Handler>(std::move(handler));
-						open();
-					}
-
-	class open_op : public basic_open_handler
+	void async_open(Handler&& handler)
 	{
-	  public:
-		  open_op(channel& stream, boost::asio::detail::async_result_init<boost::asio::yield_context, void(boost::system::error_code)>& init)
-			: stream_(stream), init_(init) {}
-
-		open_op(const open_op& other)
-			: stream_(other.stream_), init_(other.init_) {}
-
-		open_op(open_op&& other)
-			: stream_(other.stream_), init_(other.init_) {}
-
-		void operator()(const boost::system::error_code& ec)
-		{
-			init_.handler(ec);
-		}
-
-		void handle_open_result(const boost::system::error_code& ec)
-		{
-			init_.handler(ec);
-		}
-
-		//private:
-		channel& stream_;
-		boost::asio::detail::async_result_init<boost::asio::yield_context, void(boost::system::error_code)> init_;
-	};
-
-	void async_open(boost::asio::yield_context yield)
-	{
-		boost::asio::detail::async_result_init<boost::asio::yield_context, void(boost::system::error_code)> init(std::move(yield));
-		m_open_handler = new open_op(*this, init);
+		boost::asio::detail::async_result_init<Handler, void(boost::system::error_code)> init(std::move(handler));
+		m_open_handler = new open_handler<Handler>(init);
 		open();
 
 		return init.result.get();
