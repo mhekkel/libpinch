@@ -57,9 +57,7 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 		typedef typename boost::asio::detail::async_result_init<Handler, void(boost::system::error_code)> async_result_type;
 
-		open_handler(async_result_type& handler)	: m_handler(handler) {}
-		open_handler(const open_handler& rhs)		: m_handler(rhs.m_handler) {}
-		open_handler(open_handler&& rhs)			: m_handler(rhs.m_handler) {}
+		open_handler(async_result_type& handler) : m_handler(handler) {}
 		
 		virtual void handle_open_result(const boost::system::error_code& ec)
 		{
@@ -69,13 +67,12 @@ class channel : public std::enable_shared_from_this<channel>
 		async_result_type m_handler;
 	};
 
-	virtual void	fill_open_opacket(opacket& out);
-
 	template<typename Handler>
 	void async_open(Handler&& handler)
 	{
 		boost::asio::detail::async_result_init<Handler, void(boost::system::error_code)> init(std::move(handler));
 		m_open_handler = new open_handler<Handler>(init);
+
 		open();
 
 		return init.result.get();
@@ -83,6 +80,8 @@ class channel : public std::enable_shared_from_this<channel>
 
 	void			open();
 	void			close();
+
+	virtual void	fill_open_opacket(opacket& out);
 
 	virtual void	opened();
 	virtual void	closed();

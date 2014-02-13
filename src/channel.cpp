@@ -103,6 +103,7 @@ void channel::close()
 		auto handler = m_open_handler;
 		m_open_handler = nullptr;
 		handler->handle_open_result(make_error_code(error::by_application));
+		delete handler;
 	}
 
 	m_connection.close_channel(shared_from_this(), m_host_channel_id);
