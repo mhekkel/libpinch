@@ -51,7 +51,6 @@ proxied_connection::~proxied_connection()
 {
 	if (m_channel and m_channel->is_open())
 		m_channel->close();
-	delete m_channel;
 }
 
 void proxied_connection::set_validate_callback(const validate_callback_type& cb)

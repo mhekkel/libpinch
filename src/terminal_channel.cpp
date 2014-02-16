@@ -36,17 +36,22 @@ void terminal_channel::opened()
 	channel::opened();
 	
 	open_pty(m_width, m_height, m_terminal_type, m_forward_agent, m_forward_x11, m_env);
-	send_request_and_command("shell", "");
+	if (m_command.empty())
+		send_request_and_command("shell", "");
+	else
+		send_request_and_command("exec", m_command);
 }
 
 void terminal_channel::open_with_pty(uint32 width, uint32 height,
-	const string& terminal_type, bool forward_agent, bool forward_x11)
+	const string& terminal_type, bool forward_agent, bool forward_x11,
+	const string& ssh_command)
 {
 	m_width = width;
 	m_height = height;
 	m_terminal_type = terminal_type;
 	m_forward_agent = forward_agent;
 	m_forward_x11 = forward_x11;
+	m_command = ssh_command;
 	
 	open();
 }

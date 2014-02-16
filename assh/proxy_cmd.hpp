@@ -11,6 +11,8 @@
 namespace assh
 {
 
+class proxy_channel;
+
 class proxied_connection : public basic_connection
 {
   public:
@@ -42,7 +44,7 @@ class proxied_connection : public basic_connection
 
   private:
 	basic_connection&		m_proxy;
-	class proxy_channel*	m_channel;
+	std::shared_ptr<proxy_channel> m_channel;
 	std::string				m_host;
 };
 

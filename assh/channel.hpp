@@ -19,6 +19,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/use_future.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/thread/condition.hpp>
 
 #include <assh/error.hpp>
 #include <assh/packet.hpp>
@@ -68,7 +69,8 @@ class channel : public std::enable_shared_from_this<channel>
 	};
 
 	template<typename Handler>
-	void async_open(Handler&& handler)
+	inline BOOST_ASIO_INITFN_RESULT_TYPE(Handler, void(boost::system::error_code))
+	async_open(Handler&& handler)
 	{
 		boost::asio::detail::async_result_init<Handler, void(boost::system::error_code)> init(std::move(handler));
 		m_open_handler = new open_handler<Handler>(init);
@@ -247,6 +249,46 @@ class channel : public std::enable_shared_from_this<channel>
 						}
 					}
 
+	template <typename MutableBufferSequence>
+	std::size_t write_some(const MutableBufferSequence& buffers)
+	{
+		boost::system::error_code ec;
+		std::size_t s = write_some(buffers, ec);
+		if (ec) throw system_error(ec);
+		return s;
+	}
+
+	template <typename MutableBufferSequence>
+	std::size_t write_some(const MutableBufferSequence& buffers, boost::system::error_code& ec)
+	{
+		std::size_t s = 0;
+		boost::asio::io_service& io_service(get_io_service());
+
+		size_t n = boost::asio::buffer_size(buffers);
+
+		if (not is_open())
+			ec = error::make_error_code(error::connection_lost);
+		else if (n == 0)
+			ec = boost::system::error_code();
+		else
+		{
+			boost::mutex mtx;
+			boost::mutex::scoped_lock lock(mtx);
+			boost::condition c;
+
+			async_write_some(buffers, [&](const boost::system::error_code& ec_, std::size_t bytes_transferred)
+			{
+				ec = ec_;
+				s = bytes_transferred;
+				c.notify_one();
+			});
+
+			c.wait(lock);
+		}
+
+		return s;
+	}
+
 	struct basic_read_op : public basic_io_op
 	{
 		typedef std::deque<char>::iterator	iterator;
@@ -308,6 +350,49 @@ class channel : public std::enable_shared_from_this<channel>
 						}
 					}
 
+	template <typename MutableBufferSequence>
+	std::size_t read_some(const MutableBufferSequence& buffers)
+	{
+		boost::system::error_code ec;
+		std::size_t s = read_some(buffers, ec);
+		if (ec) throw system_error(ec);
+		return s;
+	}
+
+	template <typename MutableBufferSequence>
+	std::size_t read_some(const MutableBufferSequence& buffers, boost::system::error_code& ec)
+	{
+		size_t s = 0;
+		boost::asio::io_service& io_service(get_io_service());
+
+		if (not is_open())
+			ec = error::make_error_code(error::connection_lost);
+		else if (boost::asio::buffer_size(buffers) == 0)
+			ec = boost::system::error_code();
+		else
+		{
+			boost::mutex mtx;
+			boost::mutex::scoped_lock lock(mtx);
+			boost::condition c;
+
+			//async_read_some(buffers, [&](const boost::system::error_code& ec_, std::size_t bytes_transferred_)
+
+			auto handler = [&](const boost::system::error_code& ec_, std::size_t bytes_transferred_)
+			{
+				ec = ec;
+				s = bytes_transferred_;
+				c.notify_one();
+			};
+
+			m_read_ops.push_back(new read_op<MutableBufferSequence,decltype(handler)>(buffers, std::move(handler)));
+
+			if (not m_received.empty())
+				push_received();
+
+			c.wait(lock);
+		}
+		return s;
+	}
 
 	// To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	template<typename Handler>
