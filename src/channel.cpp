@@ -421,7 +421,7 @@ void channel::push_received()
 	m_received.erase(m_received.begin(), b);
 	
 	if (m_received.empty() and m_eof)
-		closed();
+		close();
 }
 
 // --------------------------------------------------------------------
