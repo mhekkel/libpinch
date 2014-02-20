@@ -8,8 +8,7 @@
 #include <assh/config.hpp>
 
 #include <list>
-
-#include <boost/function.hpp>
+#include <functional>
 
 #include <assh/packet.hpp>
 
@@ -34,11 +33,11 @@ class basic_connection
 	// callbacks to be installed by owning object
 
 	// bool validate_host_key(host, alg, key)
-	typedef boost::function<bool(const std::string&,const std::string&,const std::vector<uint8>&)>
+	typedef std::function<bool(const std::string&,const std::string&,const std::vector<uint8>&)>
 					validate_callback_type;
 
 	// void request_password()
-	typedef boost::function<void()> password_callback_type;
+	typedef std::function<void()> password_callback_type;
 
 	virtual void	set_validate_callback(const validate_callback_type& cb);
 	void			set_password_callback(const password_callback_type& cb);
