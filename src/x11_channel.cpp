@@ -69,8 +69,9 @@ void x11_channel::opened()
 		boost::asio::connect(m_socket, endpoint_iterator);
 
 		// start the read loop
+		shared_ptr<x11_channel> self(dynamic_pointer_cast<x11_channel>(shared_from_this()));
 		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
-			boost::bind(&x11_channel::receive_raw, this,
+			boost::bind(&x11_channel::receive_raw, self,
 			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 		
 		opacket out(msg_channel_open_confirmation);
@@ -117,11 +118,12 @@ void x11_channel::receive_data(const char* data, size_t size)
 		}
 	}
 	
+	channel_ptr self(shared_from_this());
 	boost::asio::async_write(m_socket, *request,
-		[this,request](const boost::system::error_code& ec, size_t)
+		[self,request](const boost::system::error_code& ec, size_t)
 		{
 			if (ec)
-				close();
+				self->close();
 		});
 }
 
@@ -175,6 +177,7 @@ void x11_channel::receive_raw(const boost::system::error_code& ec, size_t)
 	else
 	{
 		istream in(&m_response);
+		shared_ptr<x11_channel> self(dynamic_pointer_cast<x11_channel>(shared_from_this()));
 	
 		for (;;)
 		{
@@ -185,15 +188,15 @@ void x11_channel::receive_raw(const boost::system::error_code& ec, size_t)
 				break;
 			
 			send_data(buffer, k,
-				[this](const boost::system::error_code& ec, size_t)
+				[self](const boost::system::error_code& ec, size_t)
 				{
 					if (ec)
-						close();
+						self->close();
 				});
 		}
 		
 		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
-			boost::bind(&x11_channel::receive_raw, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+			boost::bind(&x11_channel::receive_raw, self, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 	}
 }
 
