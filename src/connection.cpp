@@ -782,7 +782,7 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 		opacket session_id;
 		session_id << m_session_id;
 		
-		ssh_private_key pk(blob);
+		ssh_private_key pk(ssh_agent::instance().get_key(blob));
 		
 		out << pk.sign(session_id, out);
 		

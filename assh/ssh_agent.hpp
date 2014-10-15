@@ -31,8 +31,8 @@ class ssh_private_key
 {
   public:
 						ssh_private_key(ssh_private_key_impl* impl);
-						ssh_private_key(const std::string& hash);
-						ssh_private_key(ipacket& blob);
+//						ssh_private_key(const std::string& hash);
+//						ssh_private_key(ipacket& blob);
 						~ssh_private_key();
 
 						ssh_private_key(const ssh_private_key& key);
@@ -77,6 +77,13 @@ class ssh_agent
 
 	iterator			begin()						{ return m_private_keys.begin(); }
 	iterator			end()						{ return m_private_keys.end(); }
+	
+	
+	ssh_private_key		get_key(const std::string& hash) const;
+	ssh_private_key		get_key(ipacket& blob) const;
+
+	// add a PEM encoded private key
+	void				add(const std::string& private_key, const std::string& key_comment);
 
 	// for Windows only, expose the private keys via a Pageant compatible window
 	void				expose_pageant(bool expose);

@@ -5,15 +5,22 @@
 
 #include <assh/config.hpp>
 
+#include <cassert>
+
 #include <iterator>
 
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
+#include <boost/regex.hpp>
 
 #include <assh/ssh_agent.hpp>
 #include <assh/detail/ssh_agent_impl.hpp>
 #include <assh/packet.hpp>
 #include <assh/connection.hpp>
+
+#include <cryptopp/base64.h>
+#include <cryptopp/rsa.h>
+#include <cryptopp/osrng.h>
 
 using namespace std;
 using namespace CryptoPP;
@@ -46,20 +53,52 @@ void ssh_private_key_impl::release()
 }
 
 // --------------------------------------------------------------------
+// ssh_basic_private_key_impl
+
+class ssh_basic_private_key_impl : public ssh_private_key_impl
+{
+  public:
+		  					ssh_basic_private_key_impl(RSA::PrivateKey& rsa, const string& comment)
+								: mPrivateKey(rsa), mComment(comment)
+		  					{
+		  						m_e = mPrivateKey.GetPublicExponent();
+		  						m_n = mPrivateKey.GetModulus();
+		  					}
+
+	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
+
+	virtual vector<uint8>	get_hash() const	{ return vector<uint8>(); }
+	virtual string			get_comment() const	{ return mComment; }
+
+  private:
+	RSA::PrivateKey			mPrivateKey;
+	string					mComment;
+};
+
+vector<uint8> ssh_basic_private_key_impl::sign(const vector<uint8>& session_id, const opacket& p)
+{
+	AutoSeededRandomPool rng;
+
+	vector<uint8> message(session_id);
+	const vector<uint8>& data(p);
+	message.insert(message.end(), data.begin(), data.end());
+	
+	RSASSA_PKCS1v15_SHA_Signer signer(mPrivateKey);
+    size_t length = signer.MaxSignatureLength();
+	vector<uint8> digest(length);
+
+    signer.SignMessage(rng, &message[0], message.size(), &digest[0]);
+
+	opacket signature;
+	signature << "ssh-rsa" << digest;
+	return signature;
+}
+
+// --------------------------------------------------------------------
 // ssh_private_key
 
 ssh_private_key::ssh_private_key(ssh_private_key_impl* impl)
 	: m_impl(impl)
-{
-}
-
-//ssh_private_key::ssh_private_key(const string& hash)
-//	: m_impl(ssh_private_key_impl::create_for_hash(hash))
-//{
-//}
-
-ssh_private_key::ssh_private_key(ipacket& blob)
-	: m_impl(ssh_private_key_impl::create_for_blob(blob))
 {
 }
 
@@ -151,7 +190,7 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 			ipacket blob, data;
 			in >> blob >> data;
 			
-			ssh_private_key key(blob);
+			ssh_private_key key = get_key(blob);
 			
 			if (key)
 				out = opacket(SSH2_AGENT_SIGN_RESPONSE) << key.sign(data, opacket());
@@ -209,6 +248,50 @@ void ssh_agent::expose_pageant(bool expose)
 #if defined(_MSC_VER)
 	assh::expose_pageant(expose);
 #endif
+}
+
+void ssh_agent::add(const string& private_key, const string& key_comment)
+{
+	AutoSeededRandomPool prng;
+	boost::regex rx("^-+BEGIN RSA PRIVATE KEY-+\n(.+)\n-+END RSA PRIVATE KEY-+\n?");
+
+	boost::smatch m;
+
+	if (not boost::regex_match(private_key, m, rx))
+		throw runtime_error("Invalid PEM file");
+
+	string keystr = m[1].str();
+	string key;
+
+	// Base64 decode, place in a ByteQueue    
+	ByteQueue queue;
+	Base64Decoder decoder;
+
+	decoder.Attach(new Redirector(queue));
+	decoder.Put((const byte*)keystr.data(), keystr.length());
+	decoder.MessageEnd();
+
+	RSA::PrivateKey rsaPrivate;
+	rsaPrivate.BERDecodePrivateKey(queue, false /*paramsPresent*/, queue.MaxRetrievable());
+
+	if (not queue.IsEmpty() or not rsaPrivate.Validate(prng, 3))
+		throw runtime_error("RSA private key is not valid");
+
+	m_private_keys.push_back(ssh_private_key(new ssh_basic_private_key_impl(rsaPrivate, key_comment)));
+}
+
+ssh_private_key ssh_agent::get_key(ipacket& blob) const
+{
+	for (auto& key: m_private_keys)
+	{
+		opacket b;
+		b << key;
+		
+		if (blob == b)
+			return key;
+	}
+	
+	throw runtime_error("private key not found");
 }
 
 // --------------------------------------------------------------------
