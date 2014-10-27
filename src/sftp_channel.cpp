@@ -352,6 +352,9 @@ void sftp_channel::process_packet()
 //			handler->handle_attrs(attr, out);
 //			break;
 //		}
+
+		default:		// throw error?
+			break;
 	}
 	
 	if (not out.empty())

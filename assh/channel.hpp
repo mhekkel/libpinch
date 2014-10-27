@@ -121,6 +121,8 @@ class channel : public std::enable_shared_from_this<channel>
 	template<class Handler>
 	struct bound_handler
 	{
+		bound_handler(const bound_handler&) = default;
+		
 		bound_handler(bound_handler&& rhs)
 			: m_handler(std::move(rhs.m_handler)), m_ec(rhs.m_ec), m_transferred(rhs.m_transferred)
 		{
@@ -214,7 +216,6 @@ class channel : public std::enable_shared_from_this<channel>
 	void			async_write_some(const ConstBufferSequence& buffers, Handler&& handler)
 					{
 						typedef ConstBufferSequence							buffer_type;
-						typedef read_op<ConstBufferSequence,Handler>	handler_type;
 						boost::asio::io_service& io_service(get_io_service());
 
 						size_t n = boost::asio::buffer_size(buffers); 
@@ -254,7 +255,7 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 		boost::system::error_code ec;
 		std::size_t s = write_some(buffers, ec);
-		if (ec) throw system_error(ec);
+		if (ec) throw std::system_error(ec);
 		return s;
 	}
 
@@ -355,7 +356,7 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 		boost::system::error_code ec;
 		std::size_t s = read_some(buffers, ec);
-		if (ec) throw system_error(ec);
+		if (ec) throw std::system_error(ec);
 		return s;
 	}
 
@@ -504,8 +505,8 @@ class exec_channel : public channel
 							exec_channel(basic_connection& connection,
 								const std::string& cmd, Handler&& handler)
 								: channel(connection)
-								, m_handler(new result_handler<Handler>(std::move(handler)))
 								, m_command(cmd)
+								, m_handler(new result_handler<Handler>(std::move(handler)))
 							{
 							}
 

@@ -18,6 +18,7 @@ std::string choose_protocol(const std::string& server, const std::string& client
 class key_exchange
 {
   public:
+	virtual ~key_exchange() = default;
 
 	static key_exchange*	create(const std::string& key_exchange_alg,
 								const std::string& host_version, std::vector<uint8>& session_id,
