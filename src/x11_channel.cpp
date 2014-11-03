@@ -6,8 +6,6 @@
 #include <assh/config.hpp>
 
 #include <boost/bind.hpp>
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 

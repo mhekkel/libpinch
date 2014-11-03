@@ -12,8 +12,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/flush.hpp>
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
 #include <boost/lexical_cast.hpp>
 
 #include <cryptopp/gfpcrypt.h>
@@ -967,7 +965,7 @@ bool basic_connection::has_open_channels()
 {
 	bool channel_open = false;
 
-	foreach (channel_ptr c, m_channels)
+	for (channel_ptr c: m_channels)
 	{
 		if (c->is_open())
 		{
@@ -1020,7 +1018,7 @@ void basic_connection::process_channel(ipacket& in, opacket& out, boost::system:
 		uint32 channel_id;
 		in >> channel_id;
 	
-		foreach (channel_ptr c, m_channels)
+		for (channel_ptr c: m_channels)
 		{
 			if (c->my_channel_id() == channel_id)
 			{

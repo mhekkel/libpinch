@@ -81,7 +81,7 @@ basic_connection& connection_pool::get(const string& user, const string& host, u
 {
 	basic_connection* result = nullptr;
 	
-	foreach (auto& e, m_entries)
+	for (auto& e: m_entries)
 	{
 		if (e.user == user and e.host == host and e.port == port)
 		{
@@ -92,7 +92,7 @@ basic_connection& connection_pool::get(const string& user, const string& host, u
 	
 	if (result == nullptr)
 	{
-		foreach (auto& p, m_proxies)
+		for (auto& p: m_proxies)
 		{
 			if (p.destination_host == host and p.destination_port == port)
 			{
@@ -124,7 +124,7 @@ basic_connection& connection_pool::get(const string& user, const string& host, u
 {
 	basic_connection* result = nullptr;
 	
-	foreach (auto& e, m_entries)
+	for (auto& e: m_entries)
 	{
 		if (e.user == user and e.host == host and e.port == port and
 			dynamic_cast<proxied_connection*>(e.connection) != nullptr)
@@ -169,7 +169,7 @@ bool connection_pool::has_open_connections()
 {
 	bool connection_open = false;
 
-	foreach (auto& e, m_entries)
+	for (auto& e: m_entries)
 	{
 		if (e.connection->is_connected())
 		{
@@ -185,7 +185,7 @@ bool connection_pool::has_open_channels()
 {
 	bool channel_open = false;
 
-	foreach (auto& e, m_entries)
+	for (auto& e: m_entries)
 	{
 		if (e.connection->is_connected() and e.connection->has_open_channels())
 		{

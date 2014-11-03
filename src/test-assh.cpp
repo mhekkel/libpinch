@@ -2,8 +2,6 @@
 
 #include <iostream>
 
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
 #include <boost/bind.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/lexical_cast.hpp>

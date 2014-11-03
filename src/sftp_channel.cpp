@@ -6,8 +6,6 @@
 #include <assh/config.hpp>
 
 //#include <boost/bind.hpp>
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
 //#include <boost/regex.hpp>
 //#include <boost/lexical_cast.hpp>
 
@@ -209,7 +207,7 @@ sftp_channel::~sftp_channel()
 
 void sftp_channel::closed()
 {
-	foreach (sftp_reply_handler* h, m_handlers)
+	for (sftp_reply_handler* h: m_handlers)
 	{
 		h->handle_status(error::make_error_code(error::ssh_fx_connection_lost), "", "");
 		delete h;
@@ -364,7 +362,7 @@ void sftp_channel::process_packet()
 sftp_channel::sftp_reply_handler* sftp_channel::fetch_handler(uint32 id)
 {
 	sftp_reply_handler* result = nullptr;
-	foreach (sftp_reply_handler* h, m_handlers)
+	for (sftp_reply_handler* h: m_handlers)
 	{
 		if (h->m_id == id)
 		{

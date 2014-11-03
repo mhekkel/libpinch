@@ -15,10 +15,6 @@
 
 #include <cryptopp/base64.h>
 
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
-
-
 #pragma comment (lib, "crypt32")
 
 using namespace CryptoPP;
@@ -364,7 +360,7 @@ string MWinSshPrivateKeyImpl::get_comment() const
 	DWORD types[] = { CERT_NAME_UPN_TYPE, CERT_NAME_FRIENDLY_DISPLAY_TYPE,
 		CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_NAME_EMAIL_TYPE, CERT_NAME_ATTR_TYPE };
 
-	foreach (DWORD type, types)
+	for (DWORD type: types)
 	{
 		DWORD cb = ::CertGetNameString(mCertificateContext, type,
 			CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, nullptr, 0);

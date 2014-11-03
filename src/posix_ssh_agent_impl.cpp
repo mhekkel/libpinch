@@ -16,9 +16,6 @@
 
 #include <cryptopp/base64.h>
 
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
-
 using namespace CryptoPP;
 using namespace std;
 

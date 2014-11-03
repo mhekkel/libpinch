@@ -9,8 +9,6 @@
 
 #include <iterator>
 
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
 #include <boost/regex.hpp>
 
 #include <assh/ssh_agent.hpp>
@@ -176,7 +174,7 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 		{
 			out = opacket(SSH2_AGENT_IDENTITIES_ANSWER) << uint32(m_private_keys.size());
 			
-			foreach (auto& key, m_private_keys)
+			for (auto& key: m_private_keys)
 			{
 				opacket blob;
 				blob << key;
@@ -209,20 +207,20 @@ void ssh_agent::update()
 {
 	list<vector<uint8>> deleted;
 	
-	foreach (ssh_private_key& key, m_private_keys)
+	for (ssh_private_key& key: m_private_keys)
 		deleted.push_back(key.get_hash());
 	
 	m_private_keys.clear();
 	ssh_private_key_impl::create_list(m_private_keys);
 	
-	foreach (ssh_private_key& key, m_private_keys)
+	for (ssh_private_key& key: m_private_keys)
 		deleted.erase(remove(deleted.begin(), deleted.end(), key.get_hash()), deleted.end());
 	
 	connection_list connections(m_registered_connections);
 	
-	foreach (vector<uint8>& hash, deleted)
+	for (vector<uint8>& hash: deleted)
 	{
-		foreach (basic_connection* connection, connections)
+		for (basic_connection* connection: connections)
 		{
 			if (connection->get_used_private_key() == hash)
 				connection->disconnect();
