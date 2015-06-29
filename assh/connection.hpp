@@ -39,9 +39,14 @@ class basic_connection
 	// void request_password()
 	typedef std::function<void()> password_callback_type;
 
+	// keyboard interactive support
+	struct prompt { std::string str; bool echo; };
+	typedef std::function<void(const std::string&, const std::string&, const std::vector<prompt>&)> keyboard_interactive_callback_type;
+
 	virtual void	set_validate_callback(const validate_callback_type& cb);
 	void			set_password_callback(const password_callback_type& cb);
-	
+	void			set_keyboard_interactive_callback(const keyboard_interactive_callback_type& cb);
+
 	template<typename Handler>
 	void			async_connect(Handler&& handler, channel_ptr opening_channel)
 					{
@@ -52,6 +57,7 @@ class basic_connection
 	
 	// to be called when requested by the connection object
 	void			password(const std::string& pw);
+	void			response(const std::vector<std::string>& responses);
 
 	virtual void	disconnect();
 	virtual void	rekey();
@@ -278,6 +284,8 @@ class basic_connection
 
 	validate_callback_type		m_validate_host_key_cb;
 	password_callback_type		m_request_password_cb;
+	keyboard_interactive_callback_type
+								m_keyboard_interactive_cb;
 	
 	key_exchange*				m_key_exchange;
 	std::unique_ptr<CryptoPP::StreamTransformation>			m_decryptor;

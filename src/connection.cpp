@@ -155,6 +155,11 @@ void basic_connection::set_password_callback(const password_callback_type& cb)
 	m_request_password_cb = cb;
 }
 
+void basic_connection::set_keyboard_interactive_callback(const keyboard_interactive_callback_type& cb)
+{
+	m_keyboard_interactive_cb = cb;
+}
+
 void basic_connection::reset()
 {
 	m_authenticated = false;
@@ -750,6 +755,12 @@ void basic_connection::process_userauth_failure(ipacket& in, opacket& out, boost
 		m_private_keys.pop_front();
 		m_auth_state = auth_state_public_key;
 	}
+	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and m_keyboard_interactive_cb and ++m_password_attempts <= 3)
+	{
+		out = opacket(msg_userauth_request)
+			<< m_user << "ssh-connection" << "keyboard-interactive" << "en" << "";
+		m_auth_state = auth_state_keyboard_interactive;
+	}
 	else if (choose_protocol(s, "password") == "password" and m_request_password_cb and ++m_password_attempts <= 3)
 		m_request_password_cb();
 	else
@@ -766,34 +777,80 @@ void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost:
 
 void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec)
 {
-	out = msg_userauth_request;
-
-	if (m_auth_state == auth_state_public_key)
+	switch (m_auth_state)
 	{
-		string alg;
-		ipacket blob;
-	
-		in >> alg >> blob;
-	
-		out << m_user << "ssh-connection" << "publickey" << true << "ssh-rsa" << blob;
-	
-		opacket session_id;
-		session_id << m_session_id;
-		
-		ssh_private_key pk(ssh_agent::instance().get_key(blob));
-		
-		out << pk.sign(session_id, out);
-		
-		// store the hash for this private key
-		m_private_key_hash = pk.get_hash();
+		case auth_state_public_key:
+		{
+			out = msg_userauth_request;
+
+			string alg;
+			ipacket blob;
+
+			in >> alg >> blob;
+
+			out << m_user << "ssh-connection" << "publickey" << true << "ssh-rsa" << blob;
+
+			opacket session_id;
+			session_id << m_session_id;
+
+			ssh_private_key pk(ssh_agent::instance().get_key(blob));
+
+			out << pk.sign(session_id, out);
+
+			// store the hash for this private key
+			m_private_key_hash = pk.get_hash();
+			break;
+		}
+		case auth_state_keyboard_interactive:
+		{
+			string name, instruction, language;
+			int32 numPrompts;
+
+			in >> name >> instruction >> language >> numPrompts;
+
+			if (numPrompts == 0)
+			{
+				out = msg_userauth_info_response;
+				out << numPrompts;
+			}
+			else
+			{
+				vector<prompt> prompts(numPrompts);
+
+				for (prompt& p : prompts)
+					in >> p.str >> p.echo;
+
+				if (prompts.empty())
+				{
+					prompt p = { "iets", true };
+					prompts.push_back(p);
+				}
+
+				m_keyboard_interactive_cb(name, language, prompts);
+			}
+			break;
+		}
 	}
 }
 
-void basic_connection::password(const string& pw)
+void basic_connection::response(const vector<string>& responses)
 {
-	opacket out(msg_userauth_request);
-	out << m_user << "ssh-connection" << "password" << false << pw;
-	async_write(move(out));
+	if (m_auth_state == auth_state_keyboard_interactive)
+	{
+		opacket out(msg_userauth_info_response);
+		out << responses.size();
+		for (auto r : responses)
+			out << r;
+		async_write(move(out));
+	}
+	else if (responses.size() == 1)
+	{
+		opacket out(msg_userauth_request);
+		out << m_user << "ssh-connection" << "password" << false << responses[0];
+		async_write(move(out));
+	}
+	else
+		handle_error(error::make_error_code(error::auth_cancelled_by_user));
 }
 
 struct packet_encryptor
