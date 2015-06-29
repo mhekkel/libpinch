@@ -772,7 +772,8 @@ void basic_connection::process_userauth_banner(ipacket& in, opacket& out, boost:
 	string msg, lang;
 	in >> msg >> lang;
 	
-	for_each(m_channels.begin(), m_channels.end(), [msg, lang](channel_ptr c) { c->banner(msg, lang); });
+	for (auto h : m_connect_handlers)
+		h->handle_banner(msg, lang);
 }
 
 void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, boost::system::error_code& ec)
@@ -1085,6 +1086,13 @@ void basic_connection::process_channel(ipacket& in, opacket& out, boost::system:
 		}
 	}
 	catch (...) {}
+}
+
+// --------------------------------------------------------------------
+
+void basic_connection::basic_connect_handler::handle_banner(const string& message, const string& lang)
+{
+	m_opening_channel->banner(message, lang);
 }
 
 // --------------------------------------------------------------------

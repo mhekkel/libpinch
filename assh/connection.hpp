@@ -112,6 +112,8 @@ class basic_connection
 		virtual				~basic_connect_handler() {}
 		
 		virtual void		handle_connect(const boost::system::error_code& ec, boost::asio::io_service& io_service) = 0;
+		void				handle_banner(const std::string& message, const std::string& lang);
+
 		//virtual void		handle_connect(const boost::system::error_code& ec) = 0;
 		channel_ptr			m_opening_channel;
 	};

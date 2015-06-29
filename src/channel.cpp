@@ -335,14 +335,20 @@ void channel::process(ipacket& in)
 
 void channel::banner(const string& msg, const string& lang)
 {
+	if (m_banner_handler)
+		m_banner_handler(msg, lang);
 }
 
 void channel::message(const string& msg, const string& lang)
 {
+	if (m_message_handler)
+		m_message_handler(msg, lang);
 }
 
 void channel::error(const string& msg, const string& lang)
 {
+	if (m_error_handler)
+		m_error_handler(msg, lang);
 }
 
 void channel::handle_channel_request(const string& request, ipacket& in, opacket& out)

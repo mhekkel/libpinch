@@ -107,6 +107,15 @@ class channel : public std::enable_shared_from_this<channel>
 	uint32			my_channel_id() const		{ return m_my_channel_id; }
 	bool			is_open() const				{ return m_channel_open; }
 
+	typedef std::function<void(const std::string&, const std::string&)> message_callback_type;
+
+	void set_message_callbacks(message_callback_type banner_handler, message_callback_type message_handler, message_callback_type error_handler)
+	{
+		m_banner_handler = banner_handler;
+		m_message_handler = message_handler;
+		m_error_handler = error_handler;
+	}
+
 	virtual void	banner(const std::string& msg, const std::string& lang);
 	virtual void	message(const std::string& msg, const std::string& lang);
 	virtual void	error(const std::string& msg, const std::string& lang);
@@ -470,6 +479,10 @@ class channel : public std::enable_shared_from_this<channel>
 	std::deque<char>			m_received;
 	std::deque<basic_read_op*>	m_read_ops;
 	bool					m_eof;
+
+	message_callback_type	m_banner_handler;
+	message_callback_type	m_message_handler;
+	message_callback_type	m_error_handler;
 
   private:
 
