@@ -83,7 +83,8 @@ class ssh_agent
 	ssh_private_key		get_key(ipacket& blob) const;
 
 	// add a PEM encoded private key
-	void				add(const std::string& private_key, const std::string& key_comment);
+	void				add(const std::string& private_key, const std::string& key_comment,
+							std::function<bool(std::string&)> provide_password);
 
 	// for Windows only, expose the private keys via a Pageant compatible window
 	void				expose_pageant(bool expose);

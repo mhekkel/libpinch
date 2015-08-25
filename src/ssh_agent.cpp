@@ -19,9 +19,21 @@
 #include <cryptopp/base64.h>
 #include <cryptopp/rsa.h>
 #include <cryptopp/osrng.h>
+#include <cryptopp/queue.h>
+#include <cryptopp/modes.h>
+#include <cryptopp/asn.h>
+#include <cryptopp/aes.h>
+#include <cryptopp/camellia.h>
+#include <cryptopp/idea.h>
+#include <cryptopp/des.h>
+#include <cryptopp/hex.h>
+#include <cryptopp/md5.h>
+
+#include <boost/algorithm/string.hpp>
 
 using namespace std;
 using namespace CryptoPP;
+namespace ba = boost::algorithm;
 
 namespace assh
 {
@@ -248,17 +260,192 @@ void ssh_agent::expose_pageant(bool expose)
 #endif
 }
 
-void ssh_agent::add(const string& private_key, const string& key_comment)
+struct ssh_known_ciper_for_private_key
+{
+	string							name;
+	uint32							key_size;
+	uint32							iv_size;
+	function<SymmetricCipher*()>	factory;
+} kKnownCiphers[] = {
+	{ "AES-256-CBC", 32, 16,		[]() -> SymmetricCipher* { return new CBC_Mode<AES>::Decryption; }},
+	{ "AES-192-CBC", 24, 16,		[]() -> SymmetricCipher* { return new CBC_Mode<AES>::Decryption; }},
+	{ "AES-128-CBC", 16, 16,		[]() -> SymmetricCipher* { return new CBC_Mode<AES>::Decryption; }},
+	{ "CAMELLIA-256-CBC", 32, 16,	[]() -> SymmetricCipher* { return new CBC_Mode<Camellia>::Decryption; }},
+	{ "CAMELLIA-192-CBC", 24, 16,	[]() -> SymmetricCipher* { return new CBC_Mode<Camellia>::Decryption; }},
+	{ "CAMELLIA-128-CBC", 16, 16,	[]() -> SymmetricCipher* { return new CBC_Mode<Camellia>::Decryption; }},
+	{ "DES-EDE3-CBC", 24, 8,		[]() -> SymmetricCipher* { return new CBC_Mode<DES_EDE3>::Decryption; }},
+	{ "IDEA-CBC", 16, 8,			[]() -> SymmetricCipher* { return new CBC_Mode<IDEA>::Decryption; }},
+	{ "DES-CBC", 8, 8,				[]() -> SymmetricCipher* { return new CBC_Mode<DES>::Decryption; }}
+};
+
+
+// Signature changed a bit to match Crypto++. Salt must be PKCS5_SALT_LEN in length.
+//  Salt, Data and Count are IN; Key and IV are OUT.
+int OPENSSL_EVP_BytesToKey(HashTransformation& hash,
+                           const unsigned char *salt, const unsigned char* data, int dlen,
+                           unsigned int count, unsigned char *key, unsigned int ksize,
+                           unsigned char *iv, unsigned int vsize);
+
+// From OpenSSL, crypto/evp/evp.h.
+static const unsigned int OPENSSL_PKCS5_SALT_LEN = 8;
+
+// 64-character line length is required by RFC 1421.
+static const unsigned int RFC1421_LINE_BREAK = 64;
+// static const unsigned int OPENSSL_B64_LINE_BREAK = 76;
+
+// From crypto/evp/evp_key.h. Signature changed a bit to match Crypto++.
+int OPENSSL_EVP_BytesToKey(HashTransformation& hash,
+                           const unsigned char *salt, const unsigned char* data, int dlen,
+                           unsigned int count, unsigned char *key, unsigned int ksize,
+                           unsigned char *iv, unsigned int vsize)
+{
+    unsigned int niv,nkey,nhash;
+    unsigned int addmd=0,i;
+    
+    nkey=ksize;
+    niv=vsize;
+    nhash=hash.DigestSize();
+    
+    SecByteBlock digest(hash.DigestSize());
+    
+    if (data == NULL) return (0);
+    
+    for (;;)
+    {
+        hash.Restart();
+        
+        if(addmd++)
+            hash.Update(digest.data(), digest.size());
+        
+        hash.Update(data, dlen);
+        
+        if (salt != NULL)
+            hash.Update(salt, OPENSSL_PKCS5_SALT_LEN);
+        
+        hash.TruncatedFinal(digest.data(), digest.size());
+        
+        for (i=1; i<count; i++)
+        {
+            hash.Restart();
+            hash.Update(digest.data(), digest.size());
+            hash.TruncatedFinal(digest.data(), digest.size());
+        }
+        
+        i=0;
+        if (nkey)
+        {
+            for (;;)
+            {
+                if (nkey == 0) break;
+                if (i == nhash) break;
+                if (key != NULL)
+                    *(key++)=digest[i];
+                nkey--;
+                i++;
+            }
+        }
+        if (niv && (i != nhash))
+        {
+            for (;;)
+            {
+                if (niv == 0) break;
+                if (i == nhash) break;
+                if (iv != NULL)
+                    *(iv++)=digest[i];
+                niv--;
+                i++;
+            }
+        }
+        if ((nkey == 0) && (niv == 0)) break;
+    }
+    
+    return ksize;
+}
+
+void ssh_agent::add(const string& private_key, const string& key_comment, function<bool(string&)> provide_password)
 {
 	AutoSeededRandomPool prng;
-	boost::regex rx("^-+BEGIN RSA PRIVATE KEY-+\n(.+)\n-+END RSA PRIVATE KEY-+\n?");
-
+	boost::regex rx(
+		"^-+BEGIN RSA PRIVATE KEY-+\\n"
+		"(?:"
+			"((?:^[^:]+:\\s*\\S.+\\n)+)"
+		"\\n)?"
+		"([ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\\s]+)\\n"
+		"-+END RSA PRIVATE KEY-+\n?");
+	
 	boost::smatch m;
 
 	if (not boost::regex_match(private_key, m, rx))
 		throw runtime_error("Invalid PEM file");
 
-	string keystr = m[1].str();
+	string keystr = m[2].str();
+	string password;
+
+	unique_ptr<SymmetricCipher> cipher;
+
+	if (m[1].matched and provide_password(password))
+	{
+		// the keystr is probably encrypted
+		string algo;
+		string iv;
+		
+		stringstream s(m[1].str());
+		for (;;)
+		{
+			string line;
+			getline(s, line);
+			
+			if (line.empty())
+				break;
+			
+			if (ba::starts_with(line, "Proc-Type:") and not ba::ends_with(line, "4,ENCRYPTED"))
+			{
+				algo.clear();
+				break;
+			}
+			
+			if (ba::starts_with(line, "DEK-Info:"))
+			{
+				string::size_type t = 9;
+				while (t < line.length() and line[t] == ' ')
+					++t;
+				line.erase(0, t);
+				t = line.find(',');
+				algo = ba::to_upper_copy(line.substr(0, t));
+				iv = line.substr(t + 1);
+			}
+		}
+		
+		for (auto c: kKnownCiphers)
+		{
+			if (c.name != algo)
+				continue;
+			
+			HexDecoder hex;
+			hex.Put((byte*)iv.c_str(), iv.length());
+			hex.MessageEnd();
+			
+			size_t iv_size = hex.MaxRetrievable();
+			if (iv_size > c.iv_size)
+				iv_size = c.iv_size;
+			
+			SecByteBlock key(c.key_size);
+			SecByteBlock iv(iv_size);
+			SecByteBlock salt(iv_size);
+			
+			hex.Get(iv.data(), iv.size());
+			
+			salt = iv;
+			
+			CryptoPP::Weak1::MD5 md5;
+			int ret = OPENSSL_EVP_BytesToKey(md5, iv.data(), (const byte*)password.c_str(), password.length(),
+				1, key.data(), key.size(), nullptr, 0);
+
+			cipher.reset(c.factory());
+			cipher->SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
+		}
+	}
+
 	string key;
 
 	// Base64 decode, place in a ByteQueue    
@@ -268,7 +455,17 @@ void ssh_agent::add(const string& private_key, const string& key_comment)
 	decoder.Attach(new Redirector(queue));
 	decoder.Put((const byte*)keystr.data(), keystr.length());
 	decoder.MessageEnd();
-
+	
+	if (cipher)
+	{
+		ByteQueue temp;
+		StreamTransformationFilter filter(*cipher, new Redirector(temp));
+		queue.TransferTo(filter);
+		filter.MessageEnd();
+		
+		queue = temp;
+	}
+	
 	RSA::PrivateKey rsaPrivate;
 	rsaPrivate.BERDecodePrivateKey(queue, false /*paramsPresent*/, queue.MaxRetrievable());
 
