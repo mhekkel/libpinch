@@ -8,6 +8,7 @@
 #include <boost/bind.hpp>
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/asio/local/stream_protocol.hpp>
 
 #include <assh/x11_channel.hpp>
 #include <assh/connection.hpp>
@@ -17,34 +18,87 @@ using namespace std;
 namespace assh
 {
 
+struct x11_socket_impl_base
+{
+	virtual ~x11_socket_impl_base() {}
+
+	virtual void async_read(shared_ptr<x11_channel> channel, boost::asio::streambuf& response) = 0;
+	virtual void async_write(channel_ptr channel, shared_ptr<boost::asio::streambuf> data) = 0;
+};
+
+template<class SOCKET>
+struct x11_socket_impl : public x11_socket_impl_base
+{
+	x11_socket_impl(boost::asio::io_service& io_service)
+		: m_socket(io_service) {}
+
+	~x11_socket_impl()
+	{
+		if (m_socket.is_open())
+			m_socket.close();
+	}
+
+	virtual void async_read(shared_ptr<x11_channel> channel, boost::asio::streambuf& response)
+	{
+		boost::asio::async_read(m_socket, response, boost::asio::transfer_at_least(1),
+			boost::bind(&x11_channel::receive_raw, channel,
+			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+	}
+	
+	virtual void async_write(channel_ptr channel, shared_ptr<boost::asio::streambuf> data)
+	{
+		boost::asio::async_write(m_socket, *data,
+			[channel,data](const boost::system::error_code& ec, size_t)
+			{
+				if (ec)
+					channel->close();
+			});
+	}
+
+	SOCKET m_socket;
+};
+
+struct x11_datagram_impl : public x11_socket_impl<boost::asio::ip::tcp::socket>
+{
+	x11_datagram_impl(boost::asio::io_service& io_service, const string& host, const string& port)
+		: x11_socket_impl(io_service)
+	{
+		using boost::asio::ip::tcp;
+
+		tcp::resolver resolver(io_service);
+		tcp::resolver::query query(host, port);
+		tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
+		boost::asio::connect(m_socket, endpoint_iterator);
+	}
+	
+};
+
+struct x11_stream_impl : public x11_socket_impl<boost::asio::local::stream_protocol::socket>
+{
+	x11_stream_impl(boost::asio::io_service& io_service, const string& display_nr)
+		: x11_socket_impl(io_service)
+	{
+		const std::string kXUnixPath("/tmp/.X11-unix/X");
+		
+		m_socket.connect(boost::asio::local::stream_protocol::endpoint(kXUnixPath + display_nr));
+	}
+};
+
 x11_channel::x11_channel(basic_connection& connection)
 	: channel(connection)
-	, m_socket(get_io_service())
+	, m_impl(nullptr)
 	, m_verified(false)
 {
 }
 
 x11_channel::~x11_channel()
 {
-	if (m_socket.is_open())
-		m_socket.close();
+	delete m_impl;
 }
-
-//void x11_channel::setup(ipacket& in)
-//{
-//	channel::setup(in);
-//	
-//	string orig_addr;
-//	uint32 orig_port;
-//
-//	in >> orig_addr >> orig_port;
-//}
 
 void x11_channel::opened()
 {
 	channel::opened();
-	
-	using boost::asio::ip::tcp;
 	
 	try
 	{
@@ -56,21 +110,18 @@ void x11_channel::opened()
 		boost::cmatch m;
 		if (display != nullptr and boost::regex_match(display, m, rx))
 		{
-			if (m[1].matched and not m[1].str().empty())
-				host = m[1];
-			port = boost::lexical_cast<string>(6000 + boost::lexical_cast<int>(m[2]));
+			host = m[1];
+			port = m[2];
 		}
-
-		tcp::resolver resolver(get_io_service());
-		tcp::resolver::query query(host, port);
-		tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
-		boost::asio::connect(m_socket, endpoint_iterator);
+		
+		if (host.empty())
+			m_impl = new x11_stream_impl(get_io_service(), port);
+		else
+			m_impl = new x11_datagram_impl(get_io_service(), host, to_string(6000 + stoi(port)));
 
 		// start the read loop
 		shared_ptr<x11_channel> self(dynamic_pointer_cast<x11_channel>(shared_from_this()));
-		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
-			boost::bind(&x11_channel::receive_raw, self,
-			boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+		m_impl->async_read(self, m_response);
 		
 		opacket out(msg_channel_open_confirmation);
 		out << m_host_channel_id
@@ -90,8 +141,11 @@ void x11_channel::opened()
 
 void x11_channel::closed()
 {
-	if (m_socket.is_open())
-		m_socket.close();
+	if (m_impl != nullptr)
+	{
+		delete m_impl;
+		m_impl = nullptr;
+	}
 
 	channel::closed();
 }
@@ -116,13 +170,7 @@ void x11_channel::receive_data(const char* data, size_t size)
 		}
 	}
 	
-	channel_ptr self(shared_from_this());
-	boost::asio::async_write(m_socket, *request,
-		[self,request](const boost::system::error_code& ec, size_t)
-		{
-			if (ec)
-				self->close();
-		});
+	m_impl->async_write(shared_from_this(), request);
 }
 
 bool x11_channel::check_validation()
@@ -193,8 +241,7 @@ void x11_channel::receive_raw(const boost::system::error_code& ec, size_t)
 				});
 		}
 		
-		boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(1),
-			boost::bind(&x11_channel::receive_raw, self, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+		m_impl->async_read(self, m_response);
 	}
 }
 

@@ -19,12 +19,16 @@ namespace assh
 
 // --------------------------------------------------------------------
 
+struct x11_socket_impl_base;
+
 class x11_channel : public channel
 {
   public:
 
 					x11_channel(basic_connection& inConnection);
 					~x11_channel();
+
+	void			receive_raw(const boost::system::error_code& ec, std::size_t bytes_received);
 
   protected:
 
@@ -34,14 +38,11 @@ class x11_channel : public channel
 	virtual void	receive_data(const char* data, std::size_t size);
 	bool			check_validation();
 
-	void			receive_raw(const boost::system::error_code& ec, std::size_t bytes_received);
-	
-
-	boost::asio::streambuf				m_response;
-	boost::asio::ip::tcp::socket		m_socket;
-	bool								m_verified;
-	std::string							m_auth_protocol, m_auth_data;
-	std::vector<uint8>					m_packet;
+	x11_socket_impl_base*	m_impl;
+	bool					m_verified;
+	std::string				m_auth_protocol, m_auth_data;
+	std::vector<uint8>		m_packet;
+	boost::asio::streambuf	m_response;
 };
 
 }
