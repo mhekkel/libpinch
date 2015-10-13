@@ -370,7 +370,7 @@ void ssh_agent::add(const string& private_key, const string& key_comment, functi
 		"(?:"
 			"((?:^[^:]+:\\s*\\S.+\\n)+)"
 		"\\n)?"
-		"([ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\\s]+)\\n"
+		"([ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\\s]+)=*\\n"
 		"-+END RSA PRIVATE KEY-+\n?");
 	
 	boost::smatch m;

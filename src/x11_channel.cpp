@@ -86,14 +86,12 @@ struct x11_stream_impl : public x11_socket_impl<boost::asio::local::stream_proto
 
 x11_channel::x11_channel(basic_connection& connection)
 	: channel(connection)
-	, m_impl(nullptr)
 	, m_verified(false)
 {
 }
 
 x11_channel::~x11_channel()
 {
-	delete m_impl;
 }
 
 void x11_channel::opened()
@@ -115,9 +113,9 @@ void x11_channel::opened()
 		}
 		
 		if (host.empty())
-			m_impl = new x11_stream_impl(get_io_service(), port);
+			m_impl.reset(new x11_stream_impl(get_io_service(), port));
 		else
-			m_impl = new x11_datagram_impl(get_io_service(), host, to_string(6000 + stoi(port)));
+			m_impl.reset(new x11_datagram_impl(get_io_service(), host, to_string(6000 + stoi(port))));
 
 		// start the read loop
 		shared_ptr<x11_channel> self(dynamic_pointer_cast<x11_channel>(shared_from_this()));
@@ -141,12 +139,7 @@ void x11_channel::opened()
 
 void x11_channel::closed()
 {
-	if (m_impl != nullptr)
-	{
-		delete m_impl;
-		m_impl = nullptr;
-	}
-
+	m_impl.reset(nullptr);
 	channel::closed();
 }
 
@@ -170,7 +163,8 @@ void x11_channel::receive_data(const char* data, size_t size)
 		}
 	}
 	
-	m_impl->async_write(shared_from_this(), request);
+	if (m_impl)
+		m_impl->async_write(shared_from_this(), request);
 }
 
 bool x11_channel::check_validation()
@@ -241,7 +235,8 @@ void x11_channel::receive_raw(const boost::system::error_code& ec, size_t)
 				});
 		}
 		
-		m_impl->async_read(self, m_response);
+		if (m_impl)
+			m_impl->async_read(self, m_response);
 	}
 }
 

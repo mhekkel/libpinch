@@ -38,7 +38,8 @@ class x11_channel : public channel
 	virtual void	receive_data(const char* data, std::size_t size);
 	bool			check_validation();
 
-	x11_socket_impl_base*	m_impl;
+	std::unique_ptr<x11_socket_impl_base>
+							m_impl;
 	bool					m_verified;
 	std::string				m_auth_protocol, m_auth_data;
 	std::vector<uint8>		m_packet;
