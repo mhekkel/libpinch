@@ -127,6 +127,11 @@ void channel::closed()
 	m_read_ops.clear();
 }
 
+void channel::disconnect()
+{
+	m_connection.disconnect();
+}
+
 void channel::succeeded()
 {
 }
