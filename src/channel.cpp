@@ -43,7 +43,10 @@ channel::~channel()
 		catch (...) {}
 	}
 	
-	delete m_open_handler;
+	if (m_open_handler)
+		m_open_handler->cancel();
+	m_open_handler = nullptr;
+//	delete m_open_handler;
 }
 
 boost::asio::io_service& channel::get_io_service()

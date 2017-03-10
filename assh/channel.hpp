@@ -49,8 +49,17 @@ class channel : public std::enable_shared_from_this<channel>
 
 	struct basic_open_handler
 	{
+		basic_open_handler() : m_cancelled(false) {}
+		
 		virtual			~basic_open_handler() {}
 		virtual void	handle_open_result(const boost::system::error_code& ec) = 0;
+
+		virtual void cancel()
+		{
+			m_cancelled = true;
+		}
+		
+		bool m_cancelled;
 	};
 	
 	template<typename Handler>
@@ -62,7 +71,10 @@ class channel : public std::enable_shared_from_this<channel>
 		
 		virtual void handle_open_result(const boost::system::error_code& ec)
 		{
-			m_handler.handler(ec);
+			if (not m_cancelled)
+				m_handler.handler(ec);
+			else
+				delete this;
 		}
 		
 		async_result_type m_handler;
@@ -341,25 +353,25 @@ class channel : public std::enable_shared_from_this<channel>
 	};
 
 	template <typename MutableBufferSequence, typename Handler>
-	void			async_read_some(const MutableBufferSequence& buffers, Handler&& handler)
-					{
-						BOOST_STATIC_ASSERT(boost::is_const<Handler>::value == false);
+	void async_read_some(const MutableBufferSequence& buffers, Handler&& handler)
+	{
+		BOOST_STATIC_ASSERT(boost::is_const<Handler>::value == false);
 
-						typedef read_op<MutableBufferSequence,Handler> handler_type;
-						boost::asio::io_service& io_service(get_io_service());
+		typedef read_op<MutableBufferSequence,Handler> handler_type;
+		boost::asio::io_service& io_service(get_io_service());
 
-						if (not is_open())
-							io_service.post(bound_handler<Handler>(std::move(handler), error::make_error_code(error::connection_lost), 0));
-						else if (boost::asio::buffer_size(buffers) == 0)
-							io_service.post(bound_handler<Handler>(std::move(handler), boost::system::error_code(), 0));
-						else
-						{
-							m_read_ops.push_back(new handler_type(buffers, std::move(handler)));
-							
-							if (not m_received.empty())
-								push_received();
-						}
-					}
+		if (not is_open())
+			io_service.post(bound_handler<Handler>(std::move(handler), error::make_error_code(error::connection_lost), 0));
+		else if (boost::asio::buffer_size(buffers) == 0)
+			io_service.post(bound_handler<Handler>(std::move(handler), boost::system::error_code(), 0));
+		else
+		{
+			m_read_ops.push_back(new handler_type(buffers, std::move(handler)));
+			
+			if (not m_received.empty())
+				push_received();
+		}
+	}
 
 	template <typename MutableBufferSequence>
 	std::size_t read_some(const MutableBufferSequence& buffers)
