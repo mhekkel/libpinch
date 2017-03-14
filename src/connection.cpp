@@ -21,6 +21,7 @@
 #include <cryptopp/des.h>
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 #include <cryptopp/md5.h>
+#include <cryptopp/ripemd.h>
 #include <cryptopp/blowfish.h>
 #include <cryptopp/filters.h>
 #include <cryptopp/files.h>
@@ -52,11 +53,11 @@ const string
 	kSSHVersionString("SSH-2.0-libassh");
 
 const string
-	kKeyExchangeAlgorithms_("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
-	kServerHostKeyAlgorithms_("ssh-rsa,ssh-dss"),
-	kEncryptionAlgorithms_("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,blowfish-cbc,3des-cbc"),
-	kMacAlgorithms_("hmac-sha1,hmac-md5"),
-	kCompressionAlgorithms_("zlib@openssh.com,zlib,none");
+	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
+	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
+	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,blowfish-cbc,3des-cbc"),
+	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256,hmac-sha1,hmac-md5,hmac-ripemd160"),
+	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
 
 string choose_protocol(const string& server, const string& client)
 {
@@ -93,13 +94,13 @@ basic_connection::basic_connection(boost::asio::io_service& io_service, const st
 	, m_key_exchange(nullptr)
 	, m_forward_agent(false)
 	, m_port_forwarder(nullptr)
-	, m_alg_kex(kKeyExchangeAlgorithms_)
-	, m_alg_enc_c2s(kEncryptionAlgorithms_)
-	, m_alg_ver_c2s(kMacAlgorithms_)
-	, m_alg_cmp_c2s(kCompressionAlgorithms_)
-	, m_alg_enc_s2c(kEncryptionAlgorithms_) 
-	, m_alg_ver_s2c(kMacAlgorithms_)        
-	, m_alg_cmp_s2c(kCompressionAlgorithms_)
+	, m_alg_kex(kKeyExchangeAlgorithms)
+	, m_alg_enc_c2s(kEncryptionAlgorithms)
+	, m_alg_ver_c2s(kMacAlgorithms)
+	, m_alg_cmp_c2s(kCompressionAlgorithms)
+	, m_alg_enc_s2c(kEncryptionAlgorithms) 
+	, m_alg_ver_s2c(kMacAlgorithms)        
+	, m_alg_cmp_s2c(kCompressionAlgorithms)
 {
 	reset();
 
@@ -213,7 +214,7 @@ void basic_connection::rekey()
 		out << rng.GenerateByte();
 	
 	out << m_alg_kex
-		<< kServerHostKeyAlgorithms_
+		<< kServerHostKeyAlgorithms
 		<< m_alg_enc_c2s
 		<< m_alg_enc_s2c
 		<< m_alg_ver_c2s
@@ -658,7 +659,13 @@ void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system:
 	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
 	iv = m_key_exchange->key(key_exchange::E);
 
-	if (protocol == "hmac-sha1")
+	if (protocol == "hmac-sha2-512")
+		m_signer.reset(new HMAC<SHA512>(iv, 64));
+	else if (protocol == "hmac-sha2-256")
+		m_signer.reset(new HMAC<SHA256>(iv, 32));
+	else if (protocol == "hmac-ripemd160")
+		m_signer.reset(new HMAC<RIPEMD160>(iv, 20));
+	else if (protocol == "hmac-sha1")
 		m_signer.reset(new HMAC<SHA1>(iv, 20));
 	else
 		m_signer.reset(new HMAC<Weak::MD5>(iv));
@@ -668,7 +675,13 @@ void basic_connection::process_newkeys(ipacket& in, opacket& out, boost::system:
 	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
 	iv = m_key_exchange->key(key_exchange::F);
 
-	if (protocol == "hmac-sha1")
+	if (protocol == "hmac-sha2-512")
+		m_verifier.reset(new HMAC<SHA512>(iv, 64));
+	else if (protocol == "hmac-sha2-256")
+		m_verifier.reset(new HMAC<SHA256>(iv, 32));
+	else if (protocol == "hmac-ripemd160")
+		m_verifier.reset(new HMAC<RIPEMD160>(iv, 20));
+	else if (protocol == "hmac-sha1")
 		m_verifier.reset(new HMAC<SHA1>(iv, 20));
 	else
 		m_verifier.reset(new HMAC<Weak::MD5>(iv));

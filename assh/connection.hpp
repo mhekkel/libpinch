@@ -15,6 +15,16 @@
 namespace assh
 {
 
+// --------------------------------------------------------------------
+// Supported protocols
+
+extern const std::string
+	kKeyExchangeAlgorithms,
+	kServerHostKeyAlgorithms,
+	kEncryptionAlgorithms,
+	kMacAlgorithms,
+	kCompressionAlgorithms;
+	
 class key_exchange;
 class channel;
 typedef std::shared_ptr<channel> channel_ptr;

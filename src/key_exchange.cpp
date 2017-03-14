@@ -174,8 +174,8 @@ void key_exchange::derive_keys_with_hash()
 template<typename HashAlgorithm>
 void key_exchange::derive_keys()
 {
-	// derive the keys, 32 bytes should be enough
-	int keylen = 32;
+	// derive the keys, 64 bytes should be enough
+	int keylen = 64;
 	for (int i = 0; i < 6; ++i)
 	{
 		hash<HashAlgorithm> ha;

@@ -64,6 +64,12 @@ void connection_pool::set_algorithm(algorithm alg, direction dir, const string& 
 				m_alg_cmp_c2s = preferred;
 			break;
 	}
+
+	for_each(m_entries.begin(), m_entries.end(),
+		[=](entry& e)
+		{
+			e.connection->set_algorithm(alg, dir, preferred);
+		});
 }
 
 void connection_pool::register_proxy(const string& destination_host, uint16 destination_port,
