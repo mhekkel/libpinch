@@ -24,10 +24,10 @@ class connection_pool
 	// set algorithms to use by connections created by this pool
 	void						set_algorithm(algorithm alg, direction dir, const std::string& preferred);
 
-	basic_connection&			get(const std::string& user, const std::string& host, uint16 port);
+	basic_connection*			get(const std::string& user, const std::string& host, uint16 port);
 	
 	// get a proxied connection
-	basic_connection&			get(const std::string& user, const std::string& host, uint16 port,
+	basic_connection*			get(const std::string& user, const std::string& host, uint16 port,
 									const std::string& proxy_user, const std::string& proxy_host,
 									uint16 proxy_port, const std::string& proxy_cmd);
 

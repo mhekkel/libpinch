@@ -47,7 +47,7 @@ inline boost::system::error_code make_error_code(sftp_error e)
 class sftp_channel : public channel
 {
   public:
-					sftp_channel(basic_connection& connection);
+					sftp_channel(basic_connection* connection);
 					~sftp_channel();
 
 	virtual void	opened();

@@ -84,7 +84,7 @@ struct x11_stream_impl : public x11_socket_impl<boost::asio::local::stream_proto
 	}
 };
 
-x11_channel::x11_channel(basic_connection& connection)
+x11_channel::x11_channel(basic_connection* connection)
 	: channel(connection)
 	, m_verified(false)
 {
@@ -124,7 +124,7 @@ void x11_channel::opened()
 		opacket out(msg_channel_open_confirmation);
 		out << m_host_channel_id
 			<< m_my_channel_id << m_my_window_size << kMaxPacketSize;
-		m_connection.async_write(move(out));
+		m_connection->async_write(move(out));
 		
 		m_channel_open = true;
 	}
@@ -133,7 +133,7 @@ void x11_channel::opened()
 		opacket out(msg_channel_failure);
 		out << m_host_channel_id
 			<< 2 << "Failed to open connection to X-server" << "en";
-		m_connection.async_write(move(out));
+		m_connection->async_write(move(out));
 	}
 }
 

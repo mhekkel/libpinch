@@ -14,7 +14,7 @@ using namespace std;
 namespace assh
 {
 
-terminal_channel::terminal_channel(basic_connection& connection)
+terminal_channel::terminal_channel(basic_connection* connection)
 	: channel(connection)
 	, m_width(80)
 	, m_height(24)
@@ -63,7 +63,7 @@ void terminal_channel::send_window_resize(uint32 width, uint32 height)
 		<< "window-change" << false
 		<< width << height
 		<< uint32(0) << uint32(0);
-	m_connection.async_write(move(out));
+	m_connection->async_write(move(out));
 }
 	
 }

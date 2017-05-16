@@ -25,7 +25,7 @@ namespace io = boost::iostreams;
 class client
 {
   public:
-			client(assh::basic_connection& connection)
+			client(assh::basic_connection* connection)
 				: m_first(true)
 			{
 				m_channel.reset(new assh::terminal_channel(connection));
@@ -149,7 +149,7 @@ int main(int argc, char* const argv[])
 		//pool.register_proxy("newcmbi2", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
 		//pool.register_proxy("newcmbi2.cmbi.ru.nl", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
 	
-		assh::basic_connection& connection(pool.get(user, host, boost::lexical_cast<uint16>(port)));
+		assh::basic_connection* connection(pool.get(user, host, boost::lexical_cast<uint16>(port)));
 
 		client* c = nullptr;
 		

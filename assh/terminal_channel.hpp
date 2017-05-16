@@ -14,7 +14,7 @@ namespace assh
 class terminal_channel : public channel
 {
   public:
-					terminal_channel(basic_connection& connection);
+					terminal_channel(basic_connection* connection);
 	
 	void			set_environment_variable(const std::string& name,
 						const std::string& value);

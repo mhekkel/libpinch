@@ -22,7 +22,7 @@ namespace assh
 class proxy_channel : public channel
 {
   public:
-					proxy_channel(basic_connection& connection, const string& nc_cmd, const string& user, const string& host, uint16 port)
+					proxy_channel(basic_connection* connection, const string& nc_cmd, const string& user, const string& host, uint16 port)
 						: channel(connection), m_cmd(nc_cmd)
 					{
 						ba::replace_regex(m_cmd, boost::regex("(?<!%)%r"), user);
@@ -41,29 +41,32 @@ class proxy_channel : public channel
 
 // --------------------------------------------------------------------
 
-proxied_connection::proxied_connection(basic_connection& proxy, const string& nc_cmd, const string& user, const string& host, uint16 port)
-	: basic_connection(proxy.get_io_service(), user)
+proxied_connection::proxied_connection(basic_connection* proxy, const string& nc_cmd, const string& user, const string& host, uint16 port)
+	: basic_connection(proxy->get_io_service(), user)
 	, m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
 {
+	m_proxy->reference();
 }
 
 proxied_connection::~proxied_connection()
 {
 	if (m_channel and m_channel->is_open())
 		m_channel->close();
+	
+	m_proxy->release();
 }
 
 void proxied_connection::set_validate_callback(const validate_callback_type& cb)
 {
-	m_proxy.set_validate_callback(cb);
+	m_proxy->set_validate_callback(cb);
 	basic_connection::set_validate_callback(cb);
 }
 
 void proxied_connection::start_handshake()
 {
-	if (not m_proxy.is_connected())
+	if (not m_proxy->is_connected())
 	{
-		m_proxy.async_connect([this](const boost::system::error_code& ec)
+		m_proxy->async_connect([this](const boost::system::error_code& ec)
 		{
 			if (ec)
 				handle_connect_result(ec);

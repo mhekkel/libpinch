@@ -16,7 +16,7 @@ namespace assh
 
 uint32 channel::s_next_channel_id = 1;
 
-channel::channel(basic_connection& inConnection)
+channel::channel(basic_connection* inConnection)
 	: m_connection(inConnection)
 	, m_open_handler(nullptr)
 	, m_max_send_packet_size(0)
@@ -28,6 +28,7 @@ channel::channel(basic_connection& inConnection)
 	, m_host_window_size(0)
 	, m_eof(false)
 {
+	m_connection->reference();
 }
 
 channel::~channel()
@@ -45,13 +46,17 @@ channel::~channel()
 	
 	if (m_open_handler)
 		m_open_handler->cancel();
+
+	if (m_connection != nullptr)
+		m_connection->release();
+
 	m_open_handler = nullptr;
 //	delete m_open_handler;
 }
 
 boost::asio::io_service& channel::get_io_service()
 {
-	return m_connection.get_io_service();
+	return m_connection->get_io_service();
 }
 
 void channel::fill_open_opacket(opacket& out)
@@ -66,9 +71,9 @@ void channel::setup(ipacket& in)
 
 void channel::open()
 {
-	if (not m_connection.is_connected())
+	if (not m_connection->is_connected())
 	{
-		m_connection.async_connect([this](const boost::system::error_code& ec)
+		m_connection->async_connect([this](const boost::system::error_code& ec)
 		{
 			if (ec)
 			{
@@ -85,7 +90,7 @@ void channel::open()
 	{
 		m_my_window_size = kWindowSize;
 		m_my_channel_id = s_next_channel_id++;
-		m_connection.open_channel(shared_from_this(), m_my_channel_id);
+		m_connection->open_channel(shared_from_this(), m_my_channel_id);
 	}
 }
 
@@ -109,7 +114,7 @@ void channel::close()
 		delete handler;
 	}
 
-	m_connection.close_channel(shared_from_this(), m_host_channel_id);
+	m_connection->close_channel(shared_from_this(), m_host_channel_id);
 }
 
 void channel::closed()
@@ -132,7 +137,7 @@ void channel::closed()
 
 void channel::disconnect()
 {
-	m_connection.disconnect();
+	m_connection->disconnect();
 }
 
 void channel::succeeded()
@@ -147,12 +152,12 @@ void channel::end_of_file()
 
 string channel::get_connection_parameters(direction dir) const
 {
-	return is_open() ? m_connection.get_connection_parameters(dir) : "";
+	return is_open() ? m_connection->get_connection_parameters(dir) : "";
 }
 
 string channel::get_key_exchange_algoritm() const
 {
-	return is_open() ? m_connection.get_key_exchange_algoritm() : "";
+	return is_open() ? m_connection->get_key_exchange_algoritm() : "";
 }
 
 void channel::init(ipacket& in, opacket& out)
@@ -173,18 +178,18 @@ void channel::open_pty(uint32 width, uint32 height,
 			<< "MIT-MAGIC-COOKIE-1"
 			<< "0000000000000000"
 			<< uint32(0);
-		m_connection.async_write(move(out));
+		m_connection->async_write(move(out));
 	}
 
 	if (forward_agent)
 	{
-		m_connection.forward_agent(true);
+		m_connection->forward_agent(true);
 		
 		opacket out(msg_channel_request);
 		out	<< m_host_channel_id
 			<< "auth-agent-req@openssh.com"
 			<< false;
-		m_connection.async_write(move(out));
+		m_connection->async_write(move(out));
 	}
 	
 	for_each(env.begin(), env.end(), [this](const environment_variable& v)
@@ -195,7 +200,7 @@ void channel::open_pty(uint32 width, uint32 height,
 			<< false
 			<< v.name
 			<< v.value;
-		m_connection.async_write(move(out));
+		m_connection->async_write(move(out));
 	});
 	
 	opacket out(msg_channel_request);
@@ -206,7 +211,7 @@ void channel::open_pty(uint32 width, uint32 height,
 		<< width << height
 		<< uint32(0) << uint32(0)
 		<< "";
-	m_connection.async_write(move(out));
+	m_connection->async_write(move(out));
 }
 
 void channel::send_request_and_command(
@@ -218,7 +223,7 @@ void channel::send_request_and_command(
 		<< true;
 	if (not command.empty())
 		out	<< command;
-	m_connection.async_write(move(out));
+	m_connection->async_write(move(out));
 }
 
 void channel::send_signal(const string& signal)
@@ -228,7 +233,7 @@ void channel::send_signal(const string& signal)
 		<< "signal"
 		<< false
 		<< signal;
-	m_connection.async_write(move(out));
+	m_connection->async_write(move(out));
 }
 
 void channel::process(ipacket& in)
@@ -251,7 +256,7 @@ void channel::process(ipacket& in)
 			
 			error(reason, "en");
 
-			m_connection.close_channel(shared_from_this(), 0);
+			m_connection->close_channel(shared_from_this(), 0);
 			
 			if (m_open_handler)
 			{
@@ -265,7 +270,7 @@ void channel::process(ipacket& in)
 
 		case msg_channel_close:
 			closed();
-			m_connection.close_channel(shared_from_this(), 0);
+			m_connection->close_channel(shared_from_this(), 0);
 			break;
 
 		case msg_channel_success:
@@ -309,7 +314,7 @@ void channel::process(ipacket& in)
 		case msg_channel_request:
 		{
 			string request;
-			bool want_reply;
+			bool want_reply = false;
 			
 			in >> request >> want_reply;
 
@@ -320,7 +325,7 @@ void channel::process(ipacket& in)
 			{
 				if (out.empty())
 					out = opacket(msg_channel_failure) << m_host_channel_id;
-				m_connection.async_write(move(out));
+				m_connection->async_write(move(out));
 			}
 			break;
 		}
@@ -337,7 +342,7 @@ void channel::process(ipacket& in)
 
 		opacket out(msg_channel_window_adjust);
 		out	<< m_host_channel_id << adjust;
-		m_connection.async_write(move(out));
+		m_connection->async_write(move(out));
 	}
 }
 
@@ -399,7 +404,7 @@ void channel::send_pending()
 
 		channel_ptr self(shared_from_this());
 
-		m_connection.async_write(move(out),
+		m_connection->async_write(move(out),
 			[this, self, op](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			this->m_send_pending = false;

@@ -20,7 +20,7 @@ class basic_connection;
 class port_forward_listener
 {
   public:
-	port_forward_listener(basic_connection& connection);
+	port_forward_listener(basic_connection* connection);
 	~port_forward_listener();
 
 	void forward_port(
@@ -40,7 +40,7 @@ class port_forward_listener
 
 	//typedef std::list<bound_port*> bound_port_list;
 
-	basic_connection& m_connection;
+	basic_connection* m_connection;
 	//bound_port_list m_bound_ports;
 };
 
@@ -49,7 +49,7 @@ class port_forward_listener
 class forwarding_channel : public channel
 {
   public:
-	forwarding_channel(basic_connection& inConnection, const std::string& remote_addr, uint16 remote_port);
+	forwarding_channel(basic_connection* inConnection, const std::string& remote_addr, uint16 remote_port);
 
 	virtual std::string channel_type() const		{ return "direct-tcpip"; }
 	virtual void fill_open_opacket(opacket& out);

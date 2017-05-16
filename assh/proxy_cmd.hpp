@@ -17,7 +17,7 @@ class proxied_connection : public basic_connection
 {
   public:
 
-							proxied_connection(basic_connection& proxy,
+							proxied_connection(basic_connection* proxy,
 								const std::string& nc_cmd,
 								const std::string& user,
 								const std::string& host, uint16 port = 22);
@@ -27,7 +27,7 @@ class proxied_connection : public basic_connection
 	boost::asio::io_service&
 							get_io_service() 
 							{
-								return m_proxy.get_io_service();
+								return m_proxy->get_io_service();
 							}
 
 	virtual void			set_validate_callback(const validate_callback_type& cb);
@@ -43,7 +43,7 @@ class proxied_connection : public basic_connection
 	virtual void			async_read(uint32 at_least);
 
   private:
-	basic_connection&		m_proxy;
+	basic_connection*		m_proxy;
 	std::shared_ptr<proxy_channel> m_channel;
 	std::string				m_host;
 };

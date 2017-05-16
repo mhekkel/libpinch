@@ -108,7 +108,7 @@ class ssh_agent
 class ssh_agent_channel : public channel
 {
   public:
-						ssh_agent_channel(basic_connection& connection);
+						ssh_agent_channel(basic_connection* connection);
 	virtual				~ssh_agent_channel();
 	
 	virtual void		opened();

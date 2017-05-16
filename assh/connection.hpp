@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <assh/config.hpp>
 
 #include <list>
@@ -34,8 +35,17 @@ extern const std::string kSSHVersionString;
 
 class basic_connection
 {
-  public:
+  protected:
 	virtual			~basic_connection();
+	
+  public:
+
+								basic_connection(const basic_connection&) = delete;
+	basic_connection&			operator=(const basic_connection&) = delete;
+
+	// refcounted object
+	void			reference();
+	void			release();
 
 	// configure before connecting
 	void			set_algorithm(algorithm alg, direction dir, const std::string& preferred);
@@ -279,6 +289,7 @@ class basic_connection
 		auth_state_connected
 	};
 
+	std::atomic<uint32>			m_refcount;
 	boost::asio::io_service&	m_io_service;
 	std::string					m_user;
 	bool						m_authenticated;
@@ -320,10 +331,6 @@ class basic_connection
 	std::string					m_alg_kex,
 								m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
 								m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
-
-  private:
-								basic_connection(const basic_connection&);
-	basic_connection&			operator=(const basic_connection&);
 };
 
 // --------------------------------------------------------------------

@@ -459,7 +459,7 @@ class channel : public std::enable_shared_from_this<channel>
 
   protected:
 
-					channel(basic_connection& connection);
+					channel(basic_connection* connection);
 	virtual			~channel();
 
 	virtual std::string
@@ -478,7 +478,7 @@ class channel : public std::enable_shared_from_this<channel>
 
   protected:
 
-	basic_connection&		m_connection;
+	basic_connection*		m_connection;
 	basic_open_handler*		m_open_handler;
 
 	uint32					m_max_send_packet_size;
@@ -528,7 +528,7 @@ class exec_channel : public channel
 	};
 
 	template<typename Handler>
-							exec_channel(basic_connection& connection,
+							exec_channel(basic_connection* connection,
 								const std::string& cmd, Handler&& handler)
 								: channel(connection)
 								, m_command(cmd)

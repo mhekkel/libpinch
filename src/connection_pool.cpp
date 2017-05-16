@@ -30,7 +30,7 @@ connection_pool::~connection_pool()
 	for_each(m_entries.begin(), m_entries.end(),
 		[](entry& e)
 		{
-			delete e.connection;
+			e.connection->release();
 			e.connection = nullptr;
 		});
 }
@@ -83,7 +83,7 @@ void connection_pool::register_proxy(const string& destination_host, uint16 dest
 		*pi = p;
 }
 
-basic_connection& connection_pool::get(const string& user, const string& host, uint16 port)
+basic_connection* connection_pool::get(const string& user, const string& host, uint16 port)
 {
 	basic_connection* result = nullptr;
 	
@@ -122,10 +122,10 @@ basic_connection& connection_pool::get(const string& user, const string& host, u
 		if (not m_alg_cmp_s2c.empty())	result->set_algorithm(compression,	server2client, m_alg_cmp_s2c);
 	}
 
-	return *result;
+	return result;
 }
 	
-basic_connection& connection_pool::get(const string& user, const string& host, uint16 port,
+basic_connection* connection_pool::get(const string& user, const string& host, uint16 port,
 	const string& proxy_user, const string& proxy_host, uint16 proxy_port, const string& proxy_cmd)
 {
 	basic_connection* result = nullptr;
@@ -142,7 +142,7 @@ basic_connection& connection_pool::get(const string& user, const string& host, u
 	
 	if (result == nullptr)
 	{
-		basic_connection& proxy = get(proxy_user, proxy_host, proxy_port);
+		basic_connection* proxy = get(proxy_user, proxy_host, proxy_port);
 		result = new proxied_connection(proxy, proxy_cmd, user, host, port);
 
 		entry e = { user, host, port, result };
@@ -157,7 +157,7 @@ basic_connection& connection_pool::get(const string& user, const string& host, u
 		if (not m_alg_cmp_s2c.empty())	result->set_algorithm(compression, server2client, m_alg_cmp_s2c);
 	}
 	
-	return *result;
+	return result;
 }
 	
 void connection_pool::disconnect_all()

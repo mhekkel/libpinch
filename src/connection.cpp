@@ -86,7 +86,8 @@ string choose_protocol(const string& server, const string& client)
 // --------------------------------------------------------------------
 
 basic_connection::basic_connection(boost::asio::io_service& io_service, const string& user)
-	: m_io_service(io_service)
+	: m_refcount(1)
+	, m_io_service(io_service)
 	, m_user(user)
 	, m_authenticated(false)
 	, m_sent_kexinit(false)
@@ -113,6 +114,17 @@ basic_connection::~basic_connection()
 	
 	delete m_key_exchange;
 	delete m_port_forwarder;
+}
+
+void basic_connection::reference()
+{
+	++m_refcount;
+}
+
+void basic_connection::release()
+{
+	if (--m_refcount == 0)
+		delete this;
 }
 
 void basic_connection::set_algorithm(algorithm alg, direction dir, const string& preferred)
@@ -242,14 +254,14 @@ void basic_connection::forward_port(const string& local_address, uint16 local_po
 	const string& remote_address, uint16 remote_port)
 {
 	if (m_port_forwarder == nullptr)
-		m_port_forwarder = new port_forward_listener(*this);
+		m_port_forwarder = new port_forward_listener(this);
 	m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
 }
 
 void basic_connection::forward_socks5(const string& local_address, uint16 local_port)
 {
 	if (m_port_forwarder == nullptr)
-		m_port_forwarder = new port_forward_listener(*this);
+		m_port_forwarder = new port_forward_listener(this);
 	m_port_forwarder->forward_socks5(local_address, local_port);
 }
 
@@ -818,7 +830,7 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 		case auth_state_keyboard_interactive:
 		{
 			string name, instruction, language;
-			int32 numPrompts;
+			int32 numPrompts = 0;
 
 			in >> name >> instruction >> language >> numPrompts;
 
@@ -1059,9 +1071,9 @@ void basic_connection::process_channel_open(ipacket& in, opacket& out)
 	try
 	{
 		if (type == "x11")
-			c.reset(new x11_channel(*this));
+			c.reset(new x11_channel(this));
 		else if (type == "auth-agent@openssh.com" and m_forward_agent)
-			c.reset(new ssh_agent_channel(*this));
+			c.reset(new ssh_agent_channel(this));
 	}
 	catch (...) {}
 	

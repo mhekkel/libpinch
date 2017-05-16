@@ -491,7 +491,7 @@ ssh_private_key ssh_agent::get_key(ipacket& blob) const
 
 // --------------------------------------------------------------------
 
-ssh_agent_channel::ssh_agent_channel(basic_connection& connection)
+ssh_agent_channel::ssh_agent_channel(basic_connection* connection)
 	: channel(connection)
 {
 }
@@ -506,7 +506,7 @@ void ssh_agent_channel::opened()
 	
 	opacket out(msg_channel_open_confirmation);
 	out << m_host_channel_id << m_my_channel_id << m_my_window_size << kMaxPacketSize;
-	m_connection.async_write(move(out));
+	m_connection->async_write(move(out));
 }
 
 void ssh_agent_channel::receive_data(const char* data, size_t size)
