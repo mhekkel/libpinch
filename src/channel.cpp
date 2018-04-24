@@ -135,9 +135,14 @@ void channel::closed()
 	m_read_ops.clear();
 }
 
-void channel::disconnect()
+void channel::disconnect(bool disconnectProxy)
 {
 	m_connection->disconnect();
+
+	auto proxy = m_connection->get_proxy();
+
+	if (proxy != nullptr and disconnectProxy)
+		proxy->disconnect();
 }
 
 void channel::succeeded()

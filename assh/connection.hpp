@@ -117,6 +117,9 @@ class basic_connection
 	std::string		get_key_exchange_algoritm() const;
 	std::vector<uint8>
 					get_used_private_key() const							{ return m_private_key_hash; }
+
+	virtual basic_connection*
+					get_proxy() const										{ return nullptr; }
 	
   protected:
 

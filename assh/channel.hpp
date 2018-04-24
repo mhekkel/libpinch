@@ -94,7 +94,7 @@ class channel : public std::enable_shared_from_this<channel>
 
 	void			open();
 	void			close();
-	void			disconnect();
+	void			disconnect(bool disconnectProxy = false);
 
 	virtual void	fill_open_opacket(opacket& out);
 

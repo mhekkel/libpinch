@@ -32,6 +32,12 @@ class proxied_connection : public basic_connection
 
 	virtual void			set_validate_callback(const validate_callback_type& cb);
 
+	virtual basic_connection*
+							get_proxy() const
+							{
+								return m_proxy;
+							}
+
   protected:
 
 	virtual void			start_handshake();
