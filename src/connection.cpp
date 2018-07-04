@@ -47,6 +47,10 @@ namespace assh
 
 // --------------------------------------------------------------------
 
+const uint64 kKeepAliveInterval = 60;		// 60 seconds, should be ok?
+
+// --------------------------------------------------------------------
+
 AutoSeededRandomPool	rng;
 
 const string
@@ -82,6 +86,52 @@ string choose_protocol(const string& server, const string& client)
 
 	return result;
 }
+
+// --------------------------------------------------------------------
+
+basic_connection_ptr::basic_connection_ptr(basic_connection* ptr)
+	: mPtr(ptr)
+{
+	if (mPtr)
+		mPtr->reference();
+}
+
+basic_connection_ptr::basic_connection_ptr(const basic_connection_ptr& rhs)
+	: mPtr(rhs.mPtr)
+{
+	if (mPtr)
+		mPtr->reference();
+}
+
+basic_connection_ptr::basic_connection_ptr(basic_connection_ptr&& rhs)
+	: mPtr(rhs.mPtr)
+{
+	rhs.mPtr = nullptr;
+}
+
+basic_connection_ptr::~basic_connection_ptr()
+{
+	if (mPtr)
+		mPtr->release();
+}
+
+basic_connection_ptr& basic_connection_ptr::operator=(const basic_connection_ptr& rhs)
+{
+	if (mPtr != rhs.mPtr)
+	{
+		if (mPtr)	mPtr->release();
+		mPtr = rhs.mPtr;
+		if (mPtr)	mPtr->reference();
+	}
+	
+	return *this;
+}
+
+basic_connection_ptr& basic_connection_ptr::operator=(basic_connection_ptr&& rhs)
+{
+	std::swap(mPtr, rhs.mPtr);
+	return *this;
+}	
 
 // --------------------------------------------------------------------
 
@@ -192,6 +242,7 @@ void basic_connection::reset()
 	m_password_attempts = 0;
 	m_in_seq_nr = m_out_seq_nr = 0;
 	m_iblocksize = m_oblocksize = 8;
+	m_last_io = 0;
 }
 
 void basic_connection::disconnect()
@@ -201,6 +252,25 @@ void basic_connection::disconnect()
 	// copy the list since calling Close will change it
 	list<channel_ptr> channels(m_channels);
 	for_each(channels.begin(), channels.end(), [](channel_ptr c) { c->close(); });
+}
+
+void basic_connection::keep_alive()
+{
+	struct timeval tv;
+	gettimeofday(&tv, nullptr);
+	
+	if (m_authenticated and m_last_io + kKeepAliveInterval < tv.tv_sec)
+	{
+		opacket out(msg_ignore);
+		out << "Hello, world!";
+
+		basic_connection_ptr self(this);
+		async_write(move(out), [self,this,tv] (const boost::system::error_code& ec, size_t bytes_transferred)
+		{
+			if (not ec)
+				this->m_last_io = tv.tv_sec;
+		});
+	}
 }
 
 void basic_connection::handle_error(const boost::system::error_code& ec)
@@ -327,8 +397,9 @@ void basic_connection::handle_connect_result(const boost::system::error_code& ec
 	else
 		m_auth_state = auth_state_connected;
 	
+	basic_connection_ptr self(this);
 	for_each(m_connect_handlers.begin(), m_connect_handlers.end(),
-		[this, &ec](basic_connect_handler* h)
+		[self,this,&ec](basic_connect_handler* h)
 		{
 			try { h->handle_connect(ec, m_io_service); } catch (...) {}
 			delete h;
@@ -352,7 +423,8 @@ void basic_connection::start_handshake()
 		ostream out(request);
 		out << kSSHVersionString << "\r\n";
 	
-		async_write(request, [this, request](const boost::system::error_code& ec, size_t bytes_transferred)
+		basic_connection_ptr self(this);
+		async_write(request, [self,this, request](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			handle_protocol_version_request(ec, bytes_transferred);
 //			delete request;
@@ -493,6 +565,11 @@ void basic_connection::received_data(const boost::system::error_code& ec)
 
 void basic_connection::process_packet(ipacket& in)
 {
+	// update time for keep alive
+	struct timeval tv;
+	gettimeofday(&tv, nullptr);
+	m_last_io = tv.tv_sec;
+	
 	opacket out;
 	boost::system::error_code ec;
 	
@@ -1022,8 +1099,9 @@ void basic_connection::close_channel(channel_ptr ch, uint32 channel_id)
 		ch->closed();
 	}
 	
+	basic_connection_ptr self(this);
 	auto iter = remove_if(m_connect_handlers.begin(), m_connect_handlers.end(),
-		[this, &ch](basic_connect_handler* h) -> bool
+		[self,this, &ch](basic_connect_handler* h) -> bool
 		{
 			bool result = false;
 			if (h->m_opening_channel == ch)
@@ -1199,8 +1277,10 @@ void connection::async_write_int(boost::asio::streambuf* request, basic_write_op
 
 void connection::async_read_version_string()
 {
+	basic_connection_ptr self(this);
+
 	boost::asio::async_read_until(m_socket, m_response, "\n",
-		[this](const boost::system::error_code& ec, size_t bytes_transferred)
+		[self,this](const boost::system::error_code& ec, size_t bytes_transferred)
 	{
 		handle_protocol_version_response(ec, bytes_transferred);
 	});
@@ -1208,8 +1288,9 @@ void connection::async_read_version_string()
 
 void connection::async_read(uint32 at_least)
 {
+	basic_connection_ptr self(this);
 	boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
-		[this](const boost::system::error_code& ec, size_t bytes_transferred)
+		[self,this](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			this->received_data(ec);
 		});

@@ -102,6 +102,8 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual void	closed();
 	virtual void	end_of_file();
 	
+	void			keep_alive();
+	
 	virtual void	succeeded();	// the request succeeded
 
 	std::string		get_connection_parameters(direction dir) const;

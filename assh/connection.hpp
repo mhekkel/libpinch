@@ -30,6 +30,28 @@ class key_exchange;
 class channel;
 typedef std::shared_ptr<channel> channel_ptr;
 class port_forward_listener;
+class basic_connection;
+
+// --------------------------------------------------------------------
+
+class basic_connection_ptr
+{
+  public:
+	basic_connection_ptr(basic_connection* ptr);
+	basic_connection_ptr(const basic_connection_ptr& rhs);
+	basic_connection_ptr(basic_connection_ptr&& rhs);	
+	~basic_connection_ptr();	
+	basic_connection_ptr& operator=(const basic_connection_ptr& rhs);	
+	basic_connection_ptr& operator=(basic_connection_ptr&& rhs);
+
+	basic_connection& operator*() const							{ return *mPtr; }
+	basic_connection* operator->() const						{ return mPtr; }
+
+  private:
+	basic_connection*	mPtr;
+};
+
+// --------------------------------------------------------------------
 	
 extern const std::string kSSHVersionString;
 
@@ -89,9 +111,10 @@ class basic_connection
 
 	void			async_write(opacket&& p)
 					{
-						async_write(std::move(p), [this](const boost::system::error_code& ec, std::size_t)
+						basic_connection_ptr self(this);
+						async_write(std::move(p), [self](const boost::system::error_code& ec, std::size_t)
 						{
-							if (ec) this->handle_error(ec);
+							if (ec) self->handle_error(ec);
 						});
 					}
 
@@ -112,6 +135,7 @@ class basic_connection
 					get_io_service() = 0;
 	
 	virtual bool	is_connected() const									{ return m_authenticated; }
+	void			keep_alive();
 	
 	std::string		get_connection_parameters(direction d) const;
 	std::string		get_key_exchange_algoritm() const;
@@ -301,6 +325,7 @@ class basic_connection
 	std::string					m_host_version;
 	std::vector<uint8>			m_my_payload, m_host_payload, m_session_id;
 	auth_state					m_auth_state;
+	uint64						m_last_io;
 	uint32						m_password_attempts;
 	std::vector<uint8>			m_private_key_hash;
 	uint32						m_in_seq_nr, m_out_seq_nr;
