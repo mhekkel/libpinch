@@ -422,7 +422,7 @@ void ssh_agent::add(const string& private_key, const string& key_comment, functi
 				continue;
 			
 			HexDecoder hex;
-			hex.Put((byte*)iv.c_str(), iv.length());
+			hex.Put((unsigned char*)iv.c_str(), iv.length());
 			hex.MessageEnd();
 			
 			size_t iv_size = hex.MaxRetrievable();
@@ -438,7 +438,7 @@ void ssh_agent::add(const string& private_key, const string& key_comment, functi
 			salt = iv;
 			
 			CryptoPP::Weak1::MD5 md5;
-			int ret = OPENSSL_EVP_BytesToKey(md5, iv.data(), (const byte*)password.c_str(), password.length(),
+			int ret = OPENSSL_EVP_BytesToKey(md5, iv.data(), (const unsigned char*)password.c_str(), password.length(),
 				1, key.data(), key.size(), nullptr, 0);
 
 			cipher.reset(c.factory());
@@ -453,7 +453,7 @@ void ssh_agent::add(const string& private_key, const string& key_comment, functi
 	Base64Decoder decoder;
 
 	decoder.Attach(new Redirector(queue));
-	decoder.Put((const byte*)keystr.data(), keystr.length());
+	decoder.Put((const unsigned char*)keystr.data(), keystr.length());
 	decoder.MessageEnd();
 	
 	if (cipher)
