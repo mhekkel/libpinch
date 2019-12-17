@@ -438,7 +438,7 @@ void ssh_agent::add(const string& private_key, const string& key_comment, functi
 			salt = iv;
 			
 			CryptoPP::Weak1::MD5 md5;
-			int ret = OPENSSL_EVP_BytesToKey(md5, iv.data(), (const unsigned char*)password.c_str(), password.length(),
+			(void)OPENSSL_EVP_BytesToKey(md5, iv.data(), (const unsigned char*)password.c_str(), password.length(),
 				1, key.data(), key.size(), nullptr, 0);
 
 			cipher.reset(c.factory());

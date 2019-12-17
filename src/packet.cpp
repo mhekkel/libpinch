@@ -39,6 +39,8 @@ compression_helper::compression_helper(bool deflate)
 		err = deflateInit(&m_impl->m_zstream, Z_BEST_SPEED);
 	else
 		err = inflateInit(&m_impl->m_zstream);
+	if (err != Z_OK)
+		throw std::runtime_error("error initializing zlib");
 }
 
 compression_helper::~compression_helper()
@@ -140,7 +142,7 @@ void opacket::write(ostream& os, int blocksize) const
 	
 	uint32 size = m_data.size() + 5;
 	uint32 padding_size = blocksize - (size % blocksize);
-	if (padding_size == blocksize)
+	if (padding_size == static_cast<uint32>(blocksize))
 		padding_size = 0;
 
 	while (padding_size < 4)

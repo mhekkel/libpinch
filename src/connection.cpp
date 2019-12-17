@@ -259,7 +259,7 @@ void basic_connection::keep_alive()
 	struct timeval tv;
 	gettimeofday(&tv, nullptr);
 	
-	if (m_authenticated and m_last_io + kKeepAliveInterval < tv.tv_sec)
+	if (m_authenticated and m_last_io + kKeepAliveInterval < static_cast<uint64>(tv.tv_sec))
 	{
 		opacket out(msg_ignore);
 		out << "Hello, world!";
@@ -933,6 +933,8 @@ void basic_connection::process_userauth_info_request(ipacket& in, opacket& out, 
 			}
 			break;
 		}
+		default:
+			;
 	}
 }
 
