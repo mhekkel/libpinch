@@ -424,7 +424,7 @@ void basic_connection::start_handshake()
 		out << kSSHVersionString << "\r\n";
 	
 		basic_connection_ptr self(this);
-		async_write(request, [self,this, request](const boost::system::error_code& ec, size_t bytes_transferred)
+		async_write(request, [self,this](const boost::system::error_code& ec, size_t bytes_transferred)
 		{
 			handle_protocol_version_request(ec, bytes_transferred);
 //			delete request;
@@ -1103,7 +1103,7 @@ void basic_connection::close_channel(channel_ptr ch, uint32 channel_id)
 	
 	basic_connection_ptr self(this);
 	auto iter = remove_if(m_connect_handlers.begin(), m_connect_handlers.end(),
-		[self,this, &ch](basic_connect_handler* h) -> bool
+		[self, &ch](basic_connect_handler* h) -> bool
 		{
 			bool result = false;
 			if (h->m_opening_channel == ch)

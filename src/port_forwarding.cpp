@@ -130,7 +130,6 @@ class bound_port : public enable_shared_from_this<bound_port>
 	virtual void handle_accept(const boost::system::error_code& ec);
 	
 	basic_connection* m_connection;
-	port_forward_listener& m_listener;
 	ip::tcp::acceptor m_acceptor;
 	ip::tcp::resolver m_resolver;
 	shared_ptr<forwarding_connection> m_new_connection;
@@ -138,7 +137,7 @@ class bound_port : public enable_shared_from_this<bound_port>
 };
 
 bound_port::bound_port(basic_connection* connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory)
-	: m_connection(connection), m_listener(listener)
+	: m_connection(connection)
 	, m_acceptor(connection->get_io_service()), m_resolver(connection->get_io_service())
 	, m_connection_factory(move(connection_factory))
 {

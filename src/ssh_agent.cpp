@@ -290,7 +290,7 @@ int OPENSSL_EVP_BytesToKey(HashTransformation& hash,
 static const unsigned int OPENSSL_PKCS5_SALT_LEN = 8;
 
 // 64-character line length is required by RFC 1421.
-static const unsigned int RFC1421_LINE_BREAK = 64;
+// static const unsigned int RFC1421_LINE_BREAK = 64;
 // static const unsigned int OPENSSL_B64_LINE_BREAK = 76;
 
 // From crypto/evp/evp_key.h. Signature changed a bit to match Crypto++.

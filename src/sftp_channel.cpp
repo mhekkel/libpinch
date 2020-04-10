@@ -256,7 +256,7 @@ void sftp_channel::receive_data(const char* data, size_t size)
 		{
 			try
 			{
-				if (m_packet.message() == SSH_FXP_VERSION)
+				if (static_cast<assh::sftp_messages>(m_packet.message()) == SSH_FXP_VERSION)
 					m_packet >> m_version;
 				else
 					process_packet();

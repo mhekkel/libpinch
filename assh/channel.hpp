@@ -287,7 +287,7 @@ class channel : public std::enable_shared_from_this<channel>
 	std::size_t write_some(const MutableBufferSequence& buffers, boost::system::error_code& ec)
 	{
 		std::size_t s = 0;
-		boost::asio::io_service& io_service(get_io_service());
+		// boost::asio::io_service& io_service(get_io_service());
 
 		size_t n = boost::asio::buffer_size(buffers);
 
@@ -388,7 +388,7 @@ class channel : public std::enable_shared_from_this<channel>
 	std::size_t read_some(const MutableBufferSequence& buffers, boost::system::error_code& ec)
 	{
 		size_t s = 0;
-		boost::asio::io_service& io_service(get_io_service());
+		// boost::asio::io_service& io_service(get_io_service());
 
 		if (not is_open())
 			ec = error::make_error_code(error::connection_lost);

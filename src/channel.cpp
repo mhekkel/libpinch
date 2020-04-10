@@ -120,14 +120,14 @@ void channel::close()
 void channel::closed()
 {
 	m_channel_open = false;
-	for_each(m_pending.begin(), m_pending.end(), [this](basic_write_op* op)
+	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
 	{
 		op->error(error::make_error_code(error::channel_closed));
 		delete op;
 	});
 	m_pending.clear();
 	
-	for_each(m_read_ops.begin(), m_read_ops.end(), [this](basic_read_op* op)
+	for_each(m_read_ops.begin(), m_read_ops.end(), [](basic_read_op* op)
 	{
 		op->error(error::make_error_code(error::channel_closed));
 		delete op;
