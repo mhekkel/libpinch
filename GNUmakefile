@@ -56,8 +56,8 @@ ZEEP_LIB_DIR		= $(ZEEP_DIR:%=%/libs)
 ZEEP_LIBS			= webapp rest http xml el generic
 ZEEP_LIBS			:= $(ZEEP_LIBS:%=zeep-%)
 
-BOOST_INC_DIR       = $(BOOST:%=%/include)
-BOOST_LIB_DIR       = $(BOOST:%=%/lib)
+BOOST_INC_DIR       = $(BOOST:%=%/)
+BOOST_LIB_DIR       = $(BOOST:%=%/stage/lib)
 
 BOOST_LIBS          = system thread filesystem regex random program_options date_time locale coroutine
 BOOST_LIBS          := $(BOOST_LIBS:%=boost_%$(BOOST_LIB_SUFFIX))
