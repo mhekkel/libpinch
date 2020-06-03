@@ -41,10 +41,10 @@ class hash
 						{
 							opacket p;
 							p << v;
-							return update(static_cast<std::vector<uint8>>(p));
+							return update(static_cast<std::vector<uint8_t>>(p));
 						}
 
-	hash&				update(const std::vector<uint8>& v)
+	hash&				update(const std::vector<uint8_t>& v)
 						{
 							m_hash.Update(&v[0], v.size());
 							return *this;
@@ -52,7 +52,7 @@ class hash
 						
 	hash&				update(const std::string& v)
 						{
-							m_hash.Update(reinterpret_cast<const uint8*>(v.c_str()), v.length());
+							m_hash.Update(reinterpret_cast<const uint8_t*>(v.c_str()), v.length());
 							return *this;
 						}
 						
@@ -62,15 +62,15 @@ class hash
 							return *this;
 						}
 						
-	hash&				update(uint8 v)
+	hash&				update(uint8_t v)
 						{
 							m_hash.Update(&v, 1);
 							return *this;
 						}
 	
-	std::vector<uint8>	final()
+	std::vector<uint8_t>	final()
 						{
-							std::vector<uint8> result(m_hash.DigestSize());
+							std::vector<uint8_t> result(m_hash.DigestSize());
 							m_hash.Final(&result[0]);
 							return result;
 						}
@@ -90,8 +90,8 @@ hash<H>& operator|(hash<H>& h, T t)
 
 // --------------------------------------------------------------------
 	
-key_exchange::key_exchange(const string& host_version, vector<uint8>& session_id,
-	const vector<uint8>& my_payload, const vector<uint8>& host_payload)
+key_exchange::key_exchange(const string& host_version, vector<uint8_t>& session_id,
+	const vector<uint8_t>& my_payload, const vector<uint8_t>& host_payload)
 	: m_session_id(session_id), m_host_version(host_version)
 	, m_host_payload(host_payload), m_my_payload(my_payload)
 {
@@ -156,7 +156,7 @@ void key_exchange::process_kex_dh_reply(ipacket& in, opacket& out, boost::system
 			h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
 		}
 	
-		vector<uint8> pk_rs_d = pk_rs;
+		vector<uint8_t> pk_rs_d = pk_rs;
 		if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
 			ec = error::make_error_code(error::host_key_verification_failed);
 		else
@@ -179,11 +179,11 @@ void key_exchange::derive_keys()
 	for (int i = 0; i < 6; ++i)
 	{
 		hash<HashAlgorithm> ha;
-		vector<uint8> key = (ha | m_K | m_H | ('A' + i) | m_session_id).final();
+		vector<uint8_t> key = (ha | m_K | m_H | ('A' + i) | m_session_id).final();
 		
 		for (int k = 20; k < keylen; k += 20)
 		{
-			vector<uint8> k2 = (ha | m_K | m_H | key).final();
+			vector<uint8_t> k2 = (ha | m_K | m_H | key).final();
 			key.insert(key.end(), k2.begin(), k2.end());
 		}
 		
@@ -197,8 +197,8 @@ class key_exchange_dh_group : public key_exchange
 {
   public:
 							key_exchange_dh_group(const Integer& p,
-								const string& host_version, vector<uint8>& session_id,
-								const vector<uint8>& my_payload, const vector<uint8>& host_payload)
+								const string& host_version, vector<uint8_t>& session_id,
+								const vector<uint8_t>& my_payload, const vector<uint8_t>& host_payload)
 								: key_exchange(host_version, session_id, my_payload, host_payload)
 							{
 								m_p = p;
@@ -250,8 +250,8 @@ template<typename HashAlgorithm>
 class key_exchange_dh_gex : public key_exchange
 {
   public:
-							key_exchange_dh_gex(const string& host_version, vector<uint8>& session_id,
-								const vector<uint8>& my_payload, const vector<uint8>& host_payload)
+							key_exchange_dh_gex(const string& host_version, vector<uint8_t>& session_id,
+								const vector<uint8_t>& my_payload, const vector<uint8_t>& host_payload)
 								: key_exchange(host_version, session_id, my_payload, host_payload)
 							{
 							}
@@ -260,7 +260,7 @@ class key_exchange_dh_gex : public key_exchange
 	virtual void			calculate_hash(ipacket& hostkey, Integer& f);
 	virtual void			derive_keys_with_hash();
 
-	static const uint32		kMinGroupSize = 1024,
+	static const uint32_t		kMinGroupSize = 1024,
 							kPreferredGroupSize = 2048,
 							kMaxGroupSize = 8192;
 };
@@ -323,7 +323,7 @@ void key_exchange_dh_gex<HashAlgorithm>::derive_keys_with_hash()
 }
 
 key_exchange* key_exchange::create(const string& key_exchange_alg, const string& host_version,
-	vector<uint8>& session_id, const vector<uint8>& host_payload, const vector<uint8>& my_payload)
+	vector<uint8_t>& session_id, const vector<uint8_t>& host_payload, const vector<uint8_t>& my_payload)
 {
 	// diffie hellman group 1 and group 14 primes
 	const unsigned char

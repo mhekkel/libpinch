@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <vector>
+
 namespace assh
 {
 
@@ -15,9 +17,9 @@ class ssh_private_key_impl
 	void							reference();
 	void							release();
 
-	virtual std::vector<uint8>		sign(const std::vector<uint8>& session_id, const opacket& data) = 0;
+	virtual std::vector<uint8_t>	sign(const std::vector<uint8_t>& session_id, const opacket& data) = 0;
 
-	virtual std::vector<uint8>		get_hash() const = 0;
+	virtual std::vector<uint8_t>	get_hash() const = 0;
 	virtual std::string				get_comment() const = 0;
 
 //	static ssh_private_key_impl*	create_for_hash(const std::string& hash);
@@ -37,7 +39,7 @@ class ssh_private_key_impl
 									ssh_private_key_impl(const ssh_private_key_impl&);
 	ssh_private_key_impl&			operator=(const ssh_private_key_impl&);
 	
-	int32							m_refcount;
+	int32_t							m_refcount;
 };
 
 void expose_pageant(bool expose);

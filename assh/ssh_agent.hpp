@@ -38,9 +38,9 @@ class ssh_private_key
 						ssh_private_key(const ssh_private_key& key);
 	ssh_private_key&	operator=(const ssh_private_key& key);
 
-	std::vector<uint8>	sign(const std::vector<uint8>& session_id, const opacket& data);
+	std::vector<uint8_t>	sign(const std::vector<uint8_t>& session_id, const opacket& data);
 
-	std::vector<uint8>	get_hash() const;
+	std::vector<uint8_t>	get_hash() const;
 	std::string			get_comment() const;
 	
 						operator bool() const							{ return m_impl != nullptr; }
@@ -72,7 +72,7 @@ class ssh_agent
 	typedef std::vector<ssh_private_key>	ssh_private_key_list;
 	typedef ssh_private_key_list::iterator	iterator;
 
-	uint32				size() const				{ return m_private_keys.size(); }
+	uint32_t				size() const				{ return m_private_keys.size(); }
 	bool				empty() const				{ return m_private_keys.empty(); }
 
 	iterator			begin()						{ return m_private_keys.begin(); }

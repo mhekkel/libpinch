@@ -27,7 +27,7 @@ namespace assh
 // We support Pageant compatible signing.
 
 const wchar_t kPageantName[] = L"Pageant";
-const uint32 AGENT_COPYDATA_ID = 0x804e50ba;   /* random goop */
+const uint32_t AGENT_COPYDATA_ID = 0x804e50ba;   /* random goop */
 
 class MCertificateStore
 {
@@ -132,7 +132,7 @@ bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer
 		RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
 	    0, nullptr, &cbPublicKeyStruc))
 	{
-		vector<uint8> b(cbPublicKeyStruc);
+		vector<uint8_t> b(cbPublicKeyStruc);
 		
 		if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
 			RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
@@ -146,7 +146,7 @@ bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer
 				byte* data = reinterpret_cast<byte*>(&b[0] + sizeof(RSAPUBKEY) + sizeof(PUBLICKEYSTRUC));
 				
 				// public key is in little endian format
-				uint32 len = pkd->bitlen / 8;
+				uint32_t len = pkd->bitlen / 8;
 				reverse(data, data + len);
 
 				e = pkd->pubexp;
@@ -170,7 +170,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 		{
 			case WM_COPYDATA:
 			{
-				uint8* p = nullptr;
+				uint8_t* p = nullptr;
 				HANDLE mapFile = nullptr;
 				
 				do
@@ -188,7 +188,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 					if (mapFile == nullptr or mapFile == INVALID_HANDLE_VALUE)
 						break;
 					
-					p = reinterpret_cast<uint8*>(::MapViewOfFile(mapFile, FILE_MAP_WRITE, 0, 0, 0));
+					p = reinterpret_cast<uint8_t*>(::MapViewOfFile(mapFile, FILE_MAP_WRITE, 0, 0, 0));
 					if (p == nullptr)
 						break;
 					
@@ -218,7 +218,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 					
 					if (::EqualSid(mapOwner, procOwner))
 					{
-						uint32 len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+						uint32_t len = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
 						if (len < 10240)
 						{
 							ipacket in(p + 4, len);
@@ -229,7 +229,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 							opacket wrapped;
 							wrapped << out;
 							
-							const vector<uint8>& data(wrapped);
+							const vector<uint8_t>& data(wrapped);
 				
 							copy(data.begin(), data.end(), p);
 							result = 1;
@@ -284,9 +284,9 @@ class MWinSshPrivateKeyImpl : public ssh_private_key_impl
 		  						Integer& e, Integer& n);
 	virtual					~MWinSshPrivateKeyImpl();
 
-	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
+	virtual vector<uint8_t>	sign(const vector<uint8_t>& session_id, const opacket& p);
 
-	virtual vector<uint8>	get_hash() const;
+	virtual vector<uint8_t>	get_hash() const;
 	virtual string			get_comment() const;
 
   private:
@@ -306,13 +306,13 @@ MWinSshPrivateKeyImpl::~MWinSshPrivateKeyImpl()
 		::CertFreeCertificateContext(mCertificateContext);
 }
 
-vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const opacket& inData)
+vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t>& session_id, const opacket& inData)
 {
 	BOOL freeKey = false;
 	DWORD keySpec, cb;
 	HCRYPTPROV key;
 	
-	vector<uint8> digest;
+	vector<uint8_t> digest;
 	
 	if (::CryptAcquireCertificatePrivateKey(mCertificateContext, 0, nullptr, &key, &keySpec, &freeKey))
 	{
@@ -320,7 +320,7 @@ vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const
 
 		if (::CryptCreateHash(key, CALG_SHA1, 0, 0, &hash))
 		{
-			const vector<uint8>& data(inData);
+			const vector<uint8_t>& data(inData);
 			
 			if ((session_id.size() == 0 or ::CryptHashData(hash, &session_id[0], session_id.size(), 0)) and
 				(data.size() == 0 or ::CryptHashData(hash, &data[0], data.size(), 0)))
@@ -330,7 +330,7 @@ vector<uint8> MWinSshPrivateKeyImpl::sign(const vector<uint8>& session_id, const
 				
 				if (cb > 0)
 				{
-					digest = vector<uint8>(cb);
+					digest = vector<uint8_t>(cb);
 					
 					if (::CryptSignHash(hash, keySpec, nullptr, 0, &digest[0], &cb))
 					{
@@ -383,10 +383,10 @@ string MWinSshPrivateKeyImpl::get_comment() const
 	return comment;
 }
 
-vector<uint8> MWinSshPrivateKeyImpl::get_hash() const
+vector<uint8_t> MWinSshPrivateKeyImpl::get_hash() const
 {
 	// create a hash for this key
-	vector<uint8> result(20);	// SHA1 hash is always 20 bytes
+	vector<uint8_t> result(20);	// SHA1 hash is always 20 bytes
 	DWORD cbHash = 20;
 			
 	if (not ::CertGetCertificateContextProperty(mCertificateContext,

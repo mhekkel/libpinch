@@ -21,7 +21,7 @@ namespace ip = boost::asio::ip;
 namespace assh
 {
 
-forwarding_channel::forwarding_channel(basic_connection* inConnection, const string& remote_addr, uint16 remote_port)
+forwarding_channel::forwarding_channel(std::shared_ptr<basic_connection> inConnection, const string& remote_addr, int16_t remote_port)
 	: channel(inConnection), m_remote_address(remote_addr), m_remote_port(remote_port)
 {
 }
@@ -32,12 +32,12 @@ void forwarding_channel::fill_open_opacket(opacket& out)
 
 	//boost::asio::ip::address originator = get_socket().remote_endpoint().address();
 	//string originator_address = boost::lexical_cast<string>(originator);
-	//uint16 originator_port = get_socket().remote_endpoint().port();
+	//int16_t originator_port = get_socket().remote_endpoint().port();
 
 	string originator_address = "127.0.0.1";
-	uint16 originator_port = 80;
+	int16_t originator_port = 80;
 
-	out << m_remote_address << uint32(m_remote_port) << originator_address << uint32(originator_port);
+	out << m_remote_address << uint32_t(m_remote_port) << originator_address << uint32_t(originator_port);
 }
 
 // --------------------------------------------------------------------
@@ -45,7 +45,7 @@ void forwarding_channel::fill_open_opacket(opacket& out)
 class forwarding_connection : public enable_shared_from_this<forwarding_connection>
 {
   public:
-	forwarding_connection(basic_connection* ssh_connection)
+	forwarding_connection(std::shared_ptr<basic_connection> ssh_connection)
 		: m_socket(ssh_connection->get_io_service())
 	{
 	}
@@ -118,33 +118,28 @@ typedef function<shared_ptr<forwarding_connection>()> forwarding_connection_fact
 class bound_port : public enable_shared_from_this<bound_port>
 {
   public:
-	bound_port(basic_connection* connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory);
-	virtual ~bound_port()
-	{
-		m_connection->release();
-	}
+	bound_port(std::shared_ptr<basic_connection> connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory);
 
-	void listen(const string& local_address, uint16 local_port);
+	void listen(const string& local_address, int16_t local_port);
 
   private:
 	virtual void handle_accept(const boost::system::error_code& ec);
 	
-	basic_connection* m_connection;
+	std::shared_ptr<basic_connection> m_connection;
 	ip::tcp::acceptor m_acceptor;
 	ip::tcp::resolver m_resolver;
 	shared_ptr<forwarding_connection> m_new_connection;
 	forwarding_connection_factory m_connection_factory;
 };
 
-bound_port::bound_port(basic_connection* connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory)
+bound_port::bound_port(std::shared_ptr<basic_connection> connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory)
 	: m_connection(connection)
 	, m_acceptor(connection->get_io_service()), m_resolver(connection->get_io_service())
 	, m_connection_factory(move(connection_factory))
 {
-	m_connection->reference();
 }
 
-void bound_port::listen(const string& local_address, uint16 local_port)
+void bound_port::listen(const string& local_address, int16_t local_port)
 {
 	ip::tcp::resolver::query query(local_address, boost::lexical_cast<string>(local_port));
 
@@ -187,7 +182,7 @@ class port_forwarding_connection : public forwarding_connection
 {
   public:	
 
-	port_forwarding_connection(basic_connection* ssh_connection, const string& remote_addr, uint16 remote_port)
+	port_forwarding_connection(std::shared_ptr<basic_connection> ssh_connection, const string& remote_addr, int16_t remote_port)
 		: forwarding_connection(ssh_connection)
 	{
 		m_channel.reset(new forwarding_channel(ssh_connection, remote_addr, remote_port));
@@ -210,23 +205,23 @@ class socks5_forwarding_connection : public forwarding_connection
 {
   public:
 
-	socks5_forwarding_connection(basic_connection* inConnection)
+	socks5_forwarding_connection(std::shared_ptr<basic_connection> inConnection)
 		: forwarding_connection(inConnection), m_connection(inConnection) {}
 
 	virtual void start();
 
-	void write_error(uint8 error_code);
+	void write_error(uint8_t error_code);
 	void wrote_error();
 
 	void handshake(const boost::system::error_code& ec, size_t bytes_transferred);
-	void channel_open(const boost::system::error_code& ec, const string& remote_address, uint16 remote_port, bool socks4);
+	void channel_open(const boost::system::error_code& ec, const string& remote_address, int16_t remote_port, bool socks4);
 
 	shared_ptr<socks5_forwarding_connection> self() { return dynamic_pointer_cast<socks5_forwarding_connection>(shared_from_this()); }
 
   private:
-	basic_connection* m_connection;
-	vector<uint8> m_buffer;
-	uint8 m_mini_buffer[1];
+	std::shared_ptr<basic_connection> m_connection;
+	vector<uint8_t> m_buffer;
+	uint8_t m_mini_buffer[1];
 
 	enum
 	{
@@ -300,10 +295,10 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 		case SOCKS4_CONNECTION_REQUEST_USER_ID:
 			if (m_mini_buffer[0] == 0)
 			{
-				uint8* p = &m_buffer[0];
+				uint8_t* p = &m_buffer[0];
 
 				string remote_address;
-				uint16 remote_port;
+				int16_t remote_port;
 
 				remote_port = *p++;
 				remote_port = (remote_port << 8) | *p++;
@@ -330,17 +325,20 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 		{
 			if (m_mini_buffer[0] == 0)
 			{
-				uint8* p = &m_buffer[0];
+				uint8_t* p = &m_buffer[0];
 
 				string remote_address(m_buffer.begin() + 2, m_buffer.end());
-				uint16 remote_port;
+				int16_t remote_port;
 
 				remote_port = *p++;
 				remote_port = (remote_port << 8) | *p++;
 
 				m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
-				m_channel->async_open(boost::bind(&socks5_forwarding_connection::channel_open, self(),
-					boost::asio::placeholders::error, remote_address, remote_port, true));
+
+				auto self = shared_from_this();
+				m_channel->async_open([self, this, remote_address, remote_port](boost::system::error_code ec, size_t) {
+					channel_open(ec, remote_address, remote_port, true);
+				});
 			}
 			else
 			{
@@ -369,7 +367,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 			if (m_buffer[0] == '\x05' and m_buffer[1] == '\x01' and
 				(m_buffer[3] == '\x01' or m_buffer[3] == '\x03' or m_buffer[3] == '\x04'))
 			{
-				uint8 atyp = m_buffer[3];
+				uint8_t atyp = m_buffer[3];
 				switch (atyp)
 				{
 					case '\x01':
@@ -402,10 +400,10 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 		case SOCKS5_CONNECTION_REQUEST_IPV6:
 		case SOCKS5_CONNECTION_REQUEST_FQDN_2:
 		{
-			uint8* p = &m_buffer[0];
+			uint8_t* p = &m_buffer[0];
 
 			string remote_address;
-			uint16 remote_port;
+			int16_t remote_port;
 
 			switch (m_state)
 			{
@@ -439,20 +437,22 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 			remote_port = (remote_port << 8) | *p;
 
 			m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
-			m_channel->async_open(boost::bind(&socks5_forwarding_connection::channel_open, self(),
-				boost::asio::placeholders::error, remote_address, remote_port, false));
+			auto self = shared_from_this();
+			m_channel->async_open([self, this, remote_address, remote_port](boost::system::error_code ec, size_t) {
+				channel_open(ec, remote_address, remote_port, false);
+			});
 			break;
 		}
 	}
 }
 
-void socks5_forwarding_connection::channel_open(const boost::system::error_code& ec, const string& remote_address, uint16 remote_port, bool socks4)
+void socks5_forwarding_connection::channel_open(const boost::system::error_code& ec, const string& remote_address, int16_t remote_port, bool socks4)
 {
 	if (not ec)
 	{
 		if (socks4)
 		{
-			m_buffer = { 0, 0x5a, static_cast<uint8>(remote_port >> 8), static_cast<uint8>(remote_port), 127, 0, 0, 1 };
+			m_buffer = { 0, 0x5a, static_cast<uint8_t>(remote_port >> 8), static_cast<uint8_t>(remote_port), 127, 0, 0, 1 };
 		}
 		else
 		{
@@ -461,10 +461,10 @@ void socks5_forwarding_connection::channel_open(const boost::system::error_code&
 			m_buffer[1] = '\x00';
 			m_buffer[2] = 0;
 			m_buffer[3] = '\x03';
-			m_buffer[4] = static_cast<uint8>(remote_address.length());
+			m_buffer[4] = static_cast<uint8_t>(remote_address.length());
 			copy(remote_address.begin(), remote_address.end(), m_buffer.begin() + 5);
-			m_buffer[m_buffer.size() - 2] = static_cast<uint8>(remote_port >> 8);
-			m_buffer[m_buffer.size() - 1] = static_cast<uint8>(remote_port);
+			m_buffer[m_buffer.size() - 2] = static_cast<uint8_t>(remote_port >> 8);
+			m_buffer[m_buffer.size() - 1] = static_cast<uint8_t>(remote_port);
 		}
 
 		boost::asio::async_write(m_socket, boost::asio::buffer(m_buffer),
@@ -488,12 +488,12 @@ void socks5_forwarding_connection::wrote_error()
 //{
 //	boost::system::error_code ec;
 //	string remote_address;
-//	uint16 remote_port;
+//	int16_t remote_port;
 //	enum { SOCKS4, SOCKS4a, SOCKS5 } version;
 //
 //	for (;;)
 //	{
-//		vector<uint8> buffer({ 0, 0 });
+//		vector<uint8_t> buffer({ 0, 0 });
 //
 //		size_t l = boost::asio::async_read(m_socket, boost::asio::buffer(buffer), yield[ec]);
 //		if (ec or l != 2) break;
@@ -507,7 +507,7 @@ void socks5_forwarding_connection::wrote_error()
 //			l = boost::asio::async_read(m_socket, boost::asio::buffer(buffer), yield[ec]);
 //			if (ec or l != 4) break;
 //
-//			uint8* p = &buffer[0];
+//			uint8_t* p = &buffer[0];
 //
 //			remote_port = *p++;
 //			remote_port = (remote_port << 8) | *p++;
@@ -552,7 +552,7 @@ void socks5_forwarding_connection::wrote_error()
 //				(buffer[3] != '\x01' and buffer[3] != '\x03' and buffer[3] != '\x04'))
 //				break;
 //
-//			uint8 atyp = buffer[3];
+//			uint8_t atyp = buffer[3];
 //			switch (atyp)
 //			{
 //				case '\x01':
@@ -573,12 +573,12 @@ void socks5_forwarding_connection::wrote_error()
 //
 //			if (buffer.size() == 1)
 //			{
-//				buffer.resize(uint32(buffer[0]) + 2);
+//				buffer.resize(uint32_t(buffer[0]) + 2);
 //
 //				l = boost::asio::async_read(m_socket, boost::asio::buffer(buffer), yield);
 //				if (ec or l != buffer.size()) break;
 //
-//				uint8* p = &buffer[0];
+//				uint8_t* p = &buffer[0];
 //
 //				remote_address.assign(p, p + buffer.size() - 2);
 //				p += buffer.size() - 2;
@@ -588,7 +588,7 @@ void socks5_forwarding_connection::wrote_error()
 //			}
 //			else
 //			{
-//				uint8* p = &buffer[0];
+//				uint8_t* p = &buffer[0];
 //
 //				switch (atyp)
 //				{
@@ -630,10 +630,10 @@ void socks5_forwarding_connection::wrote_error()
 //			buffer[1] = '\x00';
 //			buffer[2] = 0;
 //			buffer[3] = '\x03';
-//			buffer[4] = static_cast<uint8>(remote_address.length());
+//			buffer[4] = static_cast<uint8_t>(remote_address.length());
 //			copy(remote_address.begin(), remote_address.end(), buffer.begin() + 5);
-//			buffer[buffer.size() - 2] = static_cast<uint8>(remote_port >> 8);
-//			buffer[buffer.size() - 1] = static_cast<uint8>(remote_port);
+//			buffer[buffer.size() - 2] = static_cast<uint8_t>(remote_port >> 8);
+//			buffer[buffer.size() - 1] = static_cast<uint8_t>(remote_port);
 //		}
 //		else if (version == SOCKS4)
 //			buffer = { 0, '\x5a', 0, 0 };
@@ -661,7 +661,7 @@ void socks5_forwarding_connection::wrote_error()
 
 // --------------------------------------------------------------------
 
-port_forward_listener::port_forward_listener(basic_connection* connection)
+port_forward_listener::port_forward_listener(std::shared_ptr<basic_connection> connection)
 	: m_connection(connection)
 {
 }
@@ -671,8 +671,8 @@ port_forward_listener::~port_forward_listener()
 	//for_each(m_bound_ports.begin(), m_bound_ports.end(), [](bound_port* e) { delete e; });
 }
 
-void port_forward_listener::forward_port(const string& local_addr, uint16 local_port,
-	const string& remote_address, uint16 remote_port)
+void port_forward_listener::forward_port(const string& local_addr, int16_t local_port,
+	const string& remote_address, int16_t remote_port)
 {
 	shared_ptr<bound_port> p(new bound_port(m_connection, *this,
 		[this, remote_address, remote_port]() -> shared_ptr<forwarding_connection>
@@ -683,7 +683,7 @@ void port_forward_listener::forward_port(const string& local_addr, uint16 local_
 	p->listen(local_addr, local_port);
 }
 
-void port_forward_listener::forward_socks5(const string& local_addr, uint16 local_port)
+void port_forward_listener::forward_socks5(const string& local_addr, int16_t local_port)
 {
 	shared_ptr<bound_port> p(new bound_port(m_connection, *this,
 		[this]() -> shared_ptr<forwarding_connection>

@@ -42,7 +42,7 @@ void terminal_channel::opened()
 		send_request_and_command("exec", m_command);
 }
 
-void terminal_channel::open_with_pty(uint32 width, uint32 height,
+void terminal_channel::open_with_pty(uint32_t width, uint32_t height,
 	const string& terminal_type, bool forward_agent, bool forward_x11,
 	const string& ssh_command)
 {
@@ -56,13 +56,13 @@ void terminal_channel::open_with_pty(uint32 width, uint32 height,
 	open();
 }
 
-void terminal_channel::send_window_resize(uint32 width, uint32 height)
+void terminal_channel::send_window_resize(uint32_t width, uint32_t height)
 {
 	opacket out(msg_channel_request);
 	out << m_host_channel_id
 		<< "window-change" << false
 		<< width << height
-		<< uint32(0) << uint32(0);
+		<< uint32_t(0) << uint32_t(0);
 	m_connection->async_write(move(out));
 }
 	

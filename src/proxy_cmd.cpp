@@ -22,7 +22,7 @@ namespace assh
 class proxy_channel : public channel
 {
   public:
-					proxy_channel(basic_connection* connection, const string& nc_cmd, const string& user, const string& host, uint16 port)
+					proxy_channel(basic_connection* connection, const string& nc_cmd, const string& user, const string& host, int16_t port)
 						: channel(connection), m_cmd(nc_cmd)
 					{
 						ba::replace_regex(m_cmd, boost::regex("(?<!%)%r"), user);
@@ -41,7 +41,7 @@ class proxy_channel : public channel
 
 // --------------------------------------------------------------------
 
-proxied_connection::proxied_connection(basic_connection* proxy, const string& nc_cmd, const string& user, const string& host, uint16 port)
+proxied_connection::proxied_connection(basic_connection* proxy, const string& nc_cmd, const string& user, const string& host, int16_t port)
 	: basic_connection(proxy->get_io_service(), user)
 	, m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
 {
@@ -88,7 +88,7 @@ void proxied_connection::start_handshake()
 		basic_connection::start_handshake();
 }
 
-bool proxied_connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8>& host_key)
+bool proxied_connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8_t>& host_key)
 {
 	return m_validate_host_key_cb and m_validate_host_key_cb(m_host, pk_alg, host_key);
 }
@@ -113,7 +113,7 @@ void proxied_connection::async_read_version_string()
 	});
 }
 
-void proxied_connection::async_read(uint32 at_least)
+void proxied_connection::async_read(uint32_t at_least)
 {
 	boost::asio::async_read(*m_channel, m_response, boost::asio::transfer_at_least(at_least),
 		[this](const boost::system::error_code& ec, size_t bytes_transferred)

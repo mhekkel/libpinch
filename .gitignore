@@ -1,0 +1,7 @@
+autom4te.cache
+config.log
+config.status
+GNUmakefile
+aclocal.m4
+obj
+obj.dbg

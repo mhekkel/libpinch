@@ -55,19 +55,19 @@ class sftp_channel : public channel
 
 	struct file_attributes
 	{
-		uint64		size;
-		uint32		gid;
-		uint32		uid;
-		uint32		permissions;
-		uint32		atime;
-		uint32		mtime;
+		int64_t		size;
+		uint32_t		gid;
+		uint32_t		uid;
+		uint32_t		permissions;
+		uint32_t		atime;
+		uint32_t		mtime;
 		std::list<std::pair<std::string,std::string>>
 					extended;
 	};
 
 	struct sftp_reply_handler
 	{
-						sftp_reply_handler(uint32 id) : m_id(id) {}
+						sftp_reply_handler(uint32_t id) : m_id(id) {}
 		virtual			~sftp_reply_handler() {}
 		
 		virtual void	handle_status(const boost::system::error_code& ec, 
@@ -75,7 +75,7 @@ class sftp_channel : public channel
 
 		virtual void	handle_handle(const std::string& handle, opacket& out);
 
-		uint32			m_id;
+		uint32_t			m_id;
 		std::string		m_handle;
 	};
 	typedef std::list<sftp_reply_handler*>	sftp_reply_handler_list;
@@ -87,14 +87,14 @@ class sftp_channel : public channel
 
 	struct handle_read_dir_base : public sftp_reply_handler
 	{
-						handle_read_dir_base(uint32 id) : sftp_reply_handler(id) {}
+						handle_read_dir_base(uint32_t id) : sftp_reply_handler(id) {}
 		virtual bool	handle_name(const std::string& name, const std::string& longname, const file_attributes& attr) = 0;
 	};
 
 	template<typename Handler>
 	struct handle_read_dir : public handle_read_dir_base
 	{
-						handle_read_dir(uint32 id, Handler&& handler)
+						handle_read_dir(uint32_t id, Handler&& handler)
 							: handle_read_dir_base(id), m_handler(handler) {}
 
 		virtual void	handle_status(const boost::system::error_code& ec, 
@@ -137,19 +137,19 @@ class sftp_channel : public channel
 
 	void					write(opacket&& out);
 
-	sftp_reply_handler*		fetch_handler(uint32 id);
-	void					handle_status(uint32 id, const boost::system::error_code& ec,
+	sftp_reply_handler*		fetch_handler(uint32_t id);
+	void					handle_status(uint32_t id, const boost::system::error_code& ec,
 								const std::string& message, const std::string& language_tag,
 								opacket& out);
-	void					handle_handle(uint32 id, const std::string& handle, opacket& out);
-	void					handle_data(uint32 id, const char* data, size_t size, opacket& out);
-	bool					handle_name(uint32 id, const std::string& name,
+	void					handle_handle(uint32_t id, const std::string& handle, opacket& out);
+	void					handle_data(uint32_t id, const char* data, size_t size, opacket& out);
+	bool					handle_name(uint32_t id, const std::string& name,
 								const std::string& longname, const file_attributes& attr,
 								opacket& out);
-	void					handle_attrs(uint32 id, const file_attributes& attr, opacket& out);
+	void					handle_attrs(uint32_t id, const file_attributes& attr, opacket& out);
 
-	uint32					m_request_id;
-	uint32					m_version;
+	uint32_t					m_request_id;
+	uint32_t					m_version;
 	ipacket					m_packet;
 	sftp_reply_handler_list	m_handlers;
 };

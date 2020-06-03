@@ -14,11 +14,11 @@ using namespace CryptoPP;
 namespace assh
 {
 
-uint32 channel::s_next_channel_id = 1;
+uint32_t channel::s_next_channel_id = 1;
 
-channel::channel(basic_connection* inConnection)
+channel::channel(std::shared_ptr<basic_connection> inConnection)
 	: m_connection(inConnection)
-	, m_open_handler(nullptr)
+	// , m_open_handler(nullptr)
 	, m_max_send_packet_size(0)
 	, m_channel_open(false)
 	, m_send_pending(false)
@@ -28,7 +28,6 @@ channel::channel(basic_connection* inConnection)
 	, m_host_window_size(0)
 	, m_eof(false)
 {
-	m_connection->reference();
 }
 
 channel::~channel()
@@ -44,14 +43,14 @@ channel::~channel()
 		catch (...) {}
 	}
 	
-	if (m_open_handler)
-		m_open_handler->cancel();
+	// if (m_open_handler)
+	// 	m_open_handler->cancel();
 
-	if (m_connection != nullptr)
-		m_connection->release();
+	// if (m_connection != nullptr)
+	// 	m_connection->release();
 
-	m_open_handler = nullptr;
-//	delete m_open_handler;
+	// m_open_handler = nullptr;
+	// delete m_open_handler;
 }
 
 boost::asio::io_service& channel::get_io_service()
@@ -77,9 +76,9 @@ void channel::open()
 		{
 			if (ec)
 			{
-				if (m_open_handler)
-					m_open_handler->handle_open_result(ec);
-				else
+				// if (m_open_handler)
+				// 	m_open_handler->handle_open_result(ec);
+				// else
 					this->error(ec.message(), "en");
 			}
 			else
@@ -96,23 +95,23 @@ void channel::open()
 
 void channel::opened()
 {
-	if (m_open_handler)
-	{
-		m_open_handler->handle_open_result(boost::system::error_code());
-		delete m_open_handler;
-		m_open_handler = nullptr;
-	}
+	// if (m_open_handler)
+	// {
+	// 	m_open_handler->handle_open_result(boost::system::error_code());
+	// 	delete m_open_handler;
+	// 	m_open_handler = nullptr;
+	// }
 }
 
 void channel::close()
 {
-	if (m_open_handler)
-	{
-		auto handler = m_open_handler;
-		m_open_handler = nullptr;
-		handler->handle_open_result(make_error_code(error::by_application));
-		delete handler;
-	}
+	// if (m_open_handler)
+	// {
+	// 	auto handler = m_open_handler;
+	// 	m_open_handler = nullptr;
+	// 	handler->handle_open_result(make_error_code(error::by_application));
+	// 	delete handler;
+	// }
 
 	m_connection->close_channel(shared_from_this(), m_host_channel_id);
 }
@@ -176,7 +175,7 @@ void channel::init(ipacket& in, opacket& out)
 	in >> m_host_window_size >> m_max_send_packet_size;
 }
 
-void channel::open_pty(uint32 width, uint32 height,
+void channel::open_pty(uint32_t width, uint32_t height,
 	const string& terminal_type, bool forward_agent, bool forward_x11,
 	const environment& env)
 {
@@ -188,7 +187,7 @@ void channel::open_pty(uint32 width, uint32 height,
 			<< false << false
 			<< "MIT-MAGIC-COOKIE-1"
 			<< "0000000000000000"
-			<< uint32(0);
+			<< uint32_t(0);
 		m_connection->async_write(move(out));
 	}
 
@@ -220,7 +219,7 @@ void channel::open_pty(uint32 width, uint32 height,
 		<< true				// confirmation, ignore it?
 		<< terminal_type
 		<< width << height
-		<< uint32(0) << uint32(0)
+		<< uint32_t(0) << uint32_t(0)
 		<< "";
 	m_connection->async_write(move(out));
 }
@@ -260,7 +259,7 @@ void channel::process(ipacket& in)
 
 		case msg_channel_open_failure:
 		{
-			uint32 reasonCode;
+			uint32_t reasonCode;
 			string reason;
 			
 			in >> reasonCode >> reason;
@@ -269,12 +268,12 @@ void channel::process(ipacket& in)
 
 			m_connection->close_channel(shared_from_this(), 0);
 			
-			if (m_open_handler)
-			{
-				m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
-				delete m_open_handler;
-				m_open_handler = nullptr;
-			}
+			// if (m_open_handler)
+			// {
+			// 	m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
+			// 	delete m_open_handler;
+			// 	m_open_handler = nullptr;
+			// }
 
 			break;
 		}
@@ -290,7 +289,7 @@ void channel::process(ipacket& in)
 
 		case msg_channel_window_adjust:
 		{
-			int32 extra;
+			int32_t extra;
 			in >> extra;
 			m_host_window_size += extra;
 			send_pending();
@@ -310,7 +309,7 @@ void channel::process(ipacket& in)
 		case msg_channel_extended_data:
 			if (m_channel_open)
 			{
-				uint32 type;
+				uint32_t type;
 				pair<const char*,size_t> data;
 				in >> type >> data;
 				m_my_window_size -= data.second;
@@ -348,7 +347,7 @@ void channel::process(ipacket& in)
 
 	if (m_channel_open and m_my_window_size < kWindowSize - 2 * kMaxPacketSize)
 	{
-		uint32 adjust = kWindowSize - m_my_window_size;
+		uint32_t adjust = kWindowSize - m_my_window_size;
 		m_my_window_size += adjust;
 
 		opacket out(msg_channel_window_adjust);
@@ -385,7 +384,7 @@ void channel::receive_data(const char* data, size_t size)
 	push_received();
 }
 
-void channel::receive_extended_data(const char* data, size_t size, uint32 type)
+void channel::receive_extended_data(const char* data, size_t size, uint32_t type)
 {
 }
 
@@ -465,7 +464,7 @@ void exec_channel::opened()
 
 void exec_channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
 {
-	int32 status = 1;
+	int32_t status = 1;
 	
 	if (request == "exit-status")
 		in >> status;

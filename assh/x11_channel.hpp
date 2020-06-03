@@ -42,7 +42,7 @@ class x11_channel : public channel
 							m_impl;
 	bool					m_verified;
 	std::string				m_auth_protocol, m_auth_data;
-	std::vector<uint8>		m_packet;
+	std::vector<uint8_t>		m_packet;
 	boost::asio::streambuf	m_response;
 };
 

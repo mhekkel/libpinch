@@ -173,7 +173,7 @@ bool x11_channel::check_validation()
 	
 	if (m_packet.size() >= 12)
 	{
-		uint16 pl, dl;
+		int16_t pl, dl;
 		
 		if (m_packet.front() == 'B')
 		{

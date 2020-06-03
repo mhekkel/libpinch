@@ -18,7 +18,7 @@ using namespace std;
 namespace assh
 {
 
-enum sftp_messages : uint8
+enum sftp_messages : uint8_t
 {
 	SSH_FXP_INIT = 1,
 	SSH_FXP_VERSION,
@@ -50,7 +50,7 @@ enum sftp_messages : uint8
 	SSH_FXP_EXTENDED_REPLY
 };
 
-enum sftp_fxattr_flags : uint32
+enum sftp_fxattr_flags : uint32_t
 {
 	SSH_FILEXFER_ATTR_SIZE =          0x00000001,
 	SSH_FILEXFER_ATTR_UIDGID =        0x00000002,
@@ -61,10 +61,10 @@ enum sftp_fxattr_flags : uint32
 
 sftp_fxattr_flags operator|(sftp_fxattr_flags lhs, sftp_fxattr_flags rhs)
 {
-	return sftp_fxattr_flags((uint32)lhs | (uint32)rhs);
+	return sftp_fxattr_flags((uint32_t)lhs | (uint32_t)rhs);
 }
 
-enum sftp_fxf_flags : uint32
+enum sftp_fxf_flags : uint32_t
 {
 	SSH_FXF_READ =   0x00000001,
 	SSH_FXF_WRITE =  0x00000002,
@@ -76,7 +76,7 @@ enum sftp_fxf_flags : uint32
 
 sftp_fxf_flags operator|(sftp_fxf_flags lhs, sftp_fxf_flags rhs)
 {
-	return sftp_fxf_flags((uint32)lhs | (uint32)rhs);
+	return sftp_fxf_flags((uint32_t)lhs | (uint32_t)rhs);
 }
 
 // --------------------------------------------------------------------
@@ -136,7 +136,7 @@ boost::system::error_category& sftp_category()
 
 ipacket& operator>>(ipacket& in, sftp_channel::file_attributes& attr)
 {
-	uint32 flags;
+	uint32_t flags;
 	
 	in >> flags;
 	
@@ -167,7 +167,7 @@ ipacket& operator>>(ipacket& in, sftp_channel::file_attributes& attr)
 	
 	if (flags & SSH_FILEXFER_ATTR_EXTENDED)
 	{
-		uint32 count;
+		uint32_t count;
 		
 		in >> count;
 		while (count-- > 0)
@@ -224,7 +224,7 @@ void sftp_channel::opened()
 	send_request_and_command("subsystem", "sftp");
 	
 	opacket out((message_type)SSH_FXP_INIT);
-	out << uint32(3);
+	out << uint32_t(3);
 	write(move(out));
 }
 
@@ -272,7 +272,7 @@ void sftp_channel::receive_data(const char* data, size_t size)
 
 void sftp_channel::process_packet()
 {
-	uint32 id;
+	uint32_t id;
 
 	m_packet >> id;
 	sftp_reply_handler* handler = fetch_handler(id);
@@ -288,7 +288,7 @@ void sftp_channel::process_packet()
 	{
 		case SSH_FXP_STATUS:
 		{
-			uint32 error;
+			uint32_t error;
 			string message, language_tag;
 			m_packet >> error >> message >> language_tag;
 			handler->handle_status(error::make_error_code(error::sftp_error(error)),
@@ -321,7 +321,7 @@ void sftp_channel::process_packet()
 			handle_read_dir_base* nh = dynamic_cast<handle_read_dir_base*>(handler);
 			if (nh != nullptr)
 			{
-				uint32 count;
+				uint32_t count;
 				m_packet >> count;
 				while (count--)
 				{
@@ -359,7 +359,7 @@ void sftp_channel::process_packet()
 		write(move(out));
 }
 
-sftp_channel::sftp_reply_handler* sftp_channel::fetch_handler(uint32 id)
+sftp_channel::sftp_reply_handler* sftp_channel::fetch_handler(uint32_t id)
 {
 	sftp_reply_handler* result = nullptr;
 	for (sftp_reply_handler* h: m_handlers)

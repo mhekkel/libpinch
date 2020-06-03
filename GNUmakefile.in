@@ -2,23 +2,33 @@
 
 firstTarget: static-lib
 
--include make.config
+CXX					= @CXX@
+CXXFLAGS			= @CXXFLAGS@
 
-VERSION_MAJOR       = 3.5
-VERSION_MINOR       = 0
-VERSION             = $(VERSION_MAJOR).$(VERSION_MINOR)
-DEFINES				+= VERSION='"$(VERSION)"'
+CXXFLAGS			+= @BOOST_CPPFLAGS@
+LDFLAGS				+= @BOOST_LDFLAGS@
 
-LIB_NAME			= libassh
+prefix				= @prefix@
+exec_prefix			= @exec_prefix@
+libdir				= @libdir@
+includedir			= @includedir@
 
-DIST_NAME           = $(LIB_NAME)$(VERSION)
-SO_NAME             = $(LIB_NAME).so.$(VERSION_MAJOR)
-SHARED_LIB_NAME     = $(SO_NAME).$(VERSION_MINOR)
+# VERSION_MAJOR       = 1
+# VERSION_MINOR       = 1
+# VERSION_
+# VERSION             = $(VERSION_MAJOR).$(VERSION_MINOR)
+# DEFINES				+= VERSION='"$(VERSION)"'
+
+LIB_NAME			= @PACKAGE@
+
+# DIST_NAME           = $(LIB_NAME)$(VERSION)
+# SO_NAME             = $(LIB_NAME).so.$(VERSION_MAJOR)
+# SHARED_LIB_NAME     = $(SO_NAME).$(VERSION_MINOR)
 STATIC_LIB_NAME		= $(LIB_NAME).a
 
 OUTPUT				= ./
 
-SHARED_LIB			= $(OUTPUT)/$(SHARED_LIB_NAME)
+# SHARED_LIB			= $(OUTPUT)/$(SHARED_LIB_NAME)
 STATIC_LIB			= $(OUTPUT)/$(STATIC_LIB_NAME)
 
 LIBDIR              ?= $(PREFIX)/lib
@@ -26,44 +36,15 @@ INCDIR              ?= $(PREFIX)/include
 MANDIR              ?= $(PREFIX)/man/man3
 DOCDIR              ?= $(PREFIX)/share/doc/libzeep-doc
 
-CXX			?= clang++
-PACKAGES	+= gtk+-3.0
-
 # main build variables
-# CXX                 ?= clangc++
-CXXFLAGS            += -I. -pthread -std=c++17
+CXXFLAGS            += -I. -pthread
 CXXFLAGS            += -Wall -Wno-multichar
 CXXFLAGS            += -g
 LD                  ?= ld
 LDFLAGS				= -g
 
-SVN					= $(shell which svn)
-MRC					= $(shell which mrc)
-
 # Use the DEBUG flag to build debug versions of the code
-DEBUG               ?= 0
-
-ifneq ($(PACKAGES),)
-CXXFLAGS			+= $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --cflags $(PACKAGES))
-LDFLAGS				+= $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs $(PACKAGES) --static )
-endif
-
-ZEEP_DIR			?= ../../libzeep/
-
-ZEEP_INC_DIR		= $(ZEEP_DIR:%=%/include)
-ZEEP_LIB_DIR		= $(ZEEP_DIR:%=%/libs)
-
-ZEEP_LIBS			= webapp rest http xml el generic
-ZEEP_LIBS			:= $(ZEEP_LIBS:%=zeep-%)
-
-BOOST_INC_DIR       = $(BOOST:%=%/)
-BOOST_LIB_DIR       = $(BOOST:%=%/stage/lib)
-
-BOOST_LIBS          = system thread filesystem regex random program_options date_time locale coroutine
-BOOST_LIBS          := $(BOOST_LIBS:%=boost_%$(BOOST_LIB_SUFFIX))
-
-LIBS                := $(ZEEP_LIBS) $(BOOST_LIBS) stdc++ m pthread $(LIBS)
-LDFLAGS             += $(ZEEP_LIB_DIR:%=-L%) $(BOOST_LIB_DIR:%=-L%) $(LIBS:%=-l%) -g
+DEBUG               = @DEBUG@
 
 ifeq "$(DEBUG)" "1"
 DEFINES				+= DEBUG
@@ -76,7 +57,6 @@ endif
 
 VPATH += src
 
-CXXFLAGS			+= $(ZEEP_INC_DIR:%=-I%) $(BOOST_INC_DIR:%=-I%) -IGtk -IX11
 CXXFLAGS			+= $(DEFINES:%=-D%)
 
 OBJDIR = obj

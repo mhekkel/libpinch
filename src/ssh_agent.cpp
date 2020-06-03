@@ -75,9 +75,9 @@ class ssh_basic_private_key_impl : public ssh_private_key_impl
 		  						m_n = mPrivateKey.GetModulus();
 		  					}
 
-	virtual vector<uint8>	sign(const vector<uint8>& session_id, const opacket& p);
+	virtual vector<uint8_t>	sign(const vector<uint8_t>& session_id, const opacket& p);
 
-	virtual vector<uint8>	get_hash() const	{ return vector<uint8>(); }
+	virtual vector<uint8_t>	get_hash() const	{ return vector<uint8_t>(); }
 	virtual string			get_comment() const	{ return mComment; }
 
   private:
@@ -85,17 +85,17 @@ class ssh_basic_private_key_impl : public ssh_private_key_impl
 	string					mComment;
 };
 
-vector<uint8> ssh_basic_private_key_impl::sign(const vector<uint8>& session_id, const opacket& p)
+vector<uint8_t> ssh_basic_private_key_impl::sign(const vector<uint8_t>& session_id, const opacket& p)
 {
 	AutoSeededRandomPool rng;
 
-	vector<uint8> message(session_id);
-	const vector<uint8>& data(p);
+	vector<uint8_t> message(session_id);
+	const vector<uint8_t>& data(p);
 	message.insert(message.end(), data.begin(), data.end());
 	
 	RSASSA_PKCS1v15_SHA_Signer signer(mPrivateKey);
     size_t length = signer.MaxSignatureLength();
-	vector<uint8> digest(length);
+	vector<uint8_t> digest(length);
 
     signer.SignMessage(rng, &message[0], message.size(), &digest[0]);
 
@@ -135,12 +135,12 @@ ssh_private_key& ssh_private_key::operator=(const ssh_private_key& inKey)
 	return *this;
 }
 
-vector<uint8> ssh_private_key::sign(const vector<uint8>& session_id, const opacket& data)
+vector<uint8_t> ssh_private_key::sign(const vector<uint8_t>& session_id, const opacket& data)
 {
 	return m_impl->sign(session_id, data);
 }
 
-vector<uint8> ssh_private_key::get_hash() const
+vector<uint8_t> ssh_private_key::get_hash() const
 {
 	return m_impl->get_hash();
 }
@@ -179,12 +179,12 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 	switch ((message_type)in)
 	{
 		case SSH_AGENTC_REQUEST_RSA_IDENTITIES:
-			out = opacket(SSH_AGENT_RSA_IDENTITIES_ANSWER) << uint32(0);
+			out = opacket(SSH_AGENT_RSA_IDENTITIES_ANSWER) << uint32_t(0);
 			break;
 
 		case SSH2_AGENTC_REQUEST_IDENTITIES:
 		{
-			out = opacket(SSH2_AGENT_IDENTITIES_ANSWER) << uint32(m_private_keys.size());
+			out = opacket(SSH2_AGENT_IDENTITIES_ANSWER) << uint32_t(m_private_keys.size());
 			
 			for (auto& key: m_private_keys)
 			{
@@ -217,7 +217,7 @@ void ssh_agent::process_agent_request(ipacket& in, opacket& out)
 
 void ssh_agent::update()
 {
-	list<vector<uint8>> deleted;
+	list<vector<uint8_t>> deleted;
 	
 	for (ssh_private_key& key: m_private_keys)
 		deleted.push_back(key.get_hash());
@@ -230,7 +230,7 @@ void ssh_agent::update()
 	
 	connection_list connections(m_registered_connections);
 	
-	for (vector<uint8>& hash: deleted)
+	for (vector<uint8_t>& hash: deleted)
 	{
 		for (basic_connection* connection: connections)
 		{
@@ -263,8 +263,8 @@ void ssh_agent::expose_pageant(bool expose)
 struct ssh_known_ciper_for_private_key
 {
 	string							name;
-	uint32							key_size;
-	uint32							iv_size;
+	uint32_t							key_size;
+	uint32_t							iv_size;
 	function<SymmetricCipher*()>	factory;
 } kKnownCiphers[] = {
 	{ "AES-256-CBC", 32, 16,		[]() -> SymmetricCipher* { return new CBC_Mode<AES>::Decryption; }},

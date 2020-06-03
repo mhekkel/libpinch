@@ -22,7 +22,7 @@ class terminal_channel : public channel
 	virtual void	opened();
 
 	template<typename Handler>
-	void			open_with_pty(uint32 width, uint32 height,
+	void			open_with_pty(uint32_t width, uint32_t height,
 						const std::string& terminal_type,
 						bool forward_agent, bool forward_x11,
 						const std::string& ssh_command,
@@ -38,15 +38,15 @@ class terminal_channel : public channel
 						async_open(std::move(handler));
 					}
 
-	void			open_with_pty(uint32 width, uint32 height,
+	void			open_with_pty(uint32_t width, uint32_t height,
 						const std::string& terminal_type,
 						bool forward_agent, bool forward_x11,
 						const std::string& ssh_command);
 
-	void			send_window_resize(uint32 width, uint32 height);	
+	void			send_window_resize(uint32_t width, uint32_t height);	
 
   protected:
-	uint32			m_width, m_height;
+	uint32_t			m_width, m_height;
 	std::string		m_terminal_type;
 	std::string		m_command;
 	bool			m_forward_agent, m_forward_x11;

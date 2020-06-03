@@ -101,10 +101,10 @@ void opacket::compress(compression_helper& compressor, boost::system::error_code
 	zstream.avail_in = m_data.size();
 	zstream.total_in = 0;
 	
-	vector<uint8> data;
+	vector<uint8_t> data;
 	data.reserve(m_data.size());
 	
-	uint8 buffer[1024];
+	uint8_t buffer[1024];
 	
 	zstream.next_out = buffer;
 	zstream.avail_out = sizeof(buffer);
@@ -135,37 +135,37 @@ void opacket::write(ostream& os, int blocksize) const
 {
 	static r::random_device rng;
 
-	assert(blocksize < numeric_limits<uint8>::max());
+	assert(blocksize < numeric_limits<uint8_t>::max());
 
-	uint8 header[5];
-	vector<uint8> padding;
+	uint8_t header[5];
+	vector<uint8_t> padding;
 	
-	uint32 size = m_data.size() + 5;
-	uint32 padding_size = blocksize - (size % blocksize);
-	if (padding_size == static_cast<uint32>(blocksize))
+	uint32_t size = m_data.size() + 5;
+	uint32_t padding_size = blocksize - (size % blocksize);
+	if (padding_size == static_cast<uint32_t>(blocksize))
 		padding_size = 0;
 
 	while (padding_size < 4)
 		padding_size += blocksize;
 	
-	r::uniform_int_distribution<uint8> rb;
-	for (uint32 i = 0; i < padding_size; ++i)
+	r::uniform_int_distribution<uint8_t> rb;
+	for (uint32_t i = 0; i < padding_size; ++i)
 		padding.push_back(rb(rng));
 	
-	header[4] = static_cast<uint8>(padding_size);
+	header[4] = static_cast<uint8_t>(padding_size);
 	
 	size += padding_size - 4;
-	header[3] = static_cast<uint8>(size);	size >>= 8;
-	header[2] = static_cast<uint8>(size);	size >>= 8;
-	header[1] = static_cast<uint8>(size);	size >>= 8;
-	header[0] = static_cast<uint8>(size);
+	header[3] = static_cast<uint8_t>(size);	size >>= 8;
+	header[2] = static_cast<uint8_t>(size);	size >>= 8;
+	header[1] = static_cast<uint8_t>(size);	size >>= 8;
+	header[0] = static_cast<uint8_t>(size);
 
 	os.write(reinterpret_cast<const char*>(header), 5);
 	os.write(reinterpret_cast<const char*>(&m_data[0]), m_data.size());
 	os.write(reinterpret_cast<const char*>(&padding[0]), padding_size);
 }
 
-//void opacket::append(const uint8* data, uint32 size)
+//void opacket::append(const uint8_t* data, uint32_t size)
 //{
 //	operator<<(size);
 //	m_data.insert(m_data.end(), data, data + size);
@@ -174,18 +174,18 @@ void opacket::write(ostream& os, int blocksize) const
 opacket& opacket::operator<<(const char* v)
 {
 	assert(v != nullptr);
-	uint32 len = strlen(v);
+	uint32_t len = strlen(v);
 	this->operator<<(len);
-	const uint8* s = reinterpret_cast<const uint8*>(v);
+	const uint8_t* s = reinterpret_cast<const uint8_t*>(v);
 	m_data.insert(m_data.end(), s, s + len);
 	return *this;
 }
 
 opacket& opacket::operator<<(const string& v)
 {
-	uint32 len = v.length();
+	uint32_t len = v.length();
 	this->operator<<(len);
-	const uint8* s = reinterpret_cast<const uint8*>(v.c_str());
+	const uint8_t* s = reinterpret_cast<const uint8_t*>(v.c_str());
 	m_data.insert(m_data.end(), s, s + len);
 	return *this;
 }
@@ -213,22 +213,22 @@ opacket& opacket::operator<<(const char* v[])
 
 opacket& opacket::operator<<(const CryptoPP::Integer& v)
 {
-	uint32 n = m_data.size();
+	uint32_t n = m_data.size();
 
-	uint32 l = v.MinEncodedSize(CryptoPP::Integer::SIGNED);
+	uint32_t l = v.MinEncodedSize(CryptoPP::Integer::SIGNED);
 	operator<<(l);
-	uint32 s = m_data.size();
-	m_data.insert(m_data.end(), l, uint8(0));
+	uint32_t s = m_data.size();
+	m_data.insert(m_data.end(), l, uint8_t(0));
 	v.Encode(&m_data[0] + s, l, CryptoPP::Integer::SIGNED);
 	
-	assert(n + l + sizeof(uint32) == m_data.size());
+	assert(n + l + sizeof(uint32_t) == m_data.size());
 	
 	return *this;
 }
 
-opacket& opacket::operator<<(const vector<uint8>& v)
+opacket& opacket::operator<<(const vector<uint8_t>& v)
 {
-	operator<<(static_cast<uint32>(v.size()));
+	operator<<(static_cast<uint32_t>(v.size()));
 	m_data.insert(m_data.end(), v.begin(), v.end());
 	return *this;
 }
@@ -242,7 +242,7 @@ opacket& opacket::operator<<(const ipacket& v)
 
 opacket& opacket::operator<<(const opacket& v)
 {
-	const vector<uint8>& data(v);
+	const vector<uint8_t>& data(v);
 	return operator<<(data);
 }
 
@@ -285,9 +285,9 @@ ipacket::ipacket(ipacket&& rhs)
 	rhs.m_data = nullptr;
 }
 
-ipacket::ipacket(const uint8* data, size_t size)
+ipacket::ipacket(const uint8_t* data, size_t size)
 {
-	m_data = new uint8[size];
+	m_data = new uint8_t[size];
 	memcpy(m_data, data, size);
 	m_owned = true;
 	m_length = size;
@@ -336,8 +336,8 @@ void ipacket::decompress(compression_helper& decompressor, boost::system::error_
 	zstream.avail_in = m_length;
 	zstream.total_in = 0;
 	
-	vector<uint8> data;
-	uint8 buffer[1024];
+	vector<uint8_t> data;
+	uint8_t buffer[1024];
 	
 	zstream.next_out = buffer;
 	zstream.avail_out = sizeof(buffer);
@@ -366,7 +366,7 @@ void ipacket::decompress(compression_helper& decompressor, boost::system::error_
 			delete[] m_data;
 
 		m_length = data.size();
-		m_data = new uint8[m_length];
+		m_data = new uint8_t[m_length];
 		copy(data.begin(), data.end(), m_data);
 		m_owned = true;
 		
@@ -404,7 +404,7 @@ void ipacket::clear()
 	m_offset = 0;
 }
 
-void ipacket::append(const vector<uint8>& block)
+void ipacket::append(const vector<uint8_t>& block)
 {
 	if (m_complete)
 		throw packet_exception();
@@ -414,7 +414,7 @@ void ipacket::append(const vector<uint8>& block)
 		assert(block.size() >= 8);
 
 		for (int i = 0; i < 4; ++i)
-			m_length = m_length << 8 | static_cast<uint8>(block[i]);
+			m_length = m_length << 8 | static_cast<uint8_t>(block[i]);
 
 		if (m_length > kMaxPacketSize + 32)	// weird, allow some overhead?
 			throw packet_exception();
@@ -425,7 +425,7 @@ void ipacket::append(const vector<uint8>& block)
 		m_padding = block[4];
 		m_owned = true;
 		m_offset = 1;
-		m_data = new uint8[m_length];
+		m_data = new uint8_t[m_length];
 		
 		if (block.size() > m_length + 5)
 			throw packet_exception();
@@ -462,7 +462,7 @@ size_t ipacket::read(const char* data, size_t size)
 	{
 		while (m_offset < 4 and size > 0)
 		{
-			m_length = m_length << 8 | static_cast<uint8>(*data);
+			m_length = m_length << 8 | static_cast<uint8_t>(*data);
 			++data;
 			--size;
 			++m_offset;
@@ -477,9 +477,9 @@ size_t ipacket::read(const char* data, size_t size)
 			m_padding = 0;
 			m_owned = true;
 			m_offset = 1;
-			m_data = new uint8[m_length];
+			m_data = new uint8_t[m_length];
 			
-			uint32 k = size;
+			uint32_t k = size;
 			if (k > m_length)
 				k = m_length;
 			result += k;
@@ -511,7 +511,7 @@ size_t ipacket::read(const char* data, size_t size)
 
 ipacket& ipacket::operator>>(string& v)
 {
-	uint32 len;
+	uint32_t len;
 	this->operator>>(len);
 	if (m_offset + len > m_length)
 		throw packet_exception();
@@ -533,7 +533,7 @@ ipacket& ipacket::operator>>(vector<string>& v)
 
 ipacket& ipacket::operator>>(CryptoPP::Integer& v)
 {
-	uint32 l;
+	uint32_t l;
 	operator>>(l);
 	
 	if (l > m_length)
@@ -552,7 +552,7 @@ ipacket& ipacket::operator>>(ipacket& v)
 		memset(v.m_data, 0xcc, v.m_length);
 #endif
 
-	uint32 l;
+	uint32_t l;
 	operator>>(l);
 	
 	if (l > m_length)
@@ -575,7 +575,7 @@ ipacket& ipacket::operator>>(ipacket& v)
 
 ipacket& ipacket::operator>>(pair<const char*,size_t>& v)
 {
-	uint32 l;
+	uint32_t l;
 	operator>>(l);
 	
 	if (l > m_length)
@@ -589,9 +589,9 @@ ipacket& ipacket::operator>>(pair<const char*,size_t>& v)
 	return *this;
 }
 
-ipacket& ipacket::operator>>(vector<uint8>& v)
+ipacket& ipacket::operator>>(vector<uint8_t>& v)
 {
-	uint32 l;
+	uint32_t l;
 	operator>>(l);
 	
 	if (l > m_length)

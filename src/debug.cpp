@@ -11,7 +11,7 @@
 using namespace std;
 
 // hex dump the packet
-void print(ostream& os, const vector<uint8>& b)
+void print(ostream& os, const vector<uint8_t>& b)
 {
 	os << "dumping buffer of " << b.size() << " bytes" << endl;
 
@@ -20,7 +20,7 @@ void print(ostream& os, const vector<uint8>& b)
 	const int kHexOffset[] = { 10, 12, 15, 17, 20, 22, 25, 27, 31, 33, 36, 38, 41, 43, 46, 48 };
 	const int kAsciiOffset = 53;
 	
-	uint32 offset = 0;
+	uint32_t offset = 0;
 		
 	while (offset < b.size())
 	{
@@ -39,7 +39,7 @@ void print(ostream& os, const vector<uint8>& b)
 		
 		for (size_t i = 0; i < rr; ++i)
 		{
-			uint8 byte = b[offset + i];
+			uint8_t byte = b[offset + i];
 			
 			s[kHexOffset[i] + 0] = kHex[byte >> 4];
 			s[kHexOffset[i] + 1] = kHex[byte & 0x0f];
