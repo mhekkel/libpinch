@@ -5,8 +5,6 @@
 
 #include <assh/config.hpp>
 
-#include <boost/bind.hpp>
-#include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/asio/local/stream_protocol.hpp>
 
@@ -103,10 +101,10 @@ void x11_channel::opened()
 		string host = "localhost", port = "6000";
 
 		const char* display = getenv("DISPLAY");
-		boost::regex rx("([-[:alnum:].]*):(\\d+)(?:\\.\\d+)?");
+		std::regex rx("([-[:alnum:].]*):(\\d+)(?:\\.\\d+)?");
 
-		boost::cmatch m;
-		if (display != nullptr and boost::regex_match(display, m, rx))
+		std::cmatch m;
+		if (display != nullptr and std::regex_match(display, m, rx))
 		{
 			host = m[1];
 			port = m[2];

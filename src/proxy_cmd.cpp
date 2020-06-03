@@ -5,6 +5,8 @@
 
 #include <assh/config.hpp>
 
+#include <regex>
+
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/regex.hpp>
 
@@ -25,9 +27,9 @@ class proxy_channel : public channel
 					proxy_channel(std::shared_ptr<basic_connection> connection, const string& nc_cmd, const string& user, const string& host, int16_t port)
 						: channel(connection), m_cmd(nc_cmd)
 					{
-						ba::replace_regex(m_cmd, boost::regex("(?<!%)%r"), user);
-						ba::replace_regex(m_cmd, boost::regex("(?<!%)%h"), host);
-						ba::replace_regex(m_cmd, boost::regex("(?<!%)%p"), boost::lexical_cast<string>(port));
+						ba::replace_regex(m_cmd, std::regex("(?<!%)%r"), user);
+						ba::replace_regex(m_cmd, std::regex("(?<!%)%h"), host);
+						ba::replace_regex(m_cmd, std::regex("(?<!%)%p"), boost::lexical_cast<string>(port));
 					}
 		
 	virtual void	opened()

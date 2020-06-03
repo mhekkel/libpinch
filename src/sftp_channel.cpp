@@ -5,10 +5,6 @@
 
 #include <assh/config.hpp>
 
-//#include <boost/bind.hpp>
-//#include <boost/regex.hpp>
-//#include <boost/lexical_cast.hpp>
-
 #include <assh/sftp_channel.hpp>
 #include <assh/connection.hpp>
 #include <assh/packet.hpp>

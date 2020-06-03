@@ -6,11 +6,9 @@
 #include <assh/config.hpp>
 
 #include <functional>
+#include <regex>
 
-#include <boost/bind.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/regex.hpp>
-#include <boost/array.hpp>
 
 #include <assh/port_forwarding.hpp>
 #include <assh/connection.hpp>

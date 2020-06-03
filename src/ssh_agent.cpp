@@ -6,10 +6,9 @@
 #include <assh/config.hpp>
 
 #include <cassert>
+#include <regex>
 
 #include <iterator>
-
-#include <boost/regex.hpp>
 
 #include <assh/ssh_agent.hpp>
 #include <assh/detail/ssh_agent_impl.hpp>
@@ -365,7 +364,7 @@ int OPENSSL_EVP_BytesToKey(HashTransformation& hash,
 void ssh_agent::add(const string& private_key, const string& key_comment, function<bool(string&)> provide_password)
 {
 	AutoSeededRandomPool prng;
-	boost::regex rx(
+	std::regex rx(
 		"^-+BEGIN RSA PRIVATE KEY-+\\n"
 		"(?:"
 			"((?:^[^:]+:\\s*\\S.+\\n)+)"
@@ -373,9 +372,9 @@ void ssh_agent::add(const string& private_key, const string& key_comment, functi
 		"([ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\\s]+)=*\\n"
 		"-+END RSA PRIVATE KEY-+\n?");
 	
-	boost::smatch m;
+	std::smatch m;
 
-	if (not boost::regex_match(private_key, m, rx))
+	if (not std::regex_match(private_key, m, rx))
 		throw runtime_error("Invalid PEM file");
 
 	string keystr = m[2].str();
