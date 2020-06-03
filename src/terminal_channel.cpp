@@ -14,7 +14,7 @@ using namespace std;
 namespace assh
 {
 
-terminal_channel::terminal_channel(basic_connection* connection)
+terminal_channel::terminal_channel(std::shared_ptr<basic_connection> connection)
 	: channel(connection)
 	, m_width(80)
 	, m_height(24)

@@ -18,7 +18,7 @@ uint32_t channel::s_next_channel_id = 1;
 
 channel::channel(std::shared_ptr<basic_connection> inConnection)
 	: m_connection(inConnection)
-	// , m_open_handler(nullptr)
+	, m_open_handler(nullptr)
 	, m_max_send_packet_size(0)
 	, m_channel_open(false)
 	, m_send_pending(false)
@@ -43,13 +43,13 @@ channel::~channel()
 		catch (...) {}
 	}
 	
-	// if (m_open_handler)
-	// 	m_open_handler->cancel();
+	if (m_open_handler)
+		m_open_handler->cancel();
 
 	// if (m_connection != nullptr)
 	// 	m_connection->release();
 
-	// m_open_handler = nullptr;
+	m_open_handler = nullptr;
 	// delete m_open_handler;
 }
 
@@ -76,9 +76,9 @@ void channel::open()
 		{
 			if (ec)
 			{
-				// if (m_open_handler)
-				// 	m_open_handler->handle_open_result(ec);
-				// else
+				if (m_open_handler)
+					m_open_handler->handle_open_result(ec);
+				else
 					this->error(ec.message(), "en");
 			}
 			else
@@ -95,23 +95,23 @@ void channel::open()
 
 void channel::opened()
 {
-	// if (m_open_handler)
-	// {
-	// 	m_open_handler->handle_open_result(boost::system::error_code());
-	// 	delete m_open_handler;
-	// 	m_open_handler = nullptr;
-	// }
+	if (m_open_handler)
+	{
+		m_open_handler->handle_open_result(boost::system::error_code());
+		delete m_open_handler;
+		m_open_handler = nullptr;
+	}
 }
 
 void channel::close()
 {
-	// if (m_open_handler)
-	// {
-	// 	auto handler = m_open_handler;
-	// 	m_open_handler = nullptr;
-	// 	handler->handle_open_result(make_error_code(error::by_application));
-	// 	delete handler;
-	// }
+	if (m_open_handler)
+	{
+		auto handler = m_open_handler;
+		m_open_handler = nullptr;
+		handler->handle_open_result(make_error_code(error::by_application));
+		delete handler;
+	}
 
 	m_connection->close_channel(shared_from_this(), m_host_channel_id);
 }
@@ -268,12 +268,12 @@ void channel::process(ipacket& in)
 
 			m_connection->close_channel(shared_from_this(), 0);
 			
-			// if (m_open_handler)
-			// {
-			// 	m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
-			// 	delete m_open_handler;
-			// 	m_open_handler = nullptr;
-			// }
+			if (m_open_handler)
+			{
+				m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
+				delete m_open_handler;
+				m_open_handler = nullptr;
+			}
 
 			break;
 		}

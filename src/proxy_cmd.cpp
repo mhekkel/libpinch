@@ -22,7 +22,7 @@ namespace assh
 class proxy_channel : public channel
 {
   public:
-					proxy_channel(basic_connection* connection, const string& nc_cmd, const string& user, const string& host, int16_t port)
+					proxy_channel(std::shared_ptr<basic_connection> connection, const string& nc_cmd, const string& user, const string& host, int16_t port)
 						: channel(connection), m_cmd(nc_cmd)
 					{
 						ba::replace_regex(m_cmd, boost::regex("(?<!%)%r"), user);

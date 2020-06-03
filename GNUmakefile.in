@@ -19,7 +19,7 @@ includedir			= @includedir@
 # VERSION             = $(VERSION_MAJOR).$(VERSION_MINOR)
 # DEFINES				+= VERSION='"$(VERSION)"'
 
-LIB_NAME			= @PACKAGE@
+LIB_NAME			= libassh
 
 # DIST_NAME           = $(LIB_NAME)$(VERSION)
 # SO_NAME             = $(LIB_NAME).so.$(VERSION_MAJOR)
@@ -39,15 +39,14 @@ DOCDIR              ?= $(PREFIX)/share/doc/libzeep-doc
 # main build variables
 CXXFLAGS            += -I. -pthread
 CXXFLAGS            += -Wall -Wno-multichar
-CXXFLAGS            += -g
-LD                  ?= ld
-LDFLAGS				= -g
 
 # Use the DEBUG flag to build debug versions of the code
 DEBUG               = @DEBUG@
 
 ifeq "$(DEBUG)" "1"
 DEFINES				+= DEBUG
+CXXFLAGS            += -g
+LDFLAGS				+= -g
 else
 CXXFLAGS			+= -O2
 DEFINES				+= NDEBUG
@@ -55,7 +54,7 @@ endif
 
 # targets
 
-VPATH += src
+VPATH += src:test
 
 CXXFLAGS			+= $(DEFINES:%=-D%)
 
@@ -79,13 +78,14 @@ OBJECTS = \
 	$(OBJDIR)/error.o \
 	$(OBJDIR)/key_exchange.o \
 	$(OBJDIR)/packet.o \
-	$(OBJDIR)/port_forwarding.o \
 	$(OBJDIR)/posix_ssh_agent_impl.o \
-	$(OBJDIR)/proxy_cmd.o \
-	$(OBJDIR)/sftp_channel.o \
-	$(OBJDIR)/ssh_agent.o \
 	$(OBJDIR)/terminal_channel.o \
-	$(OBJDIR)/x11_channel.o
+	$(OBJDIR)/ssh_agent.o \
+
+	# $(OBJDIR)/port_forwarding.o \
+	# $(OBJDIR)/proxy_cmd.o \
+	# $(OBJDIR)/sftp_channel.o \
+	# $(OBJDIR)/x11_channel.o
 
 $(STATIC_LIB): $(OBJECTS)
 	ar rc $@ $(OBJECTS)
@@ -137,10 +137,15 @@ $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
 	@ echo ">>" $<
 	@ $(CXX) -MD -c -o $@ $< $(CFLAGS) $(CXXFLAGS)
 
+.PHONY: clean
 clean:
 	rm -rf $(OBJDIR)/* $(OUTPUT)/$(LIB_NAME)*
 
-test:
+.PHONY: test
+test: $(STATIC_LIB) test/unit-test
+
+test/unit-test: $(OBJDIR)/unit-test.o
+	$(CXX) -o $@ $^ $(CXXFLAGS) $(STATIC_LIB) $(LDFLAGS) -lboost_thread -lcryptopp -pthread -lz -lboost_random -lboost_regex -g
 
 dist-clean: clean
 

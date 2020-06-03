@@ -354,6 +354,7 @@ namespace assh
 		virtual void async_read(uint32_t at_least);
 
 	private:
+		boost::asio::io_service& m_io_service;
 		boost::asio::ip::tcp::socket m_socket;
 		boost::asio::ip::tcp::resolver m_resolver;
 		std::string m_host;

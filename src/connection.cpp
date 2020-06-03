@@ -31,10 +31,10 @@
 #include <assh/connection.hpp>
 #include <assh/channel.hpp>
 #include <assh/ssh_agent.hpp>
-#include <assh/x11_channel.hpp>
+// #include <assh/x11_channel.hpp>
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
-#include <assh/port_forwarding.hpp>
+// #include <assh/port_forwarding.hpp>
 
 using namespace std;
 using namespace CryptoPP;
@@ -93,13 +93,11 @@ namespace assh
 		: m_io_service(io_service), m_user(user), m_authenticated(false), m_sent_kexinit(false), m_auth_state(auth_state_none), m_key_exchange(nullptr), m_forward_agent(false), m_port_forwarder(nullptr), m_alg_kex(kKeyExchangeAlgorithms), m_alg_enc_c2s(kEncryptionAlgorithms), m_alg_ver_c2s(kMacAlgorithms), m_alg_cmp_c2s(kCompressionAlgorithms), m_alg_enc_s2c(kEncryptionAlgorithms), m_alg_ver_s2c(kMacAlgorithms), m_alg_cmp_s2c(kCompressionAlgorithms)
 	{
 		reset();
-
-		ssh_agent::instance().register_connection(this);
 	}
 
 	basic_connection::~basic_connection()
 	{
-		ssh_agent::instance().unregister_connection(this);
+		ssh_agent::instance().unregister_connection(shared_from_this());
 
 		delete m_key_exchange;
 		delete m_port_forwarder;
@@ -250,16 +248,16 @@ namespace assh
 	void basic_connection::forward_port(const string &local_address, int16_t local_port,
 										const string &remote_address, int16_t remote_port)
 	{
-		if (m_port_forwarder == nullptr)
-			m_port_forwarder = new port_forward_listener(shared_from_this());
-		m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
+		// if (m_port_forwarder == nullptr)
+		// 	m_port_forwarder = new port_forward_listener(shared_from_this());
+		// m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
 	}
 
 	void basic_connection::forward_socks5(const string &local_address, int16_t local_port)
 	{
-		if (m_port_forwarder == nullptr)
-			m_port_forwarder = new port_forward_listener(shared_from_this());
-		m_port_forwarder->forward_socks5(local_address, local_port);
+		// if (m_port_forwarder == nullptr)
+		// 	m_port_forwarder = new port_forward_listener(shared_from_this());
+		// m_port_forwarder->forward_socks5(local_address, local_port);
 	}
 
 	string basic_connection::get_connection_parameters(direction dir) const
@@ -742,12 +740,14 @@ namespace assh
 			out = msg_service_request;
 			out << "ssh-userauth";
 
+			// we might not be known yet
+			ssh_agent::instance().register_connection(shared_from_this());
+
 			// fetch the private keys
-			ssh_agent &agent(ssh_agent::instance());
-			for (ssh_agent::iterator pk = agent.begin(); pk != agent.end(); ++pk)
+			for (auto& pk: ssh_agent::instance())
 			{
 				opacket blob;
-				blob << *pk;
+				blob << pk;
 				m_private_keys.push_back(blob);
 			}
 		}
@@ -1067,20 +1067,18 @@ namespace assh
 
 	bool basic_connection::has_open_channels()
 	{
-		using namespace std::literals;
-		return std::find_if(m_channels.begin(), m_channels.end(), std::bind(channel::is_open, _1)) != m_channels.end();
-		// bool channel_open = false;
+		bool channel_open = false;
 
-		// for (channel_ptr c : m_channels)
-		// {
-		// 	if (c->is_open())
-		// 	{
-		// 		channel_open = true;
-		// 		break;
-		// 	}
-		// }
+		for (auto c : m_channels)
+		{
+			if (c->is_open())
+			{
+				channel_open = true;
+				break;
+			}
+		}
 
-		// return channel_open;
+		return channel_open;
 	}
 
 	void basic_connection::process_channel_open(ipacket &in, opacket &out)
@@ -1093,10 +1091,11 @@ namespace assh
 
 		try
 		{
-			if (type == "x11")
-				c.reset(new x11_channel(this));
-			else if (type == "auth-agent@openssh.com" and m_forward_agent)
-				c.reset(new ssh_agent_channel(this));
+			// if (type == "x11")
+			// 	c.reset(new x11_channel(shared_from_this()));
+			// else
+			 if (type == "auth-agent@openssh.com" and m_forward_agent)
+			 	c.reset(new ssh_agent_channel(shared_from_this()));
 		}
 		catch (...)
 		{
@@ -1152,8 +1151,13 @@ namespace assh
 
 	connection::connection(boost::asio::io_service &io_service,
 						   const string &user, const string &host, int16_t port = 22)
-		: basic_connection(io_service, user), m_socket(io_service), m_resolver(io_service), m_host(host), m_port(port)
+		: basic_connection(io_service, user), m_io_service(io_service), m_socket(io_service), m_resolver(io_service), m_host(host), m_port(port)
 	{
+	}
+
+	boost::asio::io_service& connection::get_io_service()
+	{
+		return m_io_service;
 	}
 
 	void connection::disconnect()

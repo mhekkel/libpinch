@@ -84,7 +84,7 @@ struct x11_stream_impl : public x11_socket_impl<boost::asio::local::stream_proto
 	}
 };
 
-x11_channel::x11_channel(basic_connection* connection)
+x11_channel::x11_channel(std::shared_ptr<basic_connection> connection)
 	: channel(connection)
 	, m_verified(false)
 {

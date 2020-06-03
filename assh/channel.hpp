@@ -47,34 +47,90 @@ namespace assh
 
 		typedef std::list<environment_variable> environment;
 
-		struct open_handler
+
+	struct basic_open_handler
+	{
+		basic_open_handler() : m_cancelled(false) {}
+		
+		virtual			~basic_open_handler() {}
+		virtual void	handle_open_result(const boost::system::error_code& ec) = 0;
+
+		virtual void cancel()
 		{
-			open_handler() : m_cancelled(false) {}
-
-			template<typename Self>
-			void operator()(Self& self, const boost::system::error_code& ec)
-			{
-				if (not m_cancelled)
-					self.handler(ec);
-			}
-
-			void cancel()
-			{
-				m_cancelled = true;
-			}
-
-			bool m_cancelled;
-		};
-
-		template <typename Handler>
-		auto async_open(Handler &&handler)
-		{
-			open();
-
-			return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-				open_handler{}, handler
-			);
+			m_cancelled = true;
 		}
+		
+		bool m_cancelled;
+	};
+	
+	template<typename Handler>
+	struct open_handler : public basic_open_handler
+	{
+		// // typedef typename boost::asio::detail::async_result_init<Handler, void(boost::system::error_code)> async_result_type;
+		// using async_result_type = boost::asio::async_result<Handler, void(boost::system::error_code)>;
+
+		// open_handler(async_result_type& handler) : m_handler(handler) {}
+		
+		// virtual void handle_open_result(const boost::system::error_code& ec)
+		// {
+		// 	if (not m_cancelled)
+		// 		m_handler.handler(ec);
+		// 	else
+		// 		delete this;
+		// }
+		
+		// async_result_type m_handler;
+
+		open_handler(Handler&& handler)
+			: m_handler(std::forward<Handler>(handler)) {}
+
+		virtual void handle_open_result(const boost::system::error_code& ec)
+		{
+			if (not m_cancelled)
+				m_handler(ec);
+			else
+				delete this;
+		}
+
+		Handler m_handler;
+	};
+
+	template<typename Handler>
+	void async_open(Handler&& handler)
+	{
+		m_open_handler = new open_handler<Handler>(std::forward<Handler>(handler));
+		open();
+	}
+
+
+		// struct open_handler
+		// {
+		// 	open_handler() : m_cancelled(false) {}
+
+		// 	template<typename Self>
+		// 	void operator()(Self& self, const boost::system::error_code& ec = {}, size_t length = 0)
+		// 	{
+		// 		if (not m_cancelled)
+		// 			self.complete(ec);
+		// 	}
+
+		// 	void cancel()
+		// 	{
+		// 		m_cancelled = true;
+		// 	}
+
+		// 	bool m_cancelled;
+		// };
+
+		// template <typename Handler>
+		// auto async_open(Handler &&handler)
+		// {
+		// 	open();
+
+		// 	return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+		// 		open_handler{}, handler
+		// 	);
+		// }
 
 		void open();
 		void close();
@@ -462,7 +518,7 @@ namespace assh
 
 	protected:
 		std::shared_ptr<basic_connection> m_connection;
-		// basic_open_handler *m_open_handler;
+		basic_open_handler *m_open_handler;
 
 		uint32_t m_max_send_packet_size;
 		bool m_channel_open, m_send_pending;
