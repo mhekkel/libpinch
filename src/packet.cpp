@@ -60,6 +60,7 @@ compression_helper::operator z_stream& ()
 // --------------------------------------------------------------------
 
 opacket::opacket()
+	: m_data(0)
 {
 }
 

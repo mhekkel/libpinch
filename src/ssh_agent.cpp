@@ -262,8 +262,8 @@ void ssh_agent::expose_pageant(bool expose)
 struct ssh_known_ciper_for_private_key
 {
 	string							name;
-	uint32_t							key_size;
-	uint32_t							iv_size;
+	uint32_t						key_size;
+	uint32_t						iv_size;
 	function<SymmetricCipher*()>	factory;
 } kKnownCiphers[] = {
 	{ "AES-256-CBC", 32, 16,		[]() -> SymmetricCipher* { return new CBC_Mode<AES>::Decryption; }},
