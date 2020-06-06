@@ -526,6 +526,9 @@ class connection2 : public std::enable_shared_from_this<connection2>
 	template<typename CompletionToken>
 	auto async_authenticate(CompletionToken&& token)
 	{
+		
+
+
 		if (not m_socket.is_open())
 			throw socket_closed_exception();
 
@@ -635,7 +638,9 @@ class connection2 : public std::enable_shared_from_this<connection2>
 						{
 							state = newkeys;
 							process_newkeys(in, out, ec);
-							if (ec or out.empty())
+							if (not ec and out.empty())
+								ec = error::make_error_code(error::kex_error);
+							if (ec)
 								break;
 							async_write_packet(std::move(out), std::move(self));
 						}
