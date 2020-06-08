@@ -58,7 +58,7 @@ int main()
 		io_service.run();
 	});
 
-	auto connection = std::make_shared<assh::connection2>(io_service, "maarten", "localhost", 2022);
+	auto connection = std::make_shared<assh::connection2>(io_service, "maarten", "s4", 2022);
 	
 	auto f1 = connection->async_connect(boost::asio::use_future);
 
@@ -71,19 +71,95 @@ int main()
 		std::cerr << e.what() << std::endl;
 	}
 
-	auto f2 = connection->async_authenticate(boost::asio::use_future);
+	// auto f2 = connection->async_authenticate(boost::asio::use_future);
 
-	try
-	{
-		f2.get();
-	}
-	catch (const std::exception& e)
-	{
-		std::cerr << e.what() << std::endl;
-	}
+	// try
+	// {
+	// 	f2.get();
+	// }
+	// catch (const std::exception& e)
+	// {
+	// 	std::cerr << e.what() << std::endl;
+	// }
 
 	io_service.stop();
 	t.join();
 
 	return 0;
 }
+
+
+// // --------------------------------------------------------------------
+
+
+// void handler(const boost::system::error_code& error, int n)
+// {
+// 	if (error)
+// 		std::cout << error.message() << std::endl;
+// 	else
+// 		std::cout << "expired " << n << std::endl;
+// }
+
+// template<typename CompletionToken>
+// auto async_wait2(std::future<void>& a, CompletionToken&& token)
+// {
+// 	return boost::asio::async_completion<CompletionToken, void(boost::system::error_code)>(
+		
+// 	);
+// }
+
+// class seq_timed
+// {
+//   public:
+
+// 	seq_timed(boost::asio::io_context& io_context)
+// 		: m_strand(io_context.get_executor())
+// 	{
+		
+// 	}
+
+// 	template<typename CompletionToken>
+// 	auto async_wait_for(int secs, CompletionToken&& token)
+// 	{
+		
+// 	}
+
+
+//   private:
+
+// 	boost::asio::strand<boost::asio::io_context::executor_type> m_strand;
+
+// };
+
+
+
+// int main()
+// {
+
+// 	boost::asio::io_context io_context;
+
+// 	boost::asio::strand<boost::asio::io_context::executor_type> strand(io_context.get_executor());
+
+// 	// boost::asio::deadline_timer timer(strand.context());
+// 	boost::asio::deadline_timer timer(strand);
+
+// 	// Construct a timer with an absolute expiry time.
+// 	timer.expires_from_now(boost::posix_time::seconds(5));
+
+// 	// Start an asynchronous wait.
+// 	timer.async_wait(std::bind(handler, std::placeholders::_1, 1));
+
+// 	// boost::asio::deadline_timer timer(strand.context());
+// 	boost::asio::deadline_timer timer2(strand);
+
+// 	// Construct a timer with an absolute expiry time.
+// 	timer2.expires_from_now(boost::posix_time::seconds(1));
+
+// 	// Start an asynchronous wait.
+// 	timer2.async_wait(std::bind(handler, std::placeholders::_1, 2));
+
+
+// 	io_context.run();
+
+// 	return 0;
+// }

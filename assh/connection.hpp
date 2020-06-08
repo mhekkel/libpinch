@@ -464,130 +464,94 @@ class connection2 : public std::enable_shared_from_this<connection2>
 
 	connection2(boost::asio::io_context& io_context, const std::string &user, const std::string &host, int16_t port);
 
-	template<typename CompletionToken>
-	auto async_connect(CompletionToken&& token)
+	struct async_connect_implementation
 	{
-		enum { starting, resolving, connecting };
+		async_connect_implementation(boost::asio::ip::tcp::socket& socket, const std::string& host, int16_t port)
+			: m_socket(socket)
+			, m_resolver(m_socket.get_executor())
+			, m_query(host, std::to_string(port))
+			, m_buffer(std::make_shared<boost::asio::streambuf>())
+			, m_host(host)
+			, m_port(port)
+			, m_state(starting)
+		{
+		}
 
-		return boost::asio::async_compose<CompletionToken, void(boost::system::error_code)>(
-			[
-				this,
-				conn = shared_from_this(),
-				state = starting,
-				next = boost::asio::ip::tcp::resolver::iterator{}
-			]
-			(auto& self, const boost::system::error_code ec = {}, boost::asio::ip::tcp::resolver::iterator endpoint_iterator = {}) mutable
+		template<typename Self>
+		void operator()(Self& self)
+		{
+			assert(m_state == starting);
+			m_state = resolving;
+			m_resolver.async_resolve(m_query, std::move(self));
+		}
+
+		template<typename Self>
+		void operator()(Self& self, boost::system::error_code ec)
+		{
+			assert(m_state == connecting);
+
+			if (ec and m_next_endpoint != boost::asio::ip::tcp::resolver::iterator())
 			{
-				switch (state)
-				{
-					case starting:
-						if (not m_socket.is_open())
-						{
-							boost::asio::ip::tcp::resolver resolver(m_strand);
-							boost::asio::ip::tcp::resolver::query query(m_host, std::to_string(m_port));
+				auto endpoint = *m_next_endpoint;
+				++m_next_endpoint;
 
-							state = resolving;
+				m_socket.close();
+				m_socket.async_connect(endpoint, std::move(self));
+			}
+			else if (not ec)
+			{
+				m_state = handshaking;
 
-							m_resolver.async_resolve(query, std::move(self));
-							return;
-						}
-						break;
+				// reset();
 
-					case resolving:
-						if (not ec)
-						{
-							state = connecting;
-							auto endpoint = *endpoint_iterator;
-							next = ++endpoint_iterator;
+				std::ostream out(m_buffer.get());
+				out << kSSHVersionString << "\r\n";
 
-							m_socket.async_connect(endpoint, std::move(self));
-							return;
-						}
-						break;
-
-					case connecting:
-						if (ec and next != boost::asio::ip::tcp::resolver::iterator())
-						{
-							auto endpoint = *next;
-							++next;
-
-							m_socket.close();
-							m_socket.async_connect(endpoint, std::move(self));
-							return;
-						}
-						break;
-				}
-
+				boost::asio::async_write(m_socket, *m_buffer, std::move(self));
+			}
+			else
 				self.complete(ec);
-			}, token
-		);
-	}
+		}
 
-	template<typename CompletionToken>
-	auto async_authenticate(CompletionToken&& token)
-	{
-		
-
-
-		if (not m_socket.is_open())
-			throw socket_closed_exception();
-
-		enum { starting, handshaking, read_version_string, rekeying, rekeying2, rekeying3, rekeying4, newkeys, done };
-
-		auto request = std::shared_ptr<boost::asio::streambuf>(new boost::asio::streambuf);
-		auto packet = std::shared_ptr<ipacket>(new ipacket);
-
-		return boost::asio::async_compose<CompletionToken, void(boost::system::error_code)>(
-			[
-				this,
-				state = starting,
-				conn = shared_from_this(),
-				request,
-				packet
-			]
-			(auto& self, boost::system::error_code ec = {} , std::size_t n = 0) mutable
+		template<typename Self>
+		void operator()(Self& self, boost::system::error_code ec, boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
+		{
+			assert(m_state == resolving);
+			if (ec)
+				self.complete(ec);
+			else
 			{
-				if (ec)
+				m_state = connecting;
+				auto endpoint = *endpoint_iterator;
+				m_next_endpoint = ++endpoint_iterator;
+				m_socket.async_connect(endpoint, std::move(self));
+			}
+		}
+		
+		template<typename Self>
+		void operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transfered)
+		{
+			if (not ec)
+				self.complete(ec);
+			else
+				switch (m_state)
 				{
-					reset();
-					self.complete(ec);
-					return;
-				}
-
-				ipacket& in = *packet;
-				opacket out;
-
-				switch (state)
-				{
-					case starting:
-					{
-						state = handshaking;
-
-						reset();
-						m_auth_state = auth_state_connecting;
-
-						std::ostream out(request.get());
-						out << kSSHVersionString << "\r\n";
-
-						boost::asio::async_write(m_socket, *request, std::move(self));
-						return;
-					}
-					
 					case handshaking:
-						state = read_version_string;
+						m_state = read_version_string;
 						boost::asio::async_read_until(m_socket, *request, "\n", std::move(self));
 						return;
 					
 					case read_version_string:
 					{
-						state = rekeying;
+						m_state = rekeying;
 
-						std::istream response_stream(request.get());
+						std::istream response_stream(m_request.get());
 
-						std::getline(response_stream, m_host_version);
-						boost::algorithm::trim_right(m_host_version);
+						std::string host_version;
+						std::getline(response_stream, host_version);
+						boost::algorithm::trim_right(host_version);
 
-						if (m_host_version.compare(0, 7, "SSH-2.0") != 0)
+						if (host_version.compare(0, 7, "SSH-2.0") != 0)
 						{
 							ec = error::make_error_code(error::protocol_version_not_supported);
 							break;
@@ -654,20 +618,183 @@ class connection2 : public std::enable_shared_from_this<connection2>
 					case newkeys:
 					{
 						ec = error::make_error_code(error::auth_cancelled_by_user);
-
-						
 						break;
 					}
-
 				}
 
 				if (not ec and not out.empty())
 					async_write_packet(std::move(out), std::move(self));
 				else
 					self.complete(ec);
-			}, token
+			}
+		}
+		
+		boost::asio::ip::tcp::socket& m_socket;
+		boost::asio::ip::tcp::resolver m_resolver;
+		boost::asio::ip::tcp::resolver::query m_query;
+		std::shared_ptr<boost::asio::streambuf> m_buffer;
+		std::string m_host;
+		int16_t m_port;
+		boost::asio::ip::tcp::resolver::iterator m_next_endpoint;
+		enum { starting, resolving, connecting, handshaking,
+			read_version_string, rekeying, rekeying2, rekeying3, rekeying4, newkeys,
+			done } m_state;
+	};
+
+
+	template<typename CompletionToken>
+	auto async_connect(CompletionToken&& token)
+	{
+		return boost::asio::async_compose<CompletionToken,void(boost::system::error_code)>(
+			async_connect_implementation(m_socket, m_host, m_port), token, m_socket
 		);
 	}
+
+	// template<typename CompletionToken>
+	// auto async_authenticate(CompletionToken&& token)
+	// {
+		
+
+
+	// 	if (not m_socket.is_open())
+	// 		throw socket_closed_exception();
+
+	// 	enum { starting, handshaking, read_version_string, rekeying, rekeying2, rekeying3, rekeying4, newkeys, done };
+
+	// 	auto request = std::shared_ptr<boost::asio::streambuf>(new boost::asio::streambuf);
+	// 	auto packet = std::shared_ptr<ipacket>(new ipacket);
+
+	// 	return boost::asio::async_compose<CompletionToken, void(boost::system::error_code)>(
+	// 		[
+	// 			this,
+	// 			state = starting,
+	// 			conn = shared_from_this(),
+	// 			request,
+	// 			packet
+	// 		]
+	// 		(auto& self, boost::system::error_code ec = {} , std::size_t n = 0) mutable
+	// 		{
+	// 			if (ec)
+	// 			{
+	// 				reset();
+	// 				self.complete(ec);
+	// 				return;
+	// 			}
+
+	// 			ipacket& in = *packet;
+	// 			opacket out;
+
+	// 			switch (state)
+	// 			{
+	// 				case starting:
+	// 				{
+	// 					state = handshaking;
+
+	// 					reset();
+	// 					m_auth_state = auth_state_connecting;
+
+	// 					std::ostream out(request.get());
+	// 					out << kSSHVersionString << "\r\n";
+
+	// 					boost::asio::async_write(m_socket, *request, std::move(self));
+	// 					return;
+	// 				}
+					
+	// 				case handshaking:
+	// 					state = read_version_string;
+	// 					boost::asio::async_read_until(m_socket, *request, "\n", std::move(self));
+	// 					return;
+					
+	// 				case read_version_string:
+	// 				{
+	// 					state = rekeying;
+
+	// 					std::istream response_stream(request.get());
+
+	// 					std::getline(response_stream, m_host_version);
+	// 					boost::algorithm::trim_right(m_host_version);
+
+	// 					if (m_host_version.compare(0, 7, "SSH-2.0") != 0)
+	// 					{
+	// 						ec = error::make_error_code(error::protocol_version_not_supported);
+	// 						break;
+	// 					}
+
+	// 					out = get_rekey_msg();
+	// 					async_write_packet(std::move(out), std::move(self));
+	// 					return;
+	// 				}
+
+	// 				case rekeying:
+	// 					state = rekeying2;
+	// 					async_read_packet(in, std::move(self));
+	// 					return;
+					
+	// 				case rekeying2:
+	// 					if (packet->message() != msg_kexinit)
+	// 						ec = error::make_error_code(error::kex_error);
+	// 					else
+	// 					{
+	// 						process_kexinit(in, out, ec);
+	// 						if (not ec)
+	// 						{
+	// 							state = rekeying3;
+	// 							async_write_packet(std::move(out), std::move(self));
+	// 							return;
+	// 						}
+	// 					}
+	// 					break;
+
+	// 				case rekeying3:
+	// 					state = rekeying4;
+	// 					async_read_packet(in, std::move(self));
+	// 					return;
+
+	// 				case rekeying4:
+	// 					if (m_key_exchange->process(in, out, ec) and not ec)
+	// 					{
+	// 						if (not out.empty())
+	// 						{
+	// 							state = rekeying3;
+	// 							async_write_packet(std::move(out), std::move(self));
+	// 						}
+	// 						else
+	// 							async_read_packet(in, std::move(self));
+	// 					}
+	// 					else if ((message_type)in == msg_newkeys)
+	// 					{
+	// 						state = newkeys;
+	// 						process_newkeys(in, out, ec);
+	// 						if (not ec and out.empty())
+	// 							ec = error::make_error_code(error::kex_error);
+	// 						if (ec)
+	// 							break;
+	// 						async_write_packet(std::move(out), std::move(self));
+	// 					}
+	// 					else
+	// 					{
+	// 						ec = error::make_error_code(error::kex_error);
+	// 						break;
+	// 					}
+	// 					return;
+
+	// 				case newkeys:
+	// 				{
+	// 					ec = error::make_error_code(error::auth_cancelled_by_user);
+
+						
+	// 					break;
+	// 				}
+
+	// 			}
+
+	// 			if (not ec and not out.empty())
+	// 				async_write_packet(std::move(out), std::move(self));
+	// 			else
+	// 				self.complete(ec);
+	// 		}, token
+	// 	);
+	// }
 
 	template<typename CompletionToken>
 	auto async_write_packet(opacket&& p, CompletionToken&& token)
