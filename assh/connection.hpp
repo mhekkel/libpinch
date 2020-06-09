@@ -459,6 +459,8 @@ class connection2 : public std::enable_shared_from_this<connection2>
 {
   public:
 
+	friend struct async_connect_implementation;
+
 	connection2(const connection2&) = delete;
 	connection2& operator=(const connection2&) = delete;
 
@@ -466,13 +468,13 @@ class connection2 : public std::enable_shared_from_this<connection2>
 
 	struct async_connect_implementation
 	{
-		async_connect_implementation(boost::asio::ip::tcp::socket& socket, const std::string& host, int16_t port)
-			: m_socket(socket)
+		async_connect_implementation(std::shared_ptr<connection2> conn)
+			: m_c(conn)
+			, m_socket(m_c->m_socket)
 			, m_resolver(m_socket.get_executor())
-			, m_query(host, std::to_string(port))
+			, m_query(m_c->m_host, std::to_string(m_c->m_port))
 			, m_buffer(std::make_shared<boost::asio::streambuf>())
-			, m_host(host)
-			, m_port(port)
+			, m_in(std::make_shared<ipacket>())
 			, m_state(starting)
 		{
 		}
@@ -481,36 +483,11 @@ class connection2 : public std::enable_shared_from_this<connection2>
 		void operator()(Self& self)
 		{
 			assert(m_state == starting);
+
+			m_c->reset();
+
 			m_state = resolving;
 			m_resolver.async_resolve(m_query, std::move(self));
-		}
-
-		template<typename Self>
-		void operator()(Self& self, boost::system::error_code ec)
-		{
-			assert(m_state == connecting);
-
-			if (ec and m_next_endpoint != boost::asio::ip::tcp::resolver::iterator())
-			{
-				auto endpoint = *m_next_endpoint;
-				++m_next_endpoint;
-
-				m_socket.close();
-				m_socket.async_connect(endpoint, std::move(self));
-			}
-			else if (not ec)
-			{
-				m_state = handshaking;
-
-				// reset();
-
-				std::ostream out(m_buffer.get());
-				out << kSSHVersionString << "\r\n";
-
-				boost::asio::async_write(m_socket, *m_buffer, std::move(self));
-			}
-			else
-				self.complete(ec);
 		}
 
 		template<typename Self>
@@ -529,113 +506,130 @@ class connection2 : public std::enable_shared_from_this<connection2>
 		}
 		
 		template<typename Self>
-		void operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transfered)
+		void operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transfered = 0)
 		{
-			if (not ec)
+			if (ec and m_state != connecting)
+			{
 				self.complete(ec);
-			else
-				switch (m_state)
+				return;
+			}
+
+			opacket out;
+
+			switch (m_state)
+			{
+				case connecting:
+					if (ec and m_next_endpoint != boost::asio::ip::tcp::resolver::iterator())
+					{
+						auto endpoint = *m_next_endpoint;
+						++m_next_endpoint;
+
+						m_socket.close();
+						m_socket.async_connect(endpoint, std::move(self));
+						ec = {};
+					}
+					else if (not ec)
+					{
+						m_state = handshaking;
+
+						std::ostream out(m_buffer.get());
+						out << kSSHVersionString << "\r\n";
+
+						boost::asio::async_write(m_socket, *m_buffer, std::move(self));
+					}
+					break;
+
+				case handshaking:
 				{
-					case handshaking:
-						m_state = read_version_string;
-						boost::asio::async_read_until(m_socket, *request, "\n", std::move(self));
-						return;
-					
-					case read_version_string:
-					{
-						m_state = rekeying;
-
-						std::istream response_stream(m_request.get());
-
-						std::string host_version;
-						std::getline(response_stream, host_version);
-						boost::algorithm::trim_right(host_version);
-
-						if (host_version.compare(0, 7, "SSH-2.0") != 0)
-						{
-							ec = error::make_error_code(error::protocol_version_not_supported);
-							break;
-						}
-
-						out = get_rekey_msg();
-						async_write_packet(std::move(out), std::move(self));
-						return;
-					}
-
-					case rekeying:
-						state = rekeying2;
-						async_read_packet(in, std::move(self));
-						return;
-					
-					case rekeying2:
-						if (packet->message() != msg_kexinit)
-							ec = error::make_error_code(error::kex_error);
-						else
-						{
-							process_kexinit(in, out, ec);
-							if (not ec)
-							{
-								state = rekeying3;
-								async_write_packet(std::move(out), std::move(self));
-								return;
-							}
-						}
-						break;
-
-					case rekeying3:
-						state = rekeying4;
-						async_read_packet(in, std::move(self));
-						return;
-
-					case rekeying4:
-						if (m_key_exchange->process(in, out, ec) and not ec)
-						{
-							if (not out.empty())
-							{
-								state = rekeying3;
-								async_write_packet(std::move(out), std::move(self));
-							}
-							else
-								async_read_packet(in, std::move(self));
-						}
-						else if ((message_type)in == msg_newkeys)
-						{
-							state = newkeys;
-							process_newkeys(in, out, ec);
-							if (not ec and out.empty())
-								ec = error::make_error_code(error::kex_error);
-							if (ec)
-								break;
-							async_write_packet(std::move(out), std::move(self));
-						}
-						else
-						{
-							ec = error::make_error_code(error::kex_error);
-							break;
-						}
-						return;
-
-					case newkeys:
-					{
-						ec = error::make_error_code(error::auth_cancelled_by_user);
-						break;
-					}
+					m_state = read_version_string;
+					boost::asio::async_read_until(m_socket, m_c->m_response, "\n", std::move(self));
+					break;
 				}
 
-				if (not ec and not out.empty())
-					async_write_packet(std::move(out), std::move(self));
-				else
-					self.complete(ec);
+				case read_version_string:
+				{
+					m_state = rekeying;
+
+					std::istream response_stream(&m_c->m_response);
+
+					std::getline(response_stream, m_c->m_host_version);
+					boost::algorithm::trim_right(m_c->m_host_version);
+
+					if (m_c->m_host_version.compare(0, 7, "SSH-2.0") != 0)
+						ec = error::make_error_code(error::protocol_version_not_supported);
+					else
+						out = m_c->get_rekey_msg();
+					break;
+				}
+
+				case rekeying:
+					m_state = rekeying2;
+					m_c->async_read_packet(*m_in, std::move(self));
+					break;
+				
+				case rekeying2:
+					if ((message_type)*m_in != msg_kexinit)
+						ec = error::make_error_code(error::kex_error);
+					else
+					{
+						m_c->process_kexinit(*m_in, out, ec);
+						if (not ec)
+							m_state = rekeying3;
+					}
+					break;
+
+				case rekeying3:
+					m_state = rekeying4;
+					m_c->async_read_packet(*m_in, std::move(self));
+					break;
+
+				case rekeying4:
+					if (m_c->m_key_exchange->process(*m_in, out, ec) and not ec)
+					{
+						if (not out.empty())
+							m_state = rekeying3;
+						else
+							m_c->async_read_packet(*m_in, std::move(self));
+					}
+					else if ((message_type)*m_in == msg_newkeys)
+					{
+						m_state = newkeys;
+						m_c->process_newkeys(*m_in, out, ec);
+						if (not ec and out.empty())
+							ec = error::make_error_code(error::kex_error);
+					}
+					else
+						ec = error::make_error_code(error::kex_error);
+					break;
+
+				case newkeys:
+				{
+					m_state = done;
+					break;
+				}
+
+				default:
+					break;
 			}
+
+			if (ec)
+			{
+				self.complete(ec);
+				m_c->reset();
+			}
+			else if (not out.empty())
+				m_c->async_write_packet(std::move(out), std::move(self));
+			else if (m_state == done)
+				self.complete(ec);
 		}
 		
+		std::shared_ptr<connection2> m_c;
 		boost::asio::ip::tcp::socket& m_socket;
 		boost::asio::ip::tcp::resolver m_resolver;
 		boost::asio::ip::tcp::resolver::query m_query;
-		std::shared_ptr<boost::asio::streambuf> m_buffer;
-		std::string m_host;
-		int16_t m_port;
 		boost::asio::ip::tcp::resolver::iterator m_next_endpoint;
+		std::shared_ptr<boost::asio::streambuf> m_buffer;
+		std::shared_ptr<ipacket> m_in;
 		enum { starting, resolving, connecting, handshaking,
 			read_version_string, rekeying, rekeying2, rekeying3, rekeying4, newkeys,
 			done } m_state;
@@ -646,7 +640,7 @@ class connection2 : public std::enable_shared_from_this<connection2>
 	auto async_connect(CompletionToken&& token)
 	{
 		return boost::asio::async_compose<CompletionToken,void(boost::system::error_code)>(
-			async_connect_implementation(m_socket, m_host, m_port), token, m_socket
+			async_connect_implementation(shared_from_this()), token, m_socket
 		);
 	}
 
