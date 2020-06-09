@@ -1258,7 +1258,7 @@ connection2::connection2(boost::asio::io_context& io_context, const std::string 
 	, m_authenticated(false)
 	, m_sent_kexinit(false)
 	, m_auth_state(auth_state_none)
-	, m_key_exchange(nullptr)
+	// , m_key_exchange(nullptr)
 	, m_forward_agent(false)
 	, m_port_forwarder(nullptr)
 	, m_alg_kex(kKeyExchangeAlgorithms)
@@ -1377,12 +1377,8 @@ std::size_t connection2::receive_packet(ipacket& p, boost::asio::streambuf& buff
 	return p.complete() ? 0 : m_iblocksize;
 }
 
-void connection2::process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec)
+key_exchange* connection2::process_kexinit(ipacket &in)
 {
-	// // if this is a rekey request by the server, send our kexinit packet
-	// if (not m_sent_kexinit)
-	// 	rekey();
-
 	m_host_payload = in;
 
 	string key_exchange_alg;
@@ -1391,25 +1387,17 @@ void connection2::process_kexinit(ipacket &in, opacket &out, boost::system::erro
 
 	key_exchange_alg = choose_protocol(key_exchange_alg, m_alg_kex);
 
-	m_key_exchange = key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload);
-
-	if (m_key_exchange)
-	{
-		// m_key_exchange->cb_verify_host_key = boost::bind(&basic_connection::validate_host_key, this, _1, _2);
-		m_key_exchange->process(in, out, ec);
-	}
-	else
-		ec = error::make_error_code(error::key_exchange_failed);
+	return key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload);
 }
 
-void connection2::process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec)
+void connection2::process_newkeys(key_exchange& kex)
 {
-	// something went terribly wrong, obviously
-	if (m_key_exchange == nullptr)
-	{
-		ec = error::make_error_code(error::key_exchange_failed);
-		return;
-	}
+	// // something went terribly wrong, obviously
+	// if (m_key_exchange == nullptr)
+	// {
+	// 	ec = error::make_error_code(error::key_exchange_failed);
+	// 	return;
+	// }
 
 	ipacket payload(&m_host_payload[0], m_host_payload.size());
 
@@ -1422,8 +1410,8 @@ void connection2::process_newkeys(ipacket &in, opacket &out, boost::system::erro
 	// Client to server encryption
 	string protocol = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s);
 
-	const uint8_t *key = m_key_exchange->key(key_exchange::C);
-	const uint8_t *iv = m_key_exchange->key(key_exchange::A);
+	const uint8_t *key = kex.key(key_exchange::C);
+	const uint8_t *iv = kex.key(key_exchange::A);
 
 	if (protocol == "3des-cbc")
 		m_encryptor.reset(new CBC_Mode<DES_EDE3>::Encryption(key, 24, iv));
@@ -1445,8 +1433,8 @@ void connection2::process_newkeys(ipacket &in, opacket &out, boost::system::erro
 	// Server to client encryption
 	protocol = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c);
 
-	key = m_key_exchange->key(key_exchange::D);
-	iv = m_key_exchange->key(key_exchange::B);
+	key = kex.key(key_exchange::D);
+	iv = kex.key(key_exchange::B);
 
 	if (protocol == "3des-cbc")
 		m_decryptor.reset(new CBC_Mode<DES_EDE3>::Decryption(key, 24, iv));
@@ -1467,7 +1455,7 @@ void connection2::process_newkeys(ipacket &in, opacket &out, boost::system::erro
 
 	// Client To Server verification
 	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
-	iv = m_key_exchange->key(key_exchange::E);
+	iv = kex.key(key_exchange::E);
 
 	if (protocol == "hmac-sha2-512")
 		m_signer.reset(new HMAC<SHA512>(iv, 64));
@@ -1483,7 +1471,7 @@ void connection2::process_newkeys(ipacket &in, opacket &out, boost::system::erro
 	// Server to Client verification
 
 	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
-	iv = m_key_exchange->key(key_exchange::F);
+	iv = kex.key(key_exchange::F);
 
 	if (protocol == "hmac-sha2-512")
 		m_verifier.reset(new HMAC<SHA512>(iv, 64));
@@ -1514,28 +1502,6 @@ void connection2::process_newkeys(ipacket &in, opacket &out, boost::system::erro
 	{
 		m_iblocksize = m_decryptor->OptimalBlockSize();
 		m_oblocksize = m_encryptor->OptimalBlockSize();
-	}
-
-	if (m_authenticated)
-	{
-		delete m_key_exchange;
-		m_key_exchange = nullptr;
-	}
-	else
-	{
-		out = msg_service_request;
-		out << "ssh-userauth";
-
-		// // we might not be known yet
-		// ssh_agent::instance().register_connection(shared_from_this());
-
-		// // fetch the private keys
-		// for (auto& pk: ssh_agent::instance())
-		// {
-		// 	opacket blob;
-		// 	blob << pk;
-		// 	m_private_keys.push_back(blob);
-		// }
 	}
 
 	m_sent_kexinit = false;

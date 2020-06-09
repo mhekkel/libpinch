@@ -572,19 +572,22 @@ class connection2 : public std::enable_shared_from_this<connection2>
 						ec = error::make_error_code(error::kex_error);
 					else
 					{
-						m_c->process_kexinit(*m_in, out, ec);
-						if (not ec)
-							m_state = rekeying3;
+						m_state = rekeying3;
+						m_key_exchange.reset(m_c->process_kexinit(*m_in));
+						if (not m_key_exchange)
+							ec = error::make_error_code(assh::error::key_exchange_failed);
+						else
+							m_key_exchange->process(*m_in, out, ec);
 					}
 					break;
 
 				case rekeying3:
-					m_state = rekeying4;
+					m_state = newkeys;
 					m_c->async_read_packet(*m_in, std::move(self));
 					break;
 
-				case rekeying4:
-					if (m_c->m_key_exchange->process(*m_in, out, ec) and not ec)
+				case newkeys:
+					if (m_key_exchange->process(*m_in, out, ec) and not ec)
 					{
 						if (not out.empty())
 							m_state = rekeying3;
@@ -593,16 +596,28 @@ class connection2 : public std::enable_shared_from_this<connection2>
 					}
 					else if ((message_type)*m_in == msg_newkeys)
 					{
-						m_state = newkeys;
-						m_c->process_newkeys(*m_in, out, ec);
-						if (not ec and out.empty())
-							ec = error::make_error_code(error::kex_error);
+						m_state = userauth;
+						m_c->process_newkeys(*m_key_exchange);
+						
+						out = msg_service_request;
+						out << "ssh-userauth";
+
+						// // we might not be known yet
+						// ssh_agent::instance().register_connection(shared_from_this());
+
+						// // fetch the private keys
+						// for (auto& pk: ssh_agent::instance())
+						// {
+						// 	opacket blob;
+						// 	blob << pk;
+						// 	m_private_keys.push_back(blob);
+						// }
 					}
 					else
 						ec = error::make_error_code(error::kex_error);
 					break;
 
-				case newkeys:
+				case userauth:
 				{
 					m_state = done;
 					break;
@@ -630,8 +645,11 @@ class connection2 : public std::enable_shared_from_this<connection2>
 		boost::asio::ip::tcp::resolver::iterator m_next_endpoint;
 		std::shared_ptr<boost::asio::streambuf> m_buffer;
 		std::shared_ptr<ipacket> m_in;
+		std::shared_ptr<key_exchange> m_key_exchange;
+
 		enum { starting, resolving, connecting, handshaking,
-			read_version_string, rekeying, rekeying2, rekeying3, rekeying4, newkeys,
+			read_version_string, rekeying, rekeying2, rekeying3, newkeys,
+			userauth,
 			done } m_state;
 	};
 
@@ -643,152 +661,6 @@ class connection2 : public std::enable_shared_from_this<connection2>
 			async_connect_implementation(shared_from_this()), token, m_socket
 		);
 	}
-
-	// template<typename CompletionToken>
-	// auto async_authenticate(CompletionToken&& token)
-	// {
-		
-
-
-	// 	if (not m_socket.is_open())
-	// 		throw socket_closed_exception();
-
-	// 	enum { starting, handshaking, read_version_string, rekeying, rekeying2, rekeying3, rekeying4, newkeys, done };
-
-	// 	auto request = std::shared_ptr<boost::asio::streambuf>(new boost::asio::streambuf);
-	// 	auto packet = std::shared_ptr<ipacket>(new ipacket);
-
-	// 	return boost::asio::async_compose<CompletionToken, void(boost::system::error_code)>(
-	// 		[
-	// 			this,
-	// 			state = starting,
-	// 			conn = shared_from_this(),
-	// 			request,
-	// 			packet
-	// 		]
-	// 		(auto& self, boost::system::error_code ec = {} , std::size_t n = 0) mutable
-	// 		{
-	// 			if (ec)
-	// 			{
-	// 				reset();
-	// 				self.complete(ec);
-	// 				return;
-	// 			}
-
-	// 			ipacket& in = *packet;
-	// 			opacket out;
-
-	// 			switch (state)
-	// 			{
-	// 				case starting:
-	// 				{
-	// 					state = handshaking;
-
-	// 					reset();
-	// 					m_auth_state = auth_state_connecting;
-
-	// 					std::ostream out(request.get());
-	// 					out << kSSHVersionString << "\r\n";
-
-	// 					boost::asio::async_write(m_socket, *request, std::move(self));
-	// 					return;
-	// 				}
-					
-	// 				case handshaking:
-	// 					state = read_version_string;
-	// 					boost::asio::async_read_until(m_socket, *request, "\n", std::move(self));
-	// 					return;
-					
-	// 				case read_version_string:
-	// 				{
-	// 					state = rekeying;
-
-	// 					std::istream response_stream(request.get());
-
-	// 					std::getline(response_stream, m_host_version);
-	// 					boost::algorithm::trim_right(m_host_version);
-
-	// 					if (m_host_version.compare(0, 7, "SSH-2.0") != 0)
-	// 					{
-	// 						ec = error::make_error_code(error::protocol_version_not_supported);
-	// 						break;
-	// 					}
-
-	// 					out = get_rekey_msg();
-	// 					async_write_packet(std::move(out), std::move(self));
-	// 					return;
-	// 				}
-
-	// 				case rekeying:
-	// 					state = rekeying2;
-	// 					async_read_packet(in, std::move(self));
-	// 					return;
-					
-	// 				case rekeying2:
-	// 					if (packet->message() != msg_kexinit)
-	// 						ec = error::make_error_code(error::kex_error);
-	// 					else
-	// 					{
-	// 						process_kexinit(in, out, ec);
-	// 						if (not ec)
-	// 						{
-	// 							state = rekeying3;
-	// 							async_write_packet(std::move(out), std::move(self));
-	// 							return;
-	// 						}
-	// 					}
-	// 					break;
-
-	// 				case rekeying3:
-	// 					state = rekeying4;
-	// 					async_read_packet(in, std::move(self));
-	// 					return;
-
-	// 				case rekeying4:
-	// 					if (m_key_exchange->process(in, out, ec) and not ec)
-	// 					{
-	// 						if (not out.empty())
-	// 						{
-	// 							state = rekeying3;
-	// 							async_write_packet(std::move(out), std::move(self));
-	// 						}
-	// 						else
-	// 							async_read_packet(in, std::move(self));
-	// 					}
-	// 					else if ((message_type)in == msg_newkeys)
-	// 					{
-	// 						state = newkeys;
-	// 						process_newkeys(in, out, ec);
-	// 						if (not ec and out.empty())
-	// 							ec = error::make_error_code(error::kex_error);
-	// 						if (ec)
-	// 							break;
-	// 						async_write_packet(std::move(out), std::move(self));
-	// 					}
-	// 					else
-	// 					{
-	// 						ec = error::make_error_code(error::kex_error);
-	// 						break;
-	// 					}
-	// 					return;
-
-	// 				case newkeys:
-	// 				{
-	// 					ec = error::make_error_code(error::auth_cancelled_by_user);
-
-						
-	// 					break;
-	// 				}
-
-	// 			}
-
-	// 			if (not ec and not out.empty())
-	// 				async_write_packet(std::move(out), std::move(self));
-	// 			else
-	// 				self.complete(ec);
-	// 		}, token
-	// 	);
-	// }
 
 	template<typename CompletionToken>
 	auto async_write_packet(opacket&& p, CompletionToken&& token)
@@ -863,8 +735,8 @@ class connection2 : public std::enable_shared_from_this<connection2>
 		m_authenticated = false;
 		m_auth_state = auth_state_none;
 		m_private_key_hash.clear();
-		delete m_key_exchange;
-		m_key_exchange = nullptr;
+		// delete m_key_exchange;
+		// m_key_exchange = nullptr;
 		m_session_id.clear();
 		m_packet.clear();
 		m_encryptor.reset(nullptr);
@@ -883,8 +755,9 @@ class connection2 : public std::enable_shared_from_this<connection2>
 	void prepare(opacket&& packet, boost::asio::streambuf& buffer, boost::system::error_code& ec);
 
 	std::size_t receive_packet(ipacket& p, boost::asio::streambuf& buffer, boost::system::error_code& ec);
-	void process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec);
-	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	key_exchange* process_kexinit(ipacket &in);
+	void process_newkeys(key_exchange& kex);
 
   private:
 
@@ -925,7 +798,7 @@ class connection2 : public std::enable_shared_from_this<connection2>
 	// keyboard_interactive_callback_type
 	// 	m_keyboard_interactive_cb;
 
-	key_exchange *m_key_exchange;
+	// key_exchange *m_key_exchange;
 	std::unique_ptr<CryptoPP::StreamTransformation> m_decryptor;
 	std::unique_ptr<CryptoPP::StreamTransformation> m_encryptor;
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode> m_signer;
