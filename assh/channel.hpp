@@ -393,27 +393,6 @@ namespace assh
 			Handler m_handler;
 		};
 
-		template <typename MutableBufferSequence, typename Handler>
-		void async_read_some(const MutableBufferSequence& buffers, Handler&& handler)
-		{
-			static_assert(boost::is_const<Handler>::value == false);
-
-			typedef read_op<MutableBufferSequence, Handler> handler_type;
-			boost::asio::io_service& io_service(get_io_service());
-
-			if (not is_open())
-				io_service.post(bound_handler<Handler>(std::move(handler), error::make_error_code(error::connection_lost), 0));
-			else if (boost::asio::buffer_size(buffers) == 0)
-				io_service.post(bound_handler<Handler>(std::move(handler), boost::system::error_code(), 0));
-			else
-			{
-				m_read_ops.push_back(new handler_type(buffers, std::move(handler)));
-
-				if (not m_received.empty())
-					push_received();
-			}
-		}
-
 		template <typename MutableBufferSequence>
 		std::size_t read_some(const MutableBufferSequence& buffers)
 		{
@@ -443,7 +422,7 @@ namespace assh
 				//async_read_some(buffers, [&](const boost::system::error_code& ec_, std::size_t bytes_transferred_)
 
 				auto handler = [&](const boost::system::error_code& ec_, std::size_t bytes_transferred_) {
-					ec = ec;
+					ec = ec_;
 					s = bytes_transferred_;
 					c.notify_one();
 				};
