@@ -56,13 +56,6 @@ AutoSeededRandomPool rng;
 const string
 	kSSHVersionString("SSH-2.0-libassh");
 
-const string
-	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
-	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
-	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,blowfish-cbc,3des-cbc"),
-	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256,hmac-sha1,hmac-md5,hmac-ripemd160"),
-	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
-
 string choose_protocol(const string &server, const string &client)
 {
 	string result;
@@ -1248,6 +1241,92 @@ void connection::async_read(uint32_t at_least)
 
 // --------------------------------------------------------------------
 
+rekey_state_machine::rekey_state_machine(connection2& connection)
+	: m_connection(connection)
+{
+}
+
+bool rekey_state_machine::process(ipacket& in, opacket& out, boost::system::error_code& ec)
+{
+	bool result = false;
+
+	if (not m_key_exchange)
+	{
+		if (in != msg_kexinit)
+			ec = error::make_error_code(assh::error::key_exchange_failed);
+		else
+		{
+			m_connection.m_host_payload = in;
+
+			std::string key_exchange_alg;
+			in.skip(16);
+			in >> key_exchange_alg;
+
+			key_exchange_alg = choose_protocol(key_exchange_alg, m_alg_kex);
+
+			m_key_exchange.reset(key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload));
+
+			result = m_key_exchange->process(in, out, ec);
+		}
+	}
+
+
+	if (in == msg_kexinit)
+	{
+
+	}
+				
+				case rekeying2:
+					if ((message_type)*m_in != msg_kexinit)
+						ec = error::make_error_code(error::kex_error);
+					else
+					{
+						m_state = rekeying3;
+					}
+					break;
+
+				case rekeying3:
+					m_state = newkeys;
+					m_c->async_read_packet(*m_in, std::move(self));
+					break;
+
+				case newkeys:
+					if (m_key_exchange->process(*m_in, out, ec) and not ec)
+					{
+						if (not out.empty())
+							m_state = rekeying3;
+						else
+							m_c->async_read_packet(*m_in, std::move(self));
+					}
+					else if ((message_type)*m_in == msg_newkeys)
+					{
+						m_state = userauth;
+						m_c->process_newkeys(*m_key_exchange);
+						
+						out = msg_service_request;
+						out << "ssh-userauth";
+
+						// // we might not be known yet
+						// ssh_agent::instance().register_connection(shared_from_this());
+
+						// // fetch the private keys
+						// for (auto& pk: ssh_agent::instance())
+						// {
+						// 	opacket blob;
+						// 	blob << pk;
+						// 	m_private_keys.push_back(blob);
+						// }
+					}
+					else
+						ec = error::make_error_code(error::kex_error);
+					break;
+
+}
+
+
+// --------------------------------------------------------------------
+
+
 connection2::connection2(boost::asio::io_context& io_context, const std::string &user, const std::string &host, int16_t port)
 	: m_strand(io_context.get_executor())
 	, m_socket(m_strand)
@@ -1256,46 +1335,11 @@ connection2::connection2(boost::asio::io_context& io_context, const std::string 
 	, m_port(port)
 	, m_user(user)
 	, m_authenticated(false)
-	, m_sent_kexinit(false)
 	, m_auth_state(auth_state_none)
 	// , m_key_exchange(nullptr)
 	, m_forward_agent(false)
 	, m_port_forwarder(nullptr)
-	, m_alg_kex(kKeyExchangeAlgorithms)
-	, m_alg_enc_c2s(kEncryptionAlgorithms)
-	, m_alg_ver_c2s(kMacAlgorithms)
-	, m_alg_cmp_c2s(kCompressionAlgorithms)
-	, m_alg_enc_s2c(kEncryptionAlgorithms)
-	, m_alg_ver_s2c(kMacAlgorithms)
-	, m_alg_cmp_s2c(kCompressionAlgorithms)
 {
-}
-
-
-opacket connection2::get_rekey_msg()
-{
-	opacket out(msg_kexinit);
-
-	for (uint32_t i = 0; i < 16; ++i)
-		out << rng.GenerateByte();
-
-	out << m_alg_kex
-		<< kServerHostKeyAlgorithms
-		<< m_alg_enc_c2s
-		<< m_alg_enc_s2c
-		<< m_alg_ver_c2s
-		<< m_alg_ver_s2c
-		<< m_alg_cmp_c2s
-		<< m_alg_cmp_s2c
-		<< ""
-		<< ""
-		<< false
-		<< uint32_t(0);
-
-	m_my_payload = out;
-	m_sent_kexinit = true;
-
-	return out;
 }
 
 void connection2::prepare(opacket&& packet, boost::asio::streambuf& buffer, boost::system::error_code& ec)
@@ -1377,38 +1421,160 @@ std::size_t connection2::receive_packet(ipacket& p, boost::asio::streambuf& buff
 	return p.complete() ? 0 : m_iblocksize;
 }
 
-key_exchange* connection2::process_kexinit(ipacket &in)
+struct read_loop_implementation
 {
-	m_host_payload = in;
+	read_loop_implementation(connection2& connection);
 
-	string key_exchange_alg;
-	in.skip(16);
-	in >> key_exchange_alg;
+	template<typename Self>
+	void operator()(Self& self, boost::system::error_code ec)
+	{
+		if (ec)
+			self.complete(ec);
+		else
+			
+	}
+};
 
-	key_exchange_alg = choose_protocol(key_exchange_alg, m_alg_kex);
-
-	return key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload);
+void connection2::read_loop(boost::system::error_code ec)
+{
+	if (ec)
+	{
+		reset();
+		
+	}
+	else
+	{
+		as
+	}
 }
 
-void connection2::process_newkeys(key_exchange& kex)
+
+void connection2::async_read_at_least(uint32_t at_least)
 {
-	// // something went terribly wrong, obviously
-	// if (m_key_exchange == nullptr)
-	// {
-	// 	ec = error::make_error_code(error::key_exchange_failed);
-	// 	return;
-	// }
+	auto self(shared_from_this());
+	boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
+							[self, this](const boost::system::error_code& ec, std::size_t bytes_transferred) {
+								this->receive_data(ec);
+							});
+}
 
-	ipacket payload(&m_host_payload[0], m_host_payload.size());
+// the read loop, this routine keeps calling itself until an error condition is met
+void connection2::receive_data(const boost::system::error_code& ec)
+{
+	if (ec)
+	{
+		handle_error(ec);
+		return;
+	}
 
-	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
+	// don't process data at all if we're no longer willing
+	if (m_auth_state == auth_state_none)
+		return;
 
-	payload.skip(16);
-	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
+	try
+	{
+		while (m_response.size() >= m_iblocksize)
+		{
+			if (not m_packet.complete())
+			{
+				vector<uint8_t> block(m_iblocksize);
+				m_response.sgetn(reinterpret_cast<char *>(&block[0]), m_iblocksize);
+
+				if (m_decryptor)
+				{
+					vector<uint8_t> data(m_iblocksize);
+					m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
+					swap(data, block);
+				}
+
+				if (m_verifier)
+				{
+					if (m_packet.empty())
+					{
+						for (int32_t i = 3; i >= 0; --i)
+						{
+							uint8_t b = m_in_seq_nr >> (i * 8);
+							m_verifier->Update(&b, 1);
+						}
+					}
+
+					m_verifier->Update(&block[0], block.size());
+				}
+
+				m_packet.append(block);
+			}
+
+			if (m_packet.complete())
+			{
+				if (m_verifier)
+				{
+					if (m_response.size() < m_verifier->DigestSize())
+						break;
+
+					vector<uint8_t> digest(m_verifier->DigestSize());
+					m_response.sgetn(reinterpret_cast<char *>(&digest[0]), m_verifier->DigestSize());
+
+					if (not m_verifier->Verify(&digest[0]))
+					{
+						handle_error(error::make_error_code(error::mac_error));
+						return;
+					}
+				}
+
+				if (m_decompressor)
+				{
+					boost::system::error_code ec;
+					m_packet.decompress(*m_decompressor, ec);
+					if (ec)
+					{
+						handle_error(ec);
+						break;
+					}
+				}
+
+				process_packet(m_packet);
+
+				m_packet.clear();
+				++m_in_seq_nr;
+			}
+		}
+
+		uint32_t at_least = m_iblocksize;
+		if (m_response.size() >= m_iblocksize)
+		{
+			// if we arrive here, we might have read a block, but not the digest?
+			// call readsome with 0 as at-least, that will return something we hope.
+			at_least = 1;
+		}
+		else
+			at_least -= m_response.size();
+
+		async_read(at_least);
+	}
+	catch (...)
+	{
+		try
+		{
+			disconnect();
+		}
+		catch (...)
+		{
+		}
+		throw;
+	}
+}
+
+void connection2::rekey()
+{
+	m_key_exchange.reset(key_exchange::init())
+}
+
+void connection2::process_newkeys()
+{
+	auto& kex = *m_key_exchange;
 
 	// Client to server encryption
-	string protocol = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s);
+	string protocol = kex.get_encryption_protocol(direction::c2s);
 
 	const uint8_t *key = kex.key(key_exchange::C);
 	const uint8_t *iv = kex.key(key_exchange::A);
@@ -1431,7 +1597,7 @@ void connection2::process_newkeys(key_exchange& kex)
 		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 32, iv));
 
 	// Server to client encryption
-	protocol = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c);
+	protocol = protocol = kex.get_encryption_protocol(direction::s2c);
 
 	key = kex.key(key_exchange::D);
 	iv = kex.key(key_exchange::B);
@@ -1454,7 +1620,7 @@ void connection2::process_newkeys(key_exchange& kex)
 		m_decryptor.reset(new CTR_Mode<AES>::Decryption(key, 32, iv));
 
 	// Client To Server verification
-	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
+	protocol = kex.get_verification_protocol(direction::c2s);
 	iv = kex.key(key_exchange::E);
 
 	if (protocol == "hmac-sha2-512")
@@ -1470,7 +1636,7 @@ void connection2::process_newkeys(key_exchange& kex)
 
 	// Server to Client verification
 
-	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
+	protocol = kex.get_verification_protocol(direction::s2c);
 	iv = kex.key(key_exchange::F);
 
 	if (protocol == "hmac-sha2-512")
@@ -1485,14 +1651,14 @@ void connection2::process_newkeys(key_exchange& kex)
 		m_verifier.reset(new HMAC<Weak::MD5>(iv));
 
 	// Client to Server compression
-	protocol = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
+	protocol = kex.get_compression_protocol(direction::c2s);
 	if ((not m_compressor and protocol == "zlib") or (m_authenticated and protocol == "zlib@openssh.com"))
 		m_compressor.reset(new compression_helper(true));
 	else if (protocol == "zlib@openssh.com")
 		m_delay_compressor = true;
 
 	// Server to Client compression
-	protocol = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
+	protocol = kex.get_compression_protocol(direction::s2c);
 	if ((not m_decompressor and protocol == "zlib") or (m_authenticated and protocol == "zlib@openssh.com"))
 		m_decompressor.reset(new compression_helper(false));
 	else if (protocol == "zlib@openssh.com")
@@ -1504,7 +1670,7 @@ void connection2::process_newkeys(key_exchange& kex)
 		m_oblocksize = m_encryptor->OptimalBlockSize();
 	}
 
-	m_sent_kexinit = false;
+	m_key_exchange.reset();
 }
 
 } // namespace assh

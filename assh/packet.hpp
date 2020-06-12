@@ -181,8 +181,9 @@ protected:
 
 class ipacket
 {
-public:
+  public:
 	friend class opacket;
+
 	friend bool operator==(const opacket&, const ipacket&);
 	friend bool operator==(const ipacket&, const opacket&);
 
@@ -209,6 +210,16 @@ public:
 	void message(message_type msg) { m_message = msg; }
 	message_type message() const { return m_message; }
 	operator message_type() const { return m_message; }
+
+	bool operator!=(message_type msg) const
+	{
+		return m_message != msg;
+	}
+
+	bool operator==(message_type msg) const
+	{
+		return m_message == msg;
+	}
 
 	operator std::vector<uint8_t>() const { return std::vector<uint8_t>(m_data, m_data + m_length); }
 

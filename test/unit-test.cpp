@@ -58,7 +58,7 @@ int main()
 		io_service.run();
 	});
 
-	auto connection = std::make_shared<assh::connection2>(io_service, "maarten", "s4", 2022);
+	auto connection = std::make_shared<assh::connection2>(io_service, "maarten", "localhost", 2022);
 	
 	auto f1 = connection->async_connect(boost::asio::use_future);
 
