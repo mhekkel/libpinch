@@ -456,113 +456,113 @@ class connection2 : public std::enable_shared_from_this<connection2>
 
 			switch (m_state)
 			{
-				case connecting:
-					if (ec and m_next_endpoint != boost::asio::ip::tcp::resolver::iterator())
-					{
-						auto endpoint = *m_next_endpoint;
-						++m_next_endpoint;
+				// case connecting:
+				// 	if (ec and m_next_endpoint != boost::asio::ip::tcp::resolver::iterator())
+				// 	{
+				// 		auto endpoint = *m_next_endpoint;
+				// 		++m_next_endpoint;
 
-						m_socket.close();
-						m_socket.async_connect(endpoint, std::move(self));
-						ec = {};
-					}
-					else if (not ec)
-					{
-						m_state = handshaking;
+				// 		m_socket.close();
+				// 		m_socket.async_connect(endpoint, std::move(self));
+				// 		ec = {};
+				// 	}
+				// 	else if (not ec)
+				// 	{
+				// 		m_state = handshaking;
 
-						std::ostream out(m_buffer.get());
-						out << kSSHVersionString << "\r\n";
+				// 		std::ostream out(m_buffer.get());
+				// 		out << kSSHVersionString << "\r\n";
 
-						boost::asio::async_write(m_socket, *m_buffer, std::move(self));
-					}
-					break;
+				// 		boost::asio::async_write(m_socket, *m_buffer, std::move(self));
+				// 	}
+				// 	break;
 
-				case handshaking:
-				{
-					m_state = read_version_string;
-					boost::asio::async_read_until(m_socket, m_c->m_response, "\n", std::move(self));
-					break;
-				}
+				// case handshaking:
+				// {
+				// 	m_state = read_version_string;
+				// 	boost::asio::async_read_until(m_socket, m_c->m_response, "\n", std::move(self));
+				// 	break;
+				// }
 
-				case read_version_string:
-				{
-					m_state = rekeying;
+				// case read_version_string:
+				// {
+				// 	m_state = rekeying;
 
-					std::istream response_stream(&m_c->m_response);
+				// 	std::istream response_stream(&m_c->m_response);
 
-					std::getline(response_stream, m_c->m_host_version);
-					boost::algorithm::trim_right(m_c->m_host_version);
+				// 	std::getline(response_stream, m_c->m_host_version);
+				// 	boost::algorithm::trim_right(m_c->m_host_version);
 
-					if (m_c->m_host_version.compare(0, 7, "SSH-2.0") != 0)
-						ec = error::make_error_code(error::protocol_version_not_supported);
-					else
-						out = m_c->get_rekey_msg();
-					break;
-				}
+				// 	if (m_c->m_host_version.compare(0, 7, "SSH-2.0") != 0)
+				// 		ec = error::make_error_code(error::protocol_version_not_supported);
+				// 	else
+				// 		out = m_c->get_rekey_msg();
+				// 	break;
+				// }
 
-				case rekeying:
-					m_state = rekeying2;
-					m_c->async_read_packet(*m_in, std::move(self));
-					break;
+				// case rekeying:
+				// 	m_state = rekeying2;
+				// 	m_c->async_read_packet(*m_in, std::move(self));
+				// 	break;
 				
-				case rekeying2:
-					if ((message_type)*m_in != msg_kexinit)
-						ec = error::make_error_code(error::kex_error);
-					else
-					{
-						m_state = rekeying3;
-						m_key_exchange.reset(m_c->process_kexinit(*m_in));
-						if (not m_key_exchange)
-							ec = error::make_error_code(assh::error::key_exchange_failed);
-						else
-							m_key_exchange->process(*m_in, out, ec);
-					}
-					break;
+				// case rekeying2:
+				// 	if ((message_type)*m_in != msg_kexinit)
+				// 		ec = error::make_error_code(error::kex_error);
+				// 	else
+				// 	{
+				// 		m_state = rekeying3;
+				// 		m_key_exchange.reset(m_c->process_kexinit(*m_in));
+				// 		if (not m_key_exchange)
+				// 			ec = error::make_error_code(assh::error::key_exchange_failed);
+				// 		else
+				// 			m_key_exchange->process(*m_in, out, ec);
+				// 	}
+				// 	break;
 
-				case rekeying3:
-					m_state = newkeys;
-					m_c->async_read_packet(*m_in, std::move(self));
-					break;
+				// case rekeying3:
+				// 	m_state = newkeys;
+				// 	m_c->async_read_packet(*m_in, std::move(self));
+				// 	break;
 
-				case newkeys:
-					if (m_key_exchange->process(*m_in, out, ec) and not ec)
-					{
-						if (not out.empty())
-							m_state = rekeying3;
-						else
-							m_c->async_read_packet(*m_in, std::move(self));
-					}
-					else if ((message_type)*m_in == msg_newkeys)
-					{
-						m_state = userauth;
-						m_c->process_newkeys(*m_key_exchange);
+				// case newkeys:
+				// 	if (m_key_exchange->process(*m_in, out, ec) and not ec)
+				// 	{
+				// 		if (not out.empty())
+				// 			m_state = rekeying3;
+				// 		else
+				// 			m_c->async_read_packet(*m_in, std::move(self));
+				// 	}
+				// 	else if ((message_type)*m_in == msg_newkeys)
+				// 	{
+				// 		m_state = userauth;
+				// 		m_c->process_newkeys(*m_key_exchange);
 						
-						out = msg_service_request;
-						out << "ssh-userauth";
+				// 		out = msg_service_request;
+				// 		out << "ssh-userauth";
 
-						// // we might not be known yet
-						// ssh_agent::instance().register_connection(shared_from_this());
+				// 		// // we might not be known yet
+				// 		// ssh_agent::instance().register_connection(shared_from_this());
 
-						// // fetch the private keys
-						// for (auto& pk: ssh_agent::instance())
-						// {
-						// 	opacket blob;
-						// 	blob << pk;
-						// 	m_private_keys.push_back(blob);
-						// }
-					}
-					else
-						ec = error::make_error_code(error::kex_error);
-					break;
+				// 		// // fetch the private keys
+				// 		// for (auto& pk: ssh_agent::instance())
+				// 		// {
+				// 		// 	opacket blob;
+				// 		// 	blob << pk;
+				// 		// 	m_private_keys.push_back(blob);
+				// 		// }
+				// 	}
+				// 	else
+				// 		ec = error::make_error_code(error::kex_error);
+				// 	break;
 
-				case userauth:
-				{
-					m_state = done;
-					break;
-				}
+				// case userauth:
+				// {
+				// 	m_state = done;
+				// 	break;
+				// }
 
-				default:
-					break;
+				// default:
+				// 	break;
 			}
 
 			if (ec)

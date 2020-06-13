@@ -40,12 +40,19 @@ DOCDIR              ?= $(PREFIX)/share/doc/libzeep-doc
 CXXFLAGS            += -I. -pthread
 CXXFLAGS            += -Wall -Wno-multichar
 
+PACKAGES			+= libcrypto++ zlib
+
+ifneq ($(PACKAGES),)
+CXXFLAGS			+= $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --cflags $(PACKAGES))
+LDFLAGS				+= $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs $(PACKAGES) )
+endif
+
 # Use the DEBUG flag to build debug versions of the code
 DEBUG               = @DEBUG@
 
 ifeq "$(DEBUG)" "1"
 DEFINES				+= DEBUG
-CXXFLAGS            += -g
+CXXFLAGS            += -g -O0
 LDFLAGS				+= -g
 else
 CXXFLAGS			+= -O2
@@ -141,11 +148,30 @@ $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
 clean:
 	rm -rf $(OBJDIR)/* $(OUTPUT)/$(LIB_NAME)*
 
-.PHONY: test
-test: $(STATIC_LIB) test/unit-test
+BOOST_LIBS = random regex thread
 
-test/unit-test: $(OBJDIR)/unit-test.o
-	$(CXX) -o $@ $^ $(CXXFLAGS) $(STATIC_LIB) $(LDFLAGS) -lboost_thread -lcryptopp -pthread -lz -lboost_random -lboost_regex -g
+define TEST_template =
+
+-include $$(OBJDIR)/$(1)-test.d
+
+$(1)_OBJECTS = $$(OBJECTS) $$(OBJDIR)/$(1)-test.o
+
+test/$(1)-test: $$($(1)_OBJECTS)
+	@ echo ">>> building $(1)-test"
+	@ $(CXX) -o $$@ $$($(1)_OBJECTS) $$(CFLAGS) $$(CXXFLAGS) $(LDFLAGS) $(BOOST_LIBS:%=-lboost_%) -lstdc++fs
+
+.PHONY: $(1)-test
+$(1)-test: test/$(1)-test
+	cd test; ./$(1)-test $$($(1)_PARAMS)
+
+endef
+
+TESTS = service unit
+
+$(foreach part,$(TESTS),$(eval $(call TEST_template,$(part))))
+
+.PHONY: test
+test: $(TESTS:%=%-test)
 
 dist-clean: clean
 

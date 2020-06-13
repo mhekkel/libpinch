@@ -194,11 +194,11 @@ void key_exchange::derive_keys()
 	for (int i = 0; i < 6; ++i)
 	{
 		hash<HashAlgorithm> ha;
-		vector<uint8_t> key = (ha | m_K | m_H | ('A' + i) | m_session_id).final();
+		std::vector<uint8_t> key = (ha | m_K | m_H | ('A' + i) | m_session_id).final();
 		
 		for (int k = 20; k < keylen; k += 20)
 		{
-			vector<uint8_t> k2 = (ha | m_K | m_H | key).final();
+			std::vector<uint8_t> k2 = (ha | m_K | m_H | key).final();
 			key.insert(key.end(), k2.begin(), k2.end());
 		}
 		
