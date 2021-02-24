@@ -1,4 +1,5 @@
 # makefile for a gtk interface lib
+SHELL := /bin/bash
 
 firstTarget: static-lib
 
@@ -30,11 +31,6 @@ OUTPUT				= ./
 
 # SHARED_LIB			= $(OUTPUT)/$(SHARED_LIB_NAME)
 STATIC_LIB			= $(OUTPUT)/$(STATIC_LIB_NAME)
-
-LIBDIR              ?= $(PREFIX)/lib
-INCDIR              ?= $(PREFIX)/include
-MANDIR              ?= $(PREFIX)/man/man3
-DOCDIR              ?= $(PREFIX)/share/doc/libzeep-doc
 
 # main build variables
 CXXFLAGS            += -I. -pthread

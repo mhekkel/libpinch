@@ -7,3 +7,5 @@ aclocal.m4
 obj
 obj.dbg
 libassh.a
+test/core
+test/service-test

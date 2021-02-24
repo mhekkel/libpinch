@@ -8,7 +8,7 @@ AC_CONFIG_SRCDIR([src/channel.cpp])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR([config/m4])
 
-AX_BOOST_BASE([1.73])
+AX_BOOST_BASE([1.71])
 
 AX_BOOST_ASIO
 

@@ -83,7 +83,19 @@ string choose_protocol(const string &server, const string &client)
 // --------------------------------------------------------------------
 
 basic_connection::basic_connection(boost::asio::io_service &io_service, const string &user)
-	: m_io_service(io_service), m_user(user), m_authenticated(false), m_sent_kexinit(false), m_auth_state(auth_state_none), m_key_exchange(nullptr), m_forward_agent(false), m_port_forwarder(nullptr), m_alg_kex(kKeyExchangeAlgorithms), m_alg_enc_c2s(kEncryptionAlgorithms), m_alg_ver_c2s(kMacAlgorithms), m_alg_cmp_c2s(kCompressionAlgorithms), m_alg_enc_s2c(kEncryptionAlgorithms), m_alg_ver_s2c(kMacAlgorithms), m_alg_cmp_s2c(kCompressionAlgorithms)
+	: m_io_service(io_service)
+	, m_user(user)
+	, m_authenticated(false)
+	, m_auth_state(auth_state_none)
+	, m_forward_agent(false)
+	, m_port_forwarder(nullptr)
+	, m_alg_kex(kKeyExchangeAlgorithms)
+	, m_alg_enc_c2s(kEncryptionAlgorithms)
+	, m_alg_ver_c2s(kMacAlgorithms)
+	, m_alg_cmp_c2s(kCompressionAlgorithms)
+	, m_alg_enc_s2c(kEncryptionAlgorithms)
+	, m_alg_ver_s2c(kMacAlgorithms)
+	, m_alg_cmp_s2c(kCompressionAlgorithms)
 {
 	reset();
 }
@@ -92,8 +104,7 @@ basic_connection::~basic_connection()
 {
 	// ssh_agent::instance().unregister_connection(shared_from_this());
 
-	delete m_key_exchange;
-	delete m_port_forwarder;
+	// delete m_port_forwarder;
 }
 
 void basic_connection::set_algorithm(algorithm alg, direction dir, const string &preferred)
@@ -147,8 +158,7 @@ void basic_connection::reset()
 	m_authenticated = false;
 	m_auth_state = auth_state_none;
 	m_private_key_hash.clear();
-	delete m_key_exchange;
-	m_key_exchange = nullptr;
+	m_key_exchange.reset();
 	m_session_id.clear();
 	m_packet.clear();
 	m_encryptor.reset(nullptr);
@@ -208,29 +218,31 @@ void basic_connection::handle_error(const boost::system::error_code &ec)
 
 void basic_connection::rekey()
 {
-	opacket out(msg_kexinit);
+	m_key_exchange.reset(new key_exchange(m_host_version, m_session_id));
 
-	for (uint32_t i = 0; i < 16; ++i)
-		out << rng.GenerateByte();
+	async_write(m_key_exchange->init());
 
-	out << m_alg_kex
-		<< kServerHostKeyAlgorithms
-		<< m_alg_enc_c2s
-		<< m_alg_enc_s2c
-		<< m_alg_ver_c2s
-		<< m_alg_ver_s2c
-		<< m_alg_cmp_c2s
-		<< m_alg_cmp_s2c
-		<< ""
-		<< ""
-		<< false
-		<< uint32_t(0);
+	// for (uint32_t i = 0; i < 16; ++i)
+	// 	out << rng.GenerateByte();
 
-	m_my_payload = out;
+	// out << m_alg_kex
+	// 	<< kServerHostKeyAlgorithms
+	// 	<< m_alg_enc_c2s
+	// 	<< m_alg_enc_s2c
+	// 	<< m_alg_ver_c2s
+	// 	<< m_alg_ver_s2c
+	// 	<< m_alg_cmp_c2s
+	// 	<< m_alg_cmp_s2c
+	// 	<< ""
+	// 	<< ""
+	// 	<< false
+	// 	<< uint32_t(0);
 
-	async_write(move(out));
+	// m_my_payload = out;
 
-	m_sent_kexinit = true;
+	// async_write(move(out));
+
+	// m_sent_kexinit = true;
 }
 
 void basic_connection::forward_agent(bool forward)
@@ -257,13 +269,13 @@ string basic_connection::get_connection_parameters(direction dir) const
 {
 	string result;
 
-	ipacket payload(&m_host_payload[0], m_host_payload.size());
+	// ipacket payload(&m_host_payload[0], m_host_payload.size());
 
 	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
 		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
 
-	payload.skip(16);
-	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
+	// payload.skip(16);
+	// payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
 
 	if (dir == direction::c2s)
 	{
@@ -289,16 +301,16 @@ string basic_connection::get_connection_parameters(direction dir) const
 
 string basic_connection::get_key_exchange_algoritm() const
 {
-	string result;
+	// ipacket payload(&m_host_payload[0], m_host_payload.size());
 
-	ipacket payload(&m_host_payload[0], m_host_payload.size());
+	// string key_exchange_alg;
 
-	string key_exchange_alg;
+	// payload.skip(16);
+	// payload >> key_exchange_alg;
 
-	payload.skip(16);
-	payload >> key_exchange_alg;
+	// return choose_protocol(key_exchange_alg, m_alg_kex);
 
-	return choose_protocol(key_exchange_alg, m_alg_kex);
+	return {};
 }
 
 void basic_connection::handle_connect_result(const boost::system::error_code &ec)
@@ -589,25 +601,14 @@ bool basic_connection::validate_host_key(const string &pk_alg, const vector<uint
 
 void basic_connection::process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec)
 {
-	// // if this is a rekey request by the server, send our kexinit packet
-	// if (not m_sent_kexinit)
-	// 	rekey();
+	// if this is a rekey request by the server, send our kexinit packet
+	if (not m_key_exchange)
+		rekey();
 
-	// m_host_payload = in;
-
-	// string key_exchange_alg;
-	// in.skip(16);
-	// in >> key_exchange_alg;
-
-	// key_exchange_alg = choose_protocol(key_exchange_alg, m_alg_kex);
-
-	// m_key_exchange = key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload);
+	m_key_exchange->process(in, out, ec);
 
 	// if (m_key_exchange)
-	// {
-	// 	m_key_exchange->cb_verify_host_key = boost::bind(&basic_connection::validate_host_key, this, _1, _2);
 	// 	m_key_exchange->process(in, out, ec);
-	// }
 	// else
 	// 	handle_connect_result(error::make_error_code(error::key_exchange_failed));
 }
@@ -616,9 +617,12 @@ void basic_connection::process_newkeys(ipacket &in, opacket &out, boost::system:
 {
 	// something went terribly wrong, obviously
 	if (m_key_exchange == nullptr)
+	{
+		ec = error::make_error_code(error::key_exchange_failed);
 		return;
+	}
 
-	ipacket payload(&m_host_payload[0], m_host_payload.size());
+	ipacket payload = m_key_exchange->host_payload();
 
 	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
 		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
@@ -724,10 +728,7 @@ void basic_connection::process_newkeys(ipacket &in, opacket &out, boost::system:
 	}
 
 	if (m_authenticated)
-	{
-		delete m_key_exchange;
-		m_key_exchange = nullptr;
-	}
+		m_key_exchange.reset();
 	else
 	{
 		out = msg_service_request;
@@ -744,8 +745,6 @@ void basic_connection::process_newkeys(ipacket &in, opacket &out, boost::system:
 		// 	m_private_keys.push_back(blob);
 		// }
 	}
-
-	m_sent_kexinit = false;
 }
 
 void basic_connection::process_service_accept(ipacket &in, opacket &out, boost::system::error_code &ec)
@@ -765,8 +764,9 @@ void basic_connection::process_userauth_success(ipacket &in, opacket &out, boost
 	if (m_delay_decompressor)
 		m_decompressor.reset(new compression_helper(false));
 
-	delete m_key_exchange;
-	m_key_exchange = nullptr;
+	m_session_id = m_key_exchange->session_id();
+
+	m_key_exchange.reset();
 
 	handle_connect_result(boost::system::error_code());
 }
@@ -921,7 +921,7 @@ struct packet_encryptor
 
 		for (streamsize o = 0; o < n; o += m_blocksize)
 		{
-			streamsize k = n;
+			size_t k = n;
 			if (k > m_blocksize - m_block.size())
 				k = m_blocksize - m_block.size();
 
@@ -1164,9 +1164,7 @@ void connection::start_handshake()
 {
 	if (not m_socket.is_open())
 	{
-		boost::asio::ip::tcp::resolver resolver(get_io_service());
 		boost::asio::ip::tcp::resolver::query query(m_host, boost::lexical_cast<string>(m_port));
-
 		m_resolver.async_resolve(query,
 									boost::bind(&connection::handle_resolve, this,
 												boost::asio::placeholders::error, boost::asio::placeholders::iterator));
@@ -1238,439 +1236,5 @@ void connection::async_read(uint32_t at_least)
 								this->received_data(ec);
 							});
 }
-
-// --------------------------------------------------------------------
-
-rekey_state_machine::rekey_state_machine(connection2& connection)
-	: m_connection(connection)
-{
-}
-
-bool rekey_state_machine::process(ipacket& in, opacket& out, boost::system::error_code& ec)
-{
-// 	bool result = false;
-
-// 	if (not m_key_exchange)
-// 	{
-// 		if (in != msg_kexinit)
-// 			ec = error::make_error_code(assh::error::key_exchange_failed);
-// 		else
-// 		{
-// 			m_connection.m_host_payload = in;
-
-// 			std::string key_exchange_alg;
-// 			in.skip(16);
-// 			in >> key_exchange_alg;
-
-// 			key_exchange_alg = choose_protocol(key_exchange_alg, m_alg_kex);
-
-// 			m_key_exchange.reset(key_exchange::create(key_exchange_alg, m_host_version, m_session_id, m_host_payload, m_my_payload));
-
-// 			result = m_key_exchange->process(in, out, ec);
-// 		}
-// 	}
-
-
-// 	if (in == msg_kexinit)
-// 	{
-
-// 	}
-				
-// 				case rekeying2:
-// 					if ((message_type)*m_in != msg_kexinit)
-// 						ec = error::make_error_code(error::kex_error);
-// 					else
-// 					{
-// 						m_state = rekeying3;
-// 					}
-// 					break;
-
-// 				case rekeying3:
-// 					m_state = newkeys;
-// 					m_c->async_read_packet(*m_in, std::move(self));
-// 					break;
-
-// 				case newkeys:
-// 					if (m_key_exchange->process(*m_in, out, ec) and not ec)
-// 					{
-// 						if (not out.empty())
-// 							m_state = rekeying3;
-// 						else
-// 							m_c->async_read_packet(*m_in, std::move(self));
-// 					}
-// 					else if ((message_type)*m_in == msg_newkeys)
-// 					{
-// 						m_state = userauth;
-// 						m_c->process_newkeys(*m_key_exchange);
-						
-// 						out = msg_service_request;
-// 						out << "ssh-userauth";
-
-// 						// // we might not be known yet
-// 						// ssh_agent::instance().register_connection(shared_from_this());
-
-// 						// // fetch the private keys
-// 						// for (auto& pk: ssh_agent::instance())
-// 						// {
-// 						// 	opacket blob;
-// 						// 	blob << pk;
-// 						// 	m_private_keys.push_back(blob);
-// 						// }
-// 					}
-// 					else
-// 						ec = error::make_error_code(error::kex_error);
-// 					break;
-
-}
-
-
-// --------------------------------------------------------------------
-
-
-connection2::connection2(boost::asio::io_context& io_context, const std::string &user, const std::string &host, int16_t port)
-	: m_strand(io_context.get_executor())
-	, m_socket(m_strand)
-	, m_resolver(m_strand)
-	, m_host(host)
-	, m_port(port)
-	, m_user(user)
-	, m_authenticated(false)
-	, m_auth_state(auth_state_none)
-	// , m_key_exchange(nullptr)
-	, m_forward_agent(false)
-	, m_port_forwarder(nullptr)
-{
-}
-
-void connection2::prepare(opacket&& packet, boost::asio::streambuf& buffer, boost::system::error_code& ec)
-{
-	if (m_compressor)
-		packet.compress(*m_compressor, ec);
-
-	if (not ec)
-	{
-		io::filtering_stream<io::output> out;
-
-		if (m_encryptor)
-			out.push(packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
-
-		out.push(buffer);
-
-		packet.write(out, m_oblocksize);
-		++m_out_seq_nr;	
-	}
-}
-
-std::size_t connection2::receive_packet(ipacket& p, boost::asio::streambuf& buffer, boost::system::error_code& ec)
-{
-	while (buffer.size() >= m_iblocksize)
-	{
-		if (not p.complete())
-		{
-			vector<uint8_t> block(m_iblocksize);
-			buffer.sgetn(reinterpret_cast<char *>(&block[0]), m_iblocksize);
-
-			if (m_decryptor)
-			{
-				vector<uint8_t> data(m_iblocksize);
-				m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
-				swap(data, block);
-			}
-
-			if (m_verifier)
-			{
-				if (p.empty())
-				{
-					for (int32_t i = 3; i >= 0; --i)
-					{
-						uint8_t b = m_in_seq_nr >> (i * 8);
-						m_verifier->Update(&b, 1);
-					}
-				}
-
-				m_verifier->Update(&block[0], block.size());
-			}
-
-			p.append(block);
-		}
-
-		if (p.complete())
-		{
-			if (m_verifier)
-			{
-				if (buffer.size() < m_verifier->DigestSize())
-					break;
-
-				vector<uint8_t> digest(m_verifier->DigestSize());
-				buffer.sgetn(reinterpret_cast<char *>(&digest[0]), m_verifier->DigestSize());
-
-				if (not m_verifier->Verify(&digest[0]))
-					ec = error::make_error_code(error::mac_error);
-			}
-
-			if (not ec and m_decompressor)
-				p.decompress(*m_decompressor, ec);
-
-			// process_packet(p);
-
-			++m_in_seq_nr;
-			break;
-		}
-	}
-
-	return p.complete() ? 0 : m_iblocksize;
-}
-
-struct read_loop_implementation
-{
-	read_loop_implementation(connection2& connection);
-
-	template<typename Self>
-	void operator()(Self& self, boost::system::error_code ec)
-	{
-		if (ec)
-			self.complete(ec);
-		// else
-			
-	}
-};
-
-// void connection2::read_loop(boost::system::error_code ec)
-// {
-// 	if (ec)
-// 	{
-// 		reset();
-		
-// 	}
-// 	else
-// 	{
-// 		as
-// 	}
-// }
-
-
-// void connection2::async_read_at_least(uint32_t at_least)
-// {
-// 	auto self(shared_from_this());
-// 	boost::asio::async_read(m_socket, m_response, boost::asio::transfer_at_least(at_least),
-// 							[self, this](const boost::system::error_code& ec, std::size_t bytes_transferred) {
-// 								this->receive_data(ec);
-// 							});
-// }
-
-// // the read loop, this routine keeps calling itself until an error condition is met
-// void connection2::receive_data(const boost::system::error_code& ec)
-// {
-// 	if (ec)
-// 	{
-// 		handle_error(ec);
-// 		return;
-// 	}
-
-// 	// don't process data at all if we're no longer willing
-// 	if (m_auth_state == auth_state_none)
-// 		return;
-
-// 	try
-// 	{
-// 		while (m_response.size() >= m_iblocksize)
-// 		{
-// 			if (not m_packet.complete())
-// 			{
-// 				vector<uint8_t> block(m_iblocksize);
-// 				m_response.sgetn(reinterpret_cast<char *>(&block[0]), m_iblocksize);
-
-// 				if (m_decryptor)
-// 				{
-// 					vector<uint8_t> data(m_iblocksize);
-// 					m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
-// 					swap(data, block);
-// 				}
-
-// 				if (m_verifier)
-// 				{
-// 					if (m_packet.empty())
-// 					{
-// 						for (int32_t i = 3; i >= 0; --i)
-// 						{
-// 							uint8_t b = m_in_seq_nr >> (i * 8);
-// 							m_verifier->Update(&b, 1);
-// 						}
-// 					}
-
-// 					m_verifier->Update(&block[0], block.size());
-// 				}
-
-// 				m_packet.append(block);
-// 			}
-
-// 			if (m_packet.complete())
-// 			{
-// 				if (m_verifier)
-// 				{
-// 					if (m_response.size() < m_verifier->DigestSize())
-// 						break;
-
-// 					vector<uint8_t> digest(m_verifier->DigestSize());
-// 					m_response.sgetn(reinterpret_cast<char *>(&digest[0]), m_verifier->DigestSize());
-
-// 					if (not m_verifier->Verify(&digest[0]))
-// 					{
-// 						handle_error(error::make_error_code(error::mac_error));
-// 						return;
-// 					}
-// 				}
-
-// 				if (m_decompressor)
-// 				{
-// 					boost::system::error_code ec;
-// 					m_packet.decompress(*m_decompressor, ec);
-// 					if (ec)
-// 					{
-// 						handle_error(ec);
-// 						break;
-// 					}
-// 				}
-
-// 				process_packet(m_packet);
-
-// 				m_packet.clear();
-// 				++m_in_seq_nr;
-// 			}
-// 		}
-
-// 		uint32_t at_least = m_iblocksize;
-// 		if (m_response.size() >= m_iblocksize)
-// 		{
-// 			// if we arrive here, we might have read a block, but not the digest?
-// 			// call readsome with 0 as at-least, that will return something we hope.
-// 			at_least = 1;
-// 		}
-// 		else
-// 			at_least -= m_response.size();
-
-// 		async_read(at_least);
-// 	}
-// 	catch (...)
-// 	{
-// 		try
-// 		{
-// 			disconnect();
-// 		}
-// 		catch (...)
-// 		{
-// 		}
-// 		throw;
-// 	}
-// }
-
-// void connection2::rekey()
-// {
-// 	m_key_exchange.reset(key_exchange::init())
-// }
-
-// void connection2::process_newkeys()
-// {
-// 	auto& kex = *m_key_exchange;
-
-// 	// Client to server encryption
-// 	string protocol = kex.get_encryption_protocol(direction::c2s);
-
-// 	const uint8_t *key = kex.key(key_exchange::C);
-// 	const uint8_t *iv = kex.key(key_exchange::A);
-
-// 	if (protocol == "3des-cbc")
-// 		m_encryptor.reset(new CBC_Mode<DES_EDE3>::Encryption(key, 24, iv));
-// 	else if (protocol == "blowfish-cbc")
-// 		m_encryptor.reset(new CBC_Mode<Blowfish>::Encryption(key, 16, iv));
-// 	else if (protocol == "aes128-cbc")
-// 		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 16, iv));
-// 	else if (protocol == "aes192-cbc")
-// 		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 24, iv));
-// 	else if (protocol == "aes256-cbc")
-// 		m_encryptor.reset(new CBC_Mode<AES>::Encryption(key, 32, iv));
-// 	else if (protocol == "aes128-ctr")
-// 		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 16, iv));
-// 	else if (protocol == "aes192-ctr")
-// 		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 24, iv));
-// 	else if (protocol == "aes256-ctr")
-// 		m_encryptor.reset(new CTR_Mode<AES>::Encryption(key, 32, iv));
-
-// 	// Server to client encryption
-// 	protocol = protocol = kex.get_encryption_protocol(direction::s2c);
-
-// 	key = kex.key(key_exchange::D);
-// 	iv = kex.key(key_exchange::B);
-
-// 	if (protocol == "3des-cbc")
-// 		m_decryptor.reset(new CBC_Mode<DES_EDE3>::Decryption(key, 24, iv));
-// 	else if (protocol == "blowfish-cbc")
-// 		m_decryptor.reset(new CBC_Mode<Blowfish>::Decryption(key, 16, iv));
-// 	else if (protocol == "aes128-cbc")
-// 		m_decryptor.reset(new CBC_Mode<AES>::Decryption(key, 16, iv));
-// 	else if (protocol == "aes192-cbc")
-// 		m_decryptor.reset(new CBC_Mode<AES>::Decryption(key, 24, iv));
-// 	else if (protocol == "aes256-cbc")
-// 		m_decryptor.reset(new CBC_Mode<AES>::Decryption(key, 32, iv));
-// 	else if (protocol == "aes128-ctr")
-// 		m_decryptor.reset(new CTR_Mode<AES>::Decryption(key, 16, iv));
-// 	else if (protocol == "aes192-ctr")
-// 		m_decryptor.reset(new CTR_Mode<AES>::Decryption(key, 24, iv));
-// 	else if (protocol == "aes256-ctr")
-// 		m_decryptor.reset(new CTR_Mode<AES>::Decryption(key, 32, iv));
-
-// 	// Client To Server verification
-// 	protocol = kex.get_verification_protocol(direction::c2s);
-// 	iv = kex.key(key_exchange::E);
-
-// 	if (protocol == "hmac-sha2-512")
-// 		m_signer.reset(new HMAC<SHA512>(iv, 64));
-// 	else if (protocol == "hmac-sha2-256")
-// 		m_signer.reset(new HMAC<SHA256>(iv, 32));
-// 	else if (protocol == "hmac-ripemd160")
-// 		m_signer.reset(new HMAC<RIPEMD160>(iv, 20));
-// 	else if (protocol == "hmac-sha1")
-// 		m_signer.reset(new HMAC<SHA1>(iv, 20));
-// 	else
-// 		m_signer.reset(new HMAC<Weak::MD5>(iv));
-
-// 	// Server to Client verification
-
-// 	protocol = kex.get_verification_protocol(direction::s2c);
-// 	iv = kex.key(key_exchange::F);
-
-// 	if (protocol == "hmac-sha2-512")
-// 		m_verifier.reset(new HMAC<SHA512>(iv, 64));
-// 	else if (protocol == "hmac-sha2-256")
-// 		m_verifier.reset(new HMAC<SHA256>(iv, 32));
-// 	else if (protocol == "hmac-ripemd160")
-// 		m_verifier.reset(new HMAC<RIPEMD160>(iv, 20));
-// 	else if (protocol == "hmac-sha1")
-// 		m_verifier.reset(new HMAC<SHA1>(iv, 20));
-// 	else
-// 		m_verifier.reset(new HMAC<Weak::MD5>(iv));
-
-// 	// Client to Server compression
-// 	protocol = kex.get_compression_protocol(direction::c2s);
-// 	if ((not m_compressor and protocol == "zlib") or (m_authenticated and protocol == "zlib@openssh.com"))
-// 		m_compressor.reset(new compression_helper(true));
-// 	else if (protocol == "zlib@openssh.com")
-// 		m_delay_compressor = true;
-
-// 	// Server to Client compression
-// 	protocol = kex.get_compression_protocol(direction::s2c);
-// 	if ((not m_decompressor and protocol == "zlib") or (m_authenticated and protocol == "zlib@openssh.com"))
-// 		m_decompressor.reset(new compression_helper(false));
-// 	else if (protocol == "zlib@openssh.com")
-// 		m_delay_decompressor = true;
-
-// 	if (m_decryptor)
-// 	{
-// 		m_iblocksize = m_decryptor->OptimalBlockSize();
-// 		m_oblocksize = m_encryptor->OptimalBlockSize();
-// 	}
-
-// 	m_key_exchange.reset();
-// }
 
 } // namespace assh
