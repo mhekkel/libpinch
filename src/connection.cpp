@@ -19,8 +19,6 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/aes.h>
 #include <cryptopp/des.h>
-#define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
-#include <cryptopp/md5.h>
 #include <cryptopp/ripemd.h>
 #include <cryptopp/blowfish.h>
 #include <cryptopp/filters.h>
@@ -30,7 +28,7 @@
 
 #include <assh/connection.hpp>
 #include <assh/channel.hpp>
-// #include <assh/ssh_agent.hpp>
+#include <assh/ssh_agent.hpp>
 // #include <assh/x11_channel.hpp>
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
@@ -111,30 +109,30 @@ void basic_connection::set_algorithm(algorithm alg, direction dir, const string 
 {
 	switch (alg)
 	{
-	case algorithm::keyexchange:
-		m_alg_kex = preferred;
-		break;
+		case algorithm::keyexchange:
+			m_alg_kex = preferred;
+			break;
 
-	case algorithm::encryption:
-		if (dir != direction::c2s)
-			m_alg_enc_s2c = preferred;
-		if (dir != direction::s2c)
-			m_alg_enc_c2s = preferred;
-		break;
+		case algorithm::encryption:
+			if (dir != direction::c2s)
+				m_alg_enc_s2c = preferred;
+			if (dir != direction::s2c)
+				m_alg_enc_c2s = preferred;
+			break;
 
-	case algorithm::verification:
-		if (dir != direction::c2s)
-			m_alg_ver_s2c = preferred;
-		if (dir != direction::s2c)
-			m_alg_ver_c2s = preferred;
-		break;
+		case algorithm::verification:
+			if (dir != direction::c2s)
+				m_alg_ver_s2c = preferred;
+			if (dir != direction::s2c)
+				m_alg_ver_c2s = preferred;
+			break;
 
-	case algorithm::compression:
-		if (dir != direction::c2s)
-			m_alg_cmp_s2c = preferred;
-		if (dir != direction::s2c)
-			m_alg_cmp_c2s = preferred;
-		break;
+		case algorithm::compression:
+			if (dir != direction::c2s)
+				m_alg_cmp_s2c = preferred;
+			if (dir != direction::s2c)
+				m_alg_cmp_c2s = preferred;
+			break;
 	}
 }
 
@@ -219,30 +217,7 @@ void basic_connection::handle_error(const boost::system::error_code &ec)
 void basic_connection::rekey()
 {
 	m_key_exchange.reset(new key_exchange(m_host_version, m_session_id));
-
 	async_write(m_key_exchange->init());
-
-	// for (uint32_t i = 0; i < 16; ++i)
-	// 	out << rng.GenerateByte();
-
-	// out << m_alg_kex
-	// 	<< kServerHostKeyAlgorithms
-	// 	<< m_alg_enc_c2s
-	// 	<< m_alg_enc_s2c
-	// 	<< m_alg_ver_c2s
-	// 	<< m_alg_ver_s2c
-	// 	<< m_alg_cmp_c2s
-	// 	<< m_alg_cmp_s2c
-	// 	<< ""
-	// 	<< ""
-	// 	<< false
-	// 	<< uint32_t(0);
-
-	// m_my_payload = out;
-
-	// async_write(move(out));
-
-	// m_sent_kexinit = true;
 }
 
 void basic_connection::forward_agent(bool forward)
@@ -541,6 +516,7 @@ void basic_connection::process_packet(ipacket &in)
 			case msg_kexinit:
 				process_kexinit(in, out, ec);
 				break;
+
 			case msg_newkeys:
 				process_newkeys(in, out, ec);
 				break;
@@ -606,11 +582,6 @@ void basic_connection::process_kexinit(ipacket &in, opacket &out, boost::system:
 		rekey();
 
 	m_key_exchange->process(in, out, ec);
-
-	// if (m_key_exchange)
-	// 	m_key_exchange->process(in, out, ec);
-	// else
-	// 	handle_connect_result(error::make_error_code(error::key_exchange_failed));
 }
 
 void basic_connection::process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec)
@@ -689,7 +660,7 @@ void basic_connection::process_newkeys(ipacket &in, opacket &out, boost::system:
 	else if (protocol == "hmac-sha1")
 		m_signer.reset(new HMAC<SHA1>(iv, 20));
 	else
-		m_signer.reset(new HMAC<Weak::MD5>(iv));
+		assert(false);
 
 	// Server to Client verification
 
@@ -705,7 +676,7 @@ void basic_connection::process_newkeys(ipacket &in, opacket &out, boost::system:
 	else if (protocol == "hmac-sha1")
 		m_verifier.reset(new HMAC<SHA1>(iv, 20));
 	else
-		m_verifier.reset(new HMAC<Weak::MD5>(iv));
+		assert(false);
 
 	// Client to Server compression
 	protocol = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
@@ -734,16 +705,16 @@ void basic_connection::process_newkeys(ipacket &in, opacket &out, boost::system:
 		out = msg_service_request;
 		out << "ssh-userauth";
 
-		// // we might not be known yet
-		// ssh_agent::instance().register_connection(shared_from_this());
+		// we might not be known yet
+		ssh_agent::instance().register_connection(shared_from_this());
 
-		// // fetch the private keys
-		// for (auto& pk: ssh_agent::instance())
-		// {
-		// 	opacket blob;
-		// 	blob << pk;
-		// 	m_private_keys.push_back(blob);
-		// }
+		// fetch the private keys
+		for (auto& pk: ssh_agent::instance())
+		{
+			opacket blob;
+			blob << pk;
+			m_private_keys.push_back(blob);
+		}
 	}
 }
 
@@ -830,14 +801,14 @@ void basic_connection::process_userauth_info_request(ipacket &in, opacket &out, 
 				<< "publickey" << true << "ssh-rsa" << blob;
 
 			opacket session_id;
-			session_id << m_session_id;
+			session_id << m_key_exchange->session_id();
 
-			// ssh_private_key pk(ssh_agent::instance().get_key(blob));
+			ssh_private_key pk(ssh_agent::instance().get_key(blob));
 
-			// out << pk.sign(session_id, out);
+			out << pk.sign(session_id, out);
 
-			// // store the hash for this private key
-			// m_private_key_hash = pk.get_hash();
+			// store the hash for this private key
+			m_private_key_hash = pk.get_hash();
 			break;
 		}
 		case auth_state_keyboard_interactive:
@@ -1084,11 +1055,11 @@ void basic_connection::process_channel_open(ipacket &in, opacket &out)
 
 	try
 	{
-		// // if (type == "x11")
-		// // 	c.reset(new x11_channel(shared_from_this()));
-		// // else
-		//  if (type == "auth-agent@openssh.com" and m_forward_agent)
-		//  	c.reset(new ssh_agent_channel(shared_from_this()));
+		// if (type == "x11")
+		// 	c.reset(new x11_channel(shared_from_this()));
+		// else
+		if (type == "auth-agent@openssh.com" and m_forward_agent)
+			c.reset(new ssh_agent_channel(shared_from_this()));
 	}
 	catch (...)
 	{

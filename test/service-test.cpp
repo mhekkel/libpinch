@@ -213,7 +213,14 @@ int main() {
 
 	auto t = std::make_shared<assh::terminal_channel>(c);
 
-	t->open_with_pty(80, 24, "vt220", false, false, "ls",
+	auto handler = [](const std::string& a, const std::string& b)
+	{
+		std::cout << a << b << std::endl;
+	};
+
+	t->set_message_callbacks(handler, handler, handler);
+
+	t->open_with_pty(80, 24, "vt220", false, false, "/bin/ls",
 		[t](const boost::system::error_code& ec)
 		{
 			std::cout << "handler, ec = " << ec.message() << std::endl;

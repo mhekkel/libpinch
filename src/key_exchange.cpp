@@ -38,7 +38,7 @@ const std::string
 	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha256,diffie-hellman-group1-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"),
 	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
 	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,blowfish-cbc,3des-cbc"),
-	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256,hmac-sha1,hmac-md5,hmac-ripemd160"),
+	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256,hmac-ripemd160"),
 	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
 
 static AutoSeededRandomPool	rng;
