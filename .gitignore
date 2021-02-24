@@ -9,3 +9,6 @@ obj.dbg
 libassh.a
 test/core
 test/service-test
+.libs
+libassh.la
+libtool

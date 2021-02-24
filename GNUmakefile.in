@@ -1,47 +1,55 @@
 # makefile for a gtk interface lib
-SHELL := /bin/bash
-
-firstTarget: static-lib
+.PHONY: firstTarget
+firstTarget: all
 
 CXX					= @CXX@
-CXXFLAGS			= @CXXFLAGS@
+CXX					= @CXX@
+CXXFLAGS			= @BOOST_CPPFLAGS@ \
+					  @CPPFLAGS@ \
+					  @CXXFLAGS@ \
+					  @CRYPTOPP_CFLAGS@ \
+					  @PTHREAD_CFLAGS@
+LDFLAGS				= @BOOST_LDFLAGS@ \
+					  @LDFLAGS@ \
+					  @LIBS@
+LIBS				= @PTHREAD_LIBS@ \
+					  @BOOST_IOSTREAMS_LIB@ \
+					  @BOOST_DATE_TIME_LIB@ \
+					  @BOOST_REGEX_LIB@ \
+					  @CRYPTOPP_LIBS@ \
+					  @LIBS@
 
-CXXFLAGS			+= @BOOST_CPPFLAGS@
-LDFLAGS				+= @BOOST_LDFLAGS@
-
-prefix				= @prefix@
+prefix				= $(DESTDIR)@prefix@
 exec_prefix			= @exec_prefix@
 libdir				= @libdir@
 includedir			= @includedir@
+datarootdir			= @datarootdir@
+datadir				= @datadir@
+docdir				= @docdir@
+pkgconfigdir		= $(libdir)/pkgconfig
 
-# VERSION_MAJOR       = 1
-# VERSION_MINOR       = 1
-# VERSION_
-# VERSION             = $(VERSION_MAJOR).$(VERSION_MINOR)
-# DEFINES				+= VERSION='"$(VERSION)"'
+GNUmakefile: config.status GNUmakefile.in
+	$(SHELL) ./config.status
 
-LIB_NAME			= libassh
+LIB_NAME			= @PACKAGE_NAME@
+LIB_VERSION			= @LIBASSH_LT_VERSION@
+LIB_CURRENT			= @LIBASSH_LT_CURRENT@
+LIB_TARGET			= $(LIB_NAME).la
+VERSION             = @LIBASSH_SEMANTIC_VERSION@
+DIST_NAME           = @PACKAGE_NAME@-$(subst :,.,$(VERSION))
 
-# DIST_NAME           = $(LIB_NAME)$(VERSION)
-# SO_NAME             = $(LIB_NAME).so.$(VERSION_MAJOR)
-# SHARED_LIB_NAME     = $(SO_NAME).$(VERSION_MINOR)
-STATIC_LIB_NAME		= $(LIB_NAME).a
+# libtool stuff
 
-OUTPUT				= ./
+LIBTOOL_DEPS = @LIBTOOL_DEPS@
+libtool: $(LIBTOOL_DEPS)
+	$(SHELL) ./config.status libtool
 
-# SHARED_LIB			= $(OUTPUT)/$(SHARED_LIB_NAME)
-STATIC_LIB			= $(OUTPUT)/$(STATIC_LIB_NAME)
+LIBTOOL = $(SHELL) @abs_top_builddir@/libtool
+CXXCOMPILE = $(LIBTOOL) --silent --tag=CXX --mode=compile $(CXX) $(CXXFLAGS)
+CXXLINK = $(LIBTOOL) --silent --tag=CXX --mode=link $(CXX) $(CXXFLAGS) $(LDFLAGS) -version-info $(LIB_VERSION) -o $@
 
 # main build variables
-CXXFLAGS            += -I. -pthread
-CXXFLAGS            += -Wall -Wno-multichar
-
-PACKAGES			+= libcrypto++ zlib
-
-ifneq ($(PACKAGES),)
-CXXFLAGS			+= $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --cflags $(PACKAGES))
-LDFLAGS				+= $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs $(PACKAGES) )
-endif
+CXXFLAGS            += -Wall -Wno-multichar -I include
 
 # Use the DEBUG flag to build debug versions of the code
 DEBUG               = @DEBUG@
@@ -69,96 +77,68 @@ endif
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-	# $(OBJDIR)/test-assh.o \
-	# $(OBJDIR)/win_ssh_agent_impl.o \
-
-
 OBJECTS = \
-	$(OBJDIR)/channel.o \
-	$(OBJDIR)/connection.o \
-	$(OBJDIR)/connection_pool.o \
-	$(OBJDIR)/debug.o \
-	$(OBJDIR)/error.o \
-	$(OBJDIR)/key_exchange.o \
-	$(OBJDIR)/packet.o \
-	$(OBJDIR)/posix_ssh_agent_impl.o \
-	$(OBJDIR)/terminal_channel.o \
-	$(OBJDIR)/ssh_agent.o \
+	$(OBJDIR)/channel.ol \
+	$(OBJDIR)/connection.ol \
+	$(OBJDIR)/connection_pool.ol \
+	$(OBJDIR)/debug.ol \
+	$(OBJDIR)/error.ol \
+	$(OBJDIR)/key_exchange.ol \
+	$(OBJDIR)/packet.ol \
+	$(OBJDIR)/posix_ssh_agent_impl.ol \
+	$(OBJDIR)/terminal_channel.ol \
+	$(OBJDIR)/ssh_agent.ol \
 
-	# $(OBJDIR)/port_forwarding.o \
-	# $(OBJDIR)/proxy_cmd.o \
-	# $(OBJDIR)/sftp_channel.o \
-	# $(OBJDIR)/x11_channel.o
+	# $(OBJDIR)/port_forwarding.ol \
+	# $(OBJDIR)/proxy_cmd.ol \
+	# $(OBJDIR)/sftp_channel.ol \
+	# $(OBJDIR)/x11_channel.ol
 
-$(STATIC_LIB): $(OBJECTS)
-	ar rc $@ $(OBJECTS)
-	ranlib $@
+$(LIB_TARGET): $(OBJECTS)
+	$(CXXLINK) -rpath $(libdir) $(OBJECTS) $(LIBS)
 
-$(SHARED_LIB): $(OBJECTS)
-	$(CXX) -shared -o $(SHARED_LIB) -Wl,-soname=$(SO_NAME) $(OBJECTS) $(LDFLAGS)
-	ln -fs $(SHARED_LIB_NAME) $(OUTPUT)/$(SO_NAME)
-	ln -fs $(SHARED_LIB_NAME) $(OUTPUT)/$(LIB_NAME).so
+.PHONY: lib
+lib: $(LIB_TARGET)
 
-ifeq "$(BUILD_STATIC_LIB)" "1"
-BUILD_LIBS = $(STATIC_LIB)
-endif
+.PHONY: all
+all: $(LIB_TARGET)
 
-ifeq "$(BUILD_SHARED_LIB)" "1"
-BUILD_LIBS += $(SHARED_LIB)
-endif
+-include $(OBJECTS:%.lo=%.d)
 
-libs: $(BUILD_LIBS)
-.PHONY: libs
+$(OBJECTS:.lo=.d):
 
-static-lib: $(STATIC_LIB)
-.PHONY: static-lib
-
-shared-lib: $(SHARED_LIB)
-.PHONY: shared-lib
-
-install-libs: $(SHARED_LIB)
-	install -d $(LIBDIR)
-	install $(SHARED_LIB) $(LIBDIR)/$(SHARED_LIB_NAME)
-	strip --strip-unneeded $(LIBDIR)/$(SHARED_LIB_NAME)
-	ln -Tfs $(SHARED_LIB_NAME) $(LIBDIR)/$(SO_NAME)
-	ln -Tfs $(SHARED_LIB_NAME) $(LIBDIR)/$(LIB_NAME).so
-	$(LD_CONFIG) -n $(LIBDIR)
-
-install-dev: $(STATIC_LIB)
-	install -d $(LIBDIR) $(INCDIR)/zeep/xml $(INCDIR)/zeep/http $(INCDIR)/zeep/http/webapp
-	for f in $(HEADERS); do install ../include/$$f $(INCDIR)/$$f; done
-	install $(STATIC_LIB) $(LIBDIR)/$(STATIC_LIB_NAME)
-	strip -SX $(LIBDIR)/$(STATIC_LIB_NAME)
-
-install: install-libs install-dev
-
--include $(OBJECTS:%.o=%.d)
-
-$(OBJECTS:.o=.d):
+$(OBJDIR)/%.lo: %.cpp | $(OBJDIR)
+	@ echo ">>" $<
+	@ $(CXXCOMPILE) -MT $@ -MD -MP -MF $(OBJDIR)/$*.d -c -o $@ $<
 
 $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
 	@ echo ">>" $<
-	@ $(CXX) -MD -c -o $@ $< $(CFLAGS) $(CXXFLAGS)
+	@ $(CXX) $(CXXFLAGS) -MT $@ -MD -MP -MF $(OBJDIR)/$*.d -c -o $@ $<
 
 .PHONY: clean
 clean:
-	rm -rf $(OBJDIR)/* $(OUTPUT)/$(LIB_NAME)*
+	rm -rf .libs $(OBJDIR)/* $(LIB_TARGET)
+	rm -f $(TESTS:%=test/%-test)
 
-BOOST_LIBS = random regex thread
+.PHONY: distclean
+distclean: clean
+	rm -f libtool config.lt
+	rm -f config.status config.cache config.log configure.lineno config.status.lineno
+	rm -f GNUmakefile
 
 define TEST_template =
 
 -include $$(OBJDIR)/$(1)-test.d
 
-$(1)_OBJECTS = $$(OBJECTS) $$(OBJDIR)/$(1)-test.o
+$(1)_OBJECTS = $$(OBJDIR)/$(1)-test.o
 
-test/$(1)-test: $$($(1)_OBJECTS)
+test/$(1)-test: $(LIB_TARGET) $$($(1)_OBJECTS)
 	@ echo ">>> building $(1)-test"
-	@ $(CXX) -o $$@ $$($(1)_OBJECTS) $$(CFLAGS) $$(CXXFLAGS) $(LDFLAGS) $(BOOST_LIBS:%=-lboost_%) -lstdc++fs
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $$@ $$($(1)_OBJECTS) -L.libs -lcifpp -lboost_program_options $(LIBS)
 
 .PHONY: $(1)-test
 $(1)-test: test/$(1)-test
-	cd test; ./$(1)-test $$($(1)_PARAMS)
+	cd test; LD_LIBRARY_PATH=../.libs ./$(1)-test $$($(1)_PARAMS)
 
 endef
 
@@ -169,6 +149,40 @@ $(foreach part,$(TESTS),$(eval $(call TEST_template,$(part))))
 .PHONY: test
 test: $(TESTS:%=%-test)
 
+HEADERS = \
+	channel.hpp \
+	config.hpp \
+	connection.hpp \
+	connection_pool.hpp \
+	debug.hpp \
+	detail/ssh_agent_impl.hpp \
+	error.hpp \
+	key_exchange.hpp \
+	packet.hpp \
+	port_forwarding.hpp \
+	proxy_cmd.hpp \
+	sftp_channel.hpp \
+	ssh_agent.hpp \
+	terminal_channel.hpp \
+	x11_channel.hpp
+
+.PHONY: install
+install: lib
+	install -d $(libdir)
+	$(LIBTOOL) --mode=install install $(LIB_TARGET) $(libdir)
+	install -d $(includedir)/assh
+	for f in $(HEADERS); do install include/assh/$$f $(includedir)/assh/$$f; done
+	install -d $(pkgconfigdir)
+	install -m 644 $(LIB_NAME).pc $(pkgconfigdir)/$(LIB_NAME).pc
+
 dist-clean: clean
+
+.PHONY: dist
+dist:
+	rm -rf $(DIST_NAME)
+	mkdir $(DIST_NAME)
+	git archive trunk | tar -x -C $(DIST_NAME)
+	tar czf $(DIST_NAME).tgz $(DIST_NAME)
+	rm -rf $(DIST_NAME)
 
 FORCE:
