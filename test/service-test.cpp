@@ -220,7 +220,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		std::unique_ptr<key_exchange> key_exchange;
 
 		template<typename Self>
-		void operator()(Self& self, const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0)
+		void operator()(Self& self, boost::system::error_code ec = {}, std::size_t bytes_transferred = 0)
 		{
 			if (not ec)
 			{
@@ -255,7 +255,9 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 						}
 
 						state = rekeying;
-						conn->rekey();
+						key_exchange.reset(new key_exchange);
+
+						conn->async_write(key_exchange->init());
 						
 						boost::asio::async_read(socket, response, boost::asio::transfer_at_least(8), std::move(self));
 						return;
@@ -263,14 +265,57 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 
 					case rekeying:
 					{
-						if (not conn->receive_packet(*packet))
+						if (not conn->receive_packet(*packet, ec) and not ec)
 						{
 							boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
 							return;
 						}
 
+						if (*packet == msg_newkeys)
+						{
+							conn->newkeys(*key_exchange);
 
+							key_exchange.reset();
 
+							state = authenticating;
+						}
+						else
+						{
+							
+						} 
+
+						opacket out;
+						bool handled = m_key_exchange->process(*packet, out, ec);
+						if (not handled)
+						{
+							auto& in = *packet;
+							switch ((message_type)in)
+							{
+								case msg_service_accept:
+									process_service_accept(in, out, ec);
+									break;
+
+								case msg_newkeys:
+									process_newkeys(in, out, ec);
+									state = authenticating;
+									key_exchange.reset();
+									break;
+							}
+
+								case msg_userauth_success:
+									process_userauth_success(in, out, ec);
+									break;
+								case msg_userauth_failure:
+									process_userauth_failure(in, out, ec);
+									break;
+								case msg_userauth_banner:
+									process_userauth_banner(in, out, ec);
+									break;
+								case msg_userauth_info_request:
+									process_userauth_info_request(in, out, ec);
+									break;
+							}
+						}
 					}
 				}
 			}
@@ -621,6 +666,30 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 				++m_in_seq_nr;
 				result = true;
 				break;
+			}
+		}
+
+		if (result)
+		{
+			switch ((message_type)packet)
+			{
+				case msg_disconnect:
+					m_next_layer.close();
+					break;
+
+				case msg_service_request:
+					disconnect();
+					break;
+
+				case msg_ignore:
+				case msg_unimplemented:
+				case msg_debug:
+					packet.clear();
+					result = false;
+					break;
+				
+				default:
+					;
 			}
 		}
 
