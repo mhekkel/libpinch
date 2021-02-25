@@ -156,7 +156,7 @@ void x11_channel::receive_data(const char* data, size_t size)
 		
 		if (m_verified and not m_packet.empty())
 		{
-			out.write(reinterpret_cast<const char*>(&m_packet[0]), m_packet.size());
+			out.write(reinterpret_cast<const char*>(m_packet.data()), m_packet.size());
 			m_packet.clear();
 		}
 	}

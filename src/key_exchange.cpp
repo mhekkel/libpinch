@@ -61,7 +61,7 @@ public:
 
 	hash& update(const std::vector<uint8_t>& v)
 	{
-		m_hash.Update(&v[0], v.size());
+		m_hash.Update(v.data(), v.size());
 		return *this;
 	}
 
@@ -86,7 +86,7 @@ public:
 	std::vector<uint8_t> final()
 	{
 		std::vector<uint8_t> result(m_hash.DigestSize());
-		m_hash.Final(&result[0]);
+		m_hash.Final(result.data());
 		return result;
 	}
 
@@ -204,7 +204,7 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 		}
 	
 		std::vector<uint8_t> pk_rs_d = pk_rs;
-		if (pk_type != h_pk_type or not h_key->VerifyMessage(&m_H[0], m_H.size(), &pk_rs_d[0], pk_rs_d.size()))
+		if (pk_type != h_pk_type or not h_key->VerifyMessage(m_H.data(), m_H.size(), pk_rs_d.data(), pk_rs_d.size()))
 			ec = error::make_error_code(error::host_key_verification_failed);
 		else
 			out = msg_newkeys;

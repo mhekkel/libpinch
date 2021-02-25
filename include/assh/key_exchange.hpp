@@ -31,7 +31,7 @@ class key_exchange
 
 	enum key_enum { A, B, C, D, E, F };
 	const uint8_t *key(key_enum k) const;
-	// const uint8_t *key(key_enum k) const { return &m_keys[k][0]; }
+	// const uint8_t *key(key_enum k) const { return m_keys[k].data(); }
 
 	const std::vector<uint8_t>& session_id() const { return m_session_id; }
 

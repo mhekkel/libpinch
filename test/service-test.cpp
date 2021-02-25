@@ -11,11 +11,23 @@
 #include <boost/iostreams/filtering_stream.hpp>
 
 #include <cryptopp/cryptlib.h>
+#include <cryptopp/gfpcrypt.h>
+#include <cryptopp/rsa.h>
+#include <cryptopp/osrng.h>
+#include <cryptopp/aes.h>
+#include <cryptopp/des.h>
+#include <cryptopp/ripemd.h>
+#include <cryptopp/blowfish.h>
+#include <cryptopp/filters.h>
+#include <cryptopp/files.h>
+#include <cryptopp/factory.h>
+#include <cryptopp/modes.h>
 
 #include "assh/connection.hpp"
 #include "assh/connection_pool.hpp"
 #include "assh/channel.hpp"
 #include "assh/terminal_channel.hpp"
+#include "assh/ssh_agent.hpp"
 
 namespace ba = boost::algorithm;
 namespace io = boost::iostreams;
@@ -68,7 +80,7 @@ struct packet_encryptor
 			if (m_block.size() == m_blocksize)
 			{
 				std::vector<uint8_t> block(m_blocksize);
-				m_cipher.ProcessData(&block[0], &m_block[0], m_blocksize);
+				m_cipher.ProcessData(block.data(), m_block.data(), m_blocksize);
 
 				for (uint32_t i = 0; i < m_blocksize; ++i)
 					io::put(sink, block[i]);
@@ -88,7 +100,7 @@ struct packet_encryptor
 			assert(m_block.size() == 0);
 
 			std::vector<uint8_t> digest(m_signer.DigestSize());
-			m_signer.Final(&digest[0]);
+			m_signer.Final(digest.data());
 			for (size_t i = 0; i < digest.size(); ++i)
 				io::put(sink, digest[i]);
 
@@ -119,6 +131,11 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		, m_user(user)
 	{
 		reset();
+	}
+
+	virtual ~connection2()
+	{
+
 	}
 
 	/// The type of the next layer.
@@ -155,18 +172,52 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		return m_next_layer.lowest_layer();
 	}
 
+	// configure before connecting
+	void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
+
+	// callbacks to be installed by owning object
+
+	// bool validate_host_key(host, alg, key)
+	typedef std::function<bool(const std::string &, const std::string &, const std::vector<uint8_t> &)>
+		validate_callback_type;
+
+	// void request_password()
+	typedef std::function<void()> password_callback_type;
+
+	// keyboard interactive support
+	struct prompt
+	{
+		std::string str;
+		bool echo;
+	};
+	typedef std::function<void(const std::string &, const std::string &, const std::vector<prompt> &)> keyboard_interactive_callback_type;
+
+	void set_validate_callback(const validate_callback_type &cb)
+	{
+		m_validate_host_key_cb = cb;
+	}
+
+	void set_password_callback(const password_callback_type &cb)
+	{
+		m_request_password_cb = cb;
+	}
+
+	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
+	{
+		m_keyboard_interactive_cb = cb;
+	}
+
 	template<typename Handler>
 	auto async_handshake(Handler&& handler)
 	{
 		enum { start, wrote_version, reading };
 
-		auto conn = this->shared_from_this();
 		auto request = std::make_unique<boost::asio::streambuf>();
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
 			[
 				&socket = m_next_layer,
-				conn,
+				conn = this->shared_from_this(),
 				state = start,
 				request = std::move(request),
 				&response = m_response,
@@ -180,6 +231,8 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 					{
 						case start:
 						{
+							conn->m_auth_state = auth_state::connected;
+
 							std::ostream out(request.get());
 							out << kSSHVersionString << "\r\n";
 							state = wrote_version;
@@ -204,8 +257,8 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 								return;
 							}
 
+							conn->async_read();
 							conn->rekey();
-							conn->received_data({});
 							break;
 						}
 					}
@@ -248,12 +301,14 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 			}
 		}
 
-		io::filtering_stream<io::output> out;
-		if (m_encryptor)
-			out.push(detail::packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
-		out.push(*request);
+		{
+			io::filtering_stream<io::output> out;
+			if (m_encryptor)
+				out.push(detail::packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
+			out.push(*request);
 
-		p.write(out, m_oblocksize);
+			p.write(out, m_oblocksize);
+		}
 
 		++m_out_seq_nr;
 		return async_write(std::move(request), std::move(handler));
@@ -283,22 +338,6 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 				self.complete(ec, 0);
 			}, handler, m_next_layer
 		);
-	}
-
-
-	void async_read(uint32_t at_least)
-	{
-		async_read(at_least, [this](boost::system::error_code& ec)
-		{
-			if (ec)
-				this->handle_error(ec);
-		});
-	}
-
-	template<typename Handler>
-	auto async_read(uint32_t at_least, Handler&& handler)
-	{
-
 	}
 
   protected:
@@ -331,10 +370,42 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	void received_data(const boost::system::error_code& ec);
 
 	void process_packet(ipacket &in);
+	void process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_kexdhreply(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_service_accept(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_userauth_success(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_userauth_banner(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	void process_channel_open(ipacket &in, opacket &out);
+	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	void async_read()
+	{
+		uint32_t at_least = m_iblocksize;
+		if (m_response.size() >= m_iblocksize)
+		{
+			// if we arrive here, we might have read a block, but not the digest?
+			// call readsome with 0 as at-least, that will return something we hope.
+			at_least = 1;
+		}
+		else
+			at_least -= m_response.size();
+
+		boost::asio::async_read(m_next_layer, m_response, boost::asio::transfer_at_least(at_least),
+			[
+				self = this->shared_from_this()
+			]
+			(const boost::system::error_code &ec, size_t bytes_transferred)
+			{
+				self->received_data(ec);
+			});
+	}
 
 	void reset()
 	{
-		// m_authenticated = false;
 		m_auth_state = auth_state::none;
 		m_private_key_hash.clear();
 		m_key_exchange.reset();
@@ -364,7 +435,8 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		public_key,
 		keyboard_interactive,
 		password,
-		connected
+		connected,
+		authenticated
 	};
 
 	auth_state m_auth_state = auth_state::none;
@@ -382,9 +454,9 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	uint32_t m_iblocksize, m_oblocksize;
 	boost::asio::streambuf m_response;
 
-	// validate_callback_type m_validate_host_key_cb;
-	// password_callback_type m_request_password_cb;
-	// keyboard_interactive_callback_type m_keyboard_interactive_cb;
+	validate_callback_type m_validate_host_key_cb;
+	password_callback_type m_request_password_cb;
+	keyboard_interactive_callback_type m_keyboard_interactive_cb;
 
 	std::unique_ptr<CryptoPP::StreamTransformation> m_decryptor;
 	std::unique_ptr<CryptoPP::StreamTransformation> m_encryptor;
@@ -402,8 +474,8 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	port_forward_listener *m_port_forwarder;
 
 	std::string m_alg_kex,
-		m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
-		m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
+		m_alg_enc_c2s = kEncryptionAlgorithms, m_alg_ver_c2s = kMacAlgorithms, m_alg_cmp_c2s = kCompressionAlgorithms,
+		m_alg_enc_s2c = kEncryptionAlgorithms, m_alg_ver_s2c = kMacAlgorithms, m_alg_cmp_s2c = kCompressionAlgorithms;
 };
 
 // the read loop, this routine keeps calling itself until an error condition is met
@@ -427,12 +499,12 @@ void connection2<Stream>::received_data(const boost::system::error_code& ec)
 			if (not m_packet.complete())
 			{
 				std::vector<uint8_t> block(m_iblocksize);
-				m_response.sgetn(reinterpret_cast<char *>(&block[0]), m_iblocksize);
+				m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
 
 				if (m_decryptor)
 				{
 					std::vector<uint8_t> data(m_iblocksize);
-					m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
+					m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
 					std::swap(data, block);
 				}
 
@@ -447,7 +519,7 @@ void connection2<Stream>::received_data(const boost::system::error_code& ec)
 						}
 					}
 
-					m_verifier->Update(&block[0], block.size());
+					m_verifier->Update(block.data(), block.size());
 				}
 
 				m_packet.append(block);
@@ -461,9 +533,9 @@ void connection2<Stream>::received_data(const boost::system::error_code& ec)
 						break;
 
 					std::vector<uint8_t> digest(m_verifier->DigestSize());
-					m_response.sgetn(reinterpret_cast<char *>(&digest[0]), m_verifier->DigestSize());
+					m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
 
-					if (not m_verifier->Verify(&digest[0]))
+					if (not m_verifier->Verify(digest.data()))
 					{
 						handle_error(error::make_error_code(error::mac_error));
 						return;
@@ -498,7 +570,7 @@ void connection2<Stream>::received_data(const boost::system::error_code& ec)
 		else
 			at_least -= m_response.size();
 
-		async_read(at_least);
+		async_read();
 	}
 	catch (...)
 	{
@@ -552,49 +624,49 @@ void connection2<Stream>::process_packet(ipacket& in)
 				disconnect();
 				break;
 
-			// case msg_service_accept:
-			// 	process_service_accept(in, out, ec);
-			// 	break;
+			case msg_service_accept:
+				process_service_accept(in, out, ec);
+				break;
 
-			// case msg_kexinit:
-			// 	process_kexinit(in, out, ec);
-			// 	break;
+			case msg_kexinit:
+				process_kexinit(in, out, ec);
+				break;
 
-			// case msg_newkeys:
-			// 	process_newkeys(in, out, ec);
-			// 	break;
+			case msg_newkeys:
+				process_newkeys(in, out, ec);
+				break;
 
-			// case msg_userauth_success:
-			// 	process_userauth_success(in, out, ec);
-			// 	break;
-			// case msg_userauth_failure:
-			// 	process_userauth_failure(in, out, ec);
-			// 	break;
-			// case msg_userauth_banner:
-			// 	process_userauth_banner(in, out, ec);
-			// 	break;
-			// case msg_userauth_info_request:
-			// 	process_userauth_info_request(in, out, ec);
-			// 	break;
+			case msg_userauth_success:
+				process_userauth_success(in, out, ec);
+				break;
+			case msg_userauth_failure:
+				process_userauth_failure(in, out, ec);
+				break;
+			case msg_userauth_banner:
+				process_userauth_banner(in, out, ec);
+				break;
+			case msg_userauth_info_request:
+				process_userauth_info_request(in, out, ec);
+				break;
 
-			// // channel
-			// case msg_channel_open:
-			// 	if (m_authenticated)
-			// 		process_channel_open(in, out);
-			// 	break;
-			// case msg_channel_open_confirmation:
-			// case msg_channel_open_failure:
-			// case msg_channel_window_adjust:
-			// case msg_channel_data:
-			// case msg_channel_extended_data:
-			// case msg_channel_eof:
-			// case msg_channel_close:
-			// case msg_channel_request:
-			// case msg_channel_success:
-			// case msg_channel_failure:
-			// 	if (m_authenticated)
-			// 		process_channel(in, out, ec);
-			// 	break;
+			// channel
+			case msg_channel_open:
+				if (m_auth_state == auth_state::authenticated)
+					process_channel_open(in, out);
+				break;
+			case msg_channel_open_confirmation:
+			case msg_channel_open_failure:
+			case msg_channel_window_adjust:
+			case msg_channel_data:
+			case msg_channel_extended_data:
+			case msg_channel_eof:
+			case msg_channel_close:
+			case msg_channel_request:
+			case msg_channel_success:
+			case msg_channel_failure:
+				if (m_auth_state == auth_state::authenticated)
+					process_channel(in, out, ec);
+				break;
 
 			default:
 			{
@@ -613,6 +685,340 @@ void connection2<Stream>::process_packet(ipacket& in)
 	if (not out.empty())
 		async_write(std::move(out));
 }
+
+template<typename Stream>
+void connection2<Stream>::process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	// if this is a rekey request by the server, send our kexinit packet
+	if (not m_key_exchange)
+		rekey();
+
+	m_key_exchange->process(in, out, ec);
+}
+
+template<typename Stream>
+void connection2<Stream>::process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	// something went terribly wrong, obviously
+	if (m_key_exchange == nullptr)
+	{
+		ec = error::make_error_code(error::key_exchange_failed);
+		return;
+	}
+
+	ipacket payload = m_key_exchange->host_payload();
+
+	std::string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
+		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
+
+	payload.skip(16);
+	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
+
+	// Client to server encryption
+	std::string protocol = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s);
+
+	const uint8_t *key = m_key_exchange->key(key_exchange::C);
+	const uint8_t *iv = m_key_exchange->key(key_exchange::A);
+
+	if (protocol == "3des-cbc")
+		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption(key, 24, iv));
+	else if (protocol == "blowfish-cbc")
+		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::Blowfish>::Encryption(key, 16, iv));
+	else if (protocol == "aes128-cbc")
+		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
+	else if (protocol == "aes192-cbc")
+		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
+	else if (protocol == "aes256-cbc")
+		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
+	else if (protocol == "aes128-ctr")
+		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
+	else if (protocol == "aes192-ctr")
+		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
+	else if (protocol == "aes256-ctr")
+		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
+
+	// Server to client encryption
+	protocol = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c);
+
+	key = m_key_exchange->key(key_exchange::D);
+	iv = m_key_exchange->key(key_exchange::B);
+
+	if (protocol == "3des-cbc")
+		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption(key, 24, iv));
+	else if (protocol == "blowfish-cbc")
+		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::Blowfish>::Decryption(key, 16, iv));
+	else if (protocol == "aes128-cbc")
+		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
+	else if (protocol == "aes192-cbc")
+		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
+	else if (protocol == "aes256-cbc")
+		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
+	else if (protocol == "aes128-ctr")
+		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
+	else if (protocol == "aes192-ctr")
+		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
+	else if (protocol == "aes256-ctr")
+		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
+
+	// Client To Server verification
+	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
+	iv = m_key_exchange->key(key_exchange::E);
+
+	if (protocol == "hmac-sha2-512")
+		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
+	else if (protocol == "hmac-sha2-256")
+		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
+	else if (protocol == "hmac-ripemd160")
+		m_signer.reset(new CryptoPP::HMAC<CryptoPP::RIPEMD160>(iv, 20));
+	else if (protocol == "hmac-sha1")
+		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
+	else
+		assert(false);
+
+	// Server to Client verification
+
+	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
+	iv = m_key_exchange->key(key_exchange::F);
+
+	if (protocol == "hmac-sha2-512")
+		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
+	else if (protocol == "hmac-sha2-256")
+		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
+	else if (protocol == "hmac-ripemd160")
+		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::RIPEMD160>(iv, 20));
+	else if (protocol == "hmac-sha1")
+		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
+	else
+		assert(false);
+
+	// Client to Server compression
+	protocol = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
+	if ((not m_compressor and protocol == "zlib") or (m_auth_state == auth_state::authenticated and protocol == "zlib@openssh.com"))
+		m_compressor.reset(new compression_helper(true));
+	else if (protocol == "zlib@openssh.com")
+		m_delay_compressor = true;
+
+	// Server to Client compression
+	protocol = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
+	if ((not m_decompressor and protocol == "zlib") or (m_auth_state == auth_state::authenticated and protocol == "zlib@openssh.com"))
+		m_decompressor.reset(new compression_helper(false));
+	else if (protocol == "zlib@openssh.com")
+		m_delay_decompressor = true;
+
+	if (m_decryptor)
+	{
+		m_iblocksize = m_decryptor->OptimalBlockSize();
+		m_oblocksize = m_encryptor->OptimalBlockSize();
+	}
+
+	if (m_auth_state == auth_state::authenticated)
+		m_key_exchange.reset();
+	else
+	{
+		out = msg_service_request;
+		out << "ssh-userauth";
+
+		// we might not be known yet
+		// ssh_agent::instance().register_connection(shared_from_this());
+
+		// fetch the private keys
+		for (auto& pk: ssh_agent::instance())
+		{
+			opacket blob;
+			blob << pk;
+			m_private_keys.push_back(blob);
+		}
+	}
+}
+
+template<typename Stream>
+void connection2<Stream>::process_service_accept(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	out = msg_userauth_request;
+	out << m_user << "ssh-connection"
+		<< "none";
+}
+
+template<typename Stream>
+void connection2<Stream>::process_userauth_success(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	m_auth_state = auth_state::authenticated;
+
+	if (m_delay_compressor)
+		m_compressor.reset(new compression_helper(true));
+
+	if (m_delay_decompressor)
+		m_decompressor.reset(new compression_helper(false));
+
+	m_session_id = m_key_exchange->session_id();
+
+	m_key_exchange.reset();
+
+	// handle_connect_result({});
+}
+
+template<typename Stream>
+void connection2<Stream>::process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	std::string s;
+	bool partial;
+
+	in >> s >> partial;
+
+	m_private_key_hash.clear();
+
+	if (choose_protocol(s, "publickey") == "publickey" and not m_private_keys.empty())
+	{
+		out = opacket(msg_userauth_request)
+				<< m_user << "ssh-connection"
+				<< "publickey" << false
+				<< "ssh-rsa" << m_private_keys.front();
+		m_private_keys.pop_front();
+		m_auth_state = auth_state::public_key;
+	}
+	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and m_keyboard_interactive_cb and ++m_password_attempts <= 3)
+	{
+		out = opacket(msg_userauth_request)
+				<< m_user << "ssh-connection"
+				<< "keyboard-interactive"
+				<< "en"
+				<< "";
+		m_auth_state = auth_state::keyboard_interactive;
+	}
+	else if (choose_protocol(s, "password") == "password" and m_request_password_cb and ++m_password_attempts <= 3)
+		m_request_password_cb();
+	else
+		handle_error(error::make_error_code(error::auth_cancelled_by_user));
+}
+
+template<typename Stream>
+void connection2<Stream>::process_userauth_banner(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	std::string msg, lang;
+	in >> msg >> lang;
+
+	// for (auto h : m_connect_handlers)
+	// 	h->handle_banner(msg, lang);
+}
+
+template<typename Stream>
+void connection2<Stream>::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	switch (m_auth_state)
+	{
+		case auth_state::public_key:
+		{
+			out = msg_userauth_request;
+
+			std::string alg;
+			ipacket blob;
+
+			in >> alg >> blob;
+
+			out << m_user << "ssh-connection"
+				<< "publickey" << true << "ssh-rsa" << blob;
+
+			opacket session_id;
+			session_id << m_key_exchange->session_id();
+
+			ssh_private_key pk(ssh_agent::instance().get_key(blob));
+
+			out << pk.sign(session_id, out);
+
+			// store the hash for this private key
+			m_private_key_hash = pk.get_hash();
+			break;
+		}
+		case auth_state::keyboard_interactive:
+		{
+			std::string name, instruction, language;
+			int32_t numPrompts = 0;
+
+			in >> name >> instruction >> language >> numPrompts;
+
+			if (numPrompts == 0)
+			{
+				out = msg_userauth_info_response;
+				out << numPrompts;
+			}
+			else
+			{
+				std::vector<prompt> prompts(numPrompts);
+
+				for (auto& p : prompts)
+					in >> p.str >> p.echo;
+
+				if (prompts.empty())
+					prompts.push_back({ "iets", true });
+
+				m_keyboard_interactive_cb(name, language, prompts);
+			}
+			break;
+		}
+		default:;
+	}
+}
+
+template<typename Stream>
+void connection2<Stream>::process_channel_open(ipacket &in, opacket &out)
+{
+	channel_ptr c;
+
+	std::string type;
+
+	in >> type;
+
+	try
+	{
+		// if (type == "x11")
+		// 	c.reset(new x11_channel(shared_from_this()));
+		// else if (type == "auth-agent@openssh.com" and m_forward_agent)
+		// 	c.reset(new ssh_agent_channel(this->shared_from_this()));
+	}
+	catch (...)
+	{
+	}
+
+	if (c)
+	{
+		in.message(msg_channel_open_confirmation);
+		c->process(in);
+		m_channels.push_back(c);
+	}
+	else
+	{
+		uint32_t host_channel_id;
+		in >> host_channel_id;
+
+		const uint32_t SSH_OPEN_UNKNOWN_CHANNEL_TYPE = 3;
+		out = msg_channel_open_failure;
+		out << host_channel_id << SSH_OPEN_UNKNOWN_CHANNEL_TYPE << "unsupported channel type"
+			<< "en";
+	}
+}
+
+template<typename Stream>
+void connection2<Stream>::process_channel(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	try
+	{
+		uint32_t channel_id;
+		in >> channel_id;
+
+		for (channel_ptr c : m_channels)
+		{
+			if (c->my_channel_id() == channel_id)
+			{
+				c->process(in);
+				break;
+			}
+		}
+	}
+	catch (...)
+	{
+	}
+}
+
 
 }
 

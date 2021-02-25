@@ -293,7 +293,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 		case SOCKS4_CONNECTION_REQUEST_USER_ID:
 			if (m_mini_buffer[0] == 0)
 			{
-				uint8_t* p = &m_buffer[0];
+				uint8_t* p = m_buffer.data();
 
 				string remote_address;
 				int16_t remote_port;
@@ -323,7 +323,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 		{
 			if (m_mini_buffer[0] == 0)
 			{
-				uint8_t* p = &m_buffer[0];
+				uint8_t* p = m_buffer.data();
 
 				string remote_address(m_buffer.begin() + 2, m_buffer.end());
 				int16_t remote_port;
@@ -398,7 +398,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 		case SOCKS5_CONNECTION_REQUEST_IPV6:
 		case SOCKS5_CONNECTION_REQUEST_FQDN_2:
 		{
-			uint8_t* p = &m_buffer[0];
+			uint8_t* p = m_buffer.data();
 
 			string remote_address;
 			int16_t remote_port;
@@ -505,7 +505,7 @@ void socks5_forwarding_connection::wrote_error()
 //			l = boost::asio::async_read(m_socket, boost::asio::buffer(buffer), yield[ec]);
 //			if (ec or l != 4) break;
 //
-//			uint8_t* p = &buffer[0];
+//			uint8_t* p = buffer.data();
 //
 //			remote_port = *p++;
 //			remote_port = (remote_port << 8) | *p++;
@@ -576,7 +576,7 @@ void socks5_forwarding_connection::wrote_error()
 //				l = boost::asio::async_read(m_socket, boost::asio::buffer(buffer), yield);
 //				if (ec or l != buffer.size()) break;
 //
-//				uint8_t* p = &buffer[0];
+//				uint8_t* p = buffer.data();
 //
 //				remote_address.assign(p, p + buffer.size() - 2);
 //				p += buffer.size() - 2;
@@ -586,7 +586,7 @@ void socks5_forwarding_connection::wrote_error()
 //			}
 //			else
 //			{
-//				uint8_t* p = &buffer[0];
+//				uint8_t* p = buffer.data();
 //
 //				switch (atyp)
 //				{

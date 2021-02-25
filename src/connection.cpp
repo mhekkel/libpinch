@@ -244,7 +244,7 @@ string basic_connection::get_connection_parameters(direction dir) const
 {
 	string result;
 
-	// ipacket payload(&m_host_payload[0], m_host_payload.size());
+	// ipacket payload(m_host_payload.data(), m_host_payload.size());
 
 	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
 		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
@@ -276,7 +276,7 @@ string basic_connection::get_connection_parameters(direction dir) const
 
 string basic_connection::get_key_exchange_algoritm() const
 {
-	// ipacket payload(&m_host_payload[0], m_host_payload.size());
+	// ipacket payload(m_host_payload.data(), m_host_payload.size());
 
 	// string key_exchange_alg;
 
@@ -385,12 +385,12 @@ void basic_connection::received_data(const boost::system::error_code &ec)
 			if (not m_packet.complete())
 			{
 				vector<uint8_t> block(m_iblocksize);
-				m_response.sgetn(reinterpret_cast<char *>(&block[0]), m_iblocksize);
+				m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
 
 				if (m_decryptor)
 				{
 					vector<uint8_t> data(m_iblocksize);
-					m_decryptor->ProcessData(&data[0], &block[0], m_iblocksize);
+					m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
 					swap(data, block);
 				}
 
@@ -405,7 +405,7 @@ void basic_connection::received_data(const boost::system::error_code &ec)
 						}
 					}
 
-					m_verifier->Update(&block[0], block.size());
+					m_verifier->Update(block.data(), block.size());
 				}
 
 				m_packet.append(block);
@@ -419,9 +419,9 @@ void basic_connection::received_data(const boost::system::error_code &ec)
 						break;
 
 					vector<uint8_t> digest(m_verifier->DigestSize());
-					m_response.sgetn(reinterpret_cast<char *>(&digest[0]), m_verifier->DigestSize());
+					m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
 
-					if (not m_verifier->Verify(&digest[0]))
+					if (not m_verifier->Verify(digest.data()))
 					{
 						handle_error(error::make_error_code(error::mac_error));
 						return;
@@ -907,7 +907,7 @@ struct packet_encryptor
 			if (m_block.size() == m_blocksize)
 			{
 				vector<uint8_t> block(m_blocksize);
-				m_cipher.ProcessData(&block[0], &m_block[0], m_blocksize);
+				m_cipher.ProcessData(block.data(), m_block.data(), m_blocksize);
 
 				for (uint32_t i = 0; i < m_blocksize; ++i)
 					io::put(sink, block[i]);
@@ -927,7 +927,7 @@ struct packet_encryptor
 			assert(m_block.size() == 0);
 
 			vector<uint8_t> digest(m_signer.DigestSize());
-			m_signer.Final(&digest[0]);
+			m_signer.Final(digest.data());
 			for (size_t i = 0; i < digest.size(); ++i)
 				io::put(sink, digest[i]);
 

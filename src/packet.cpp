@@ -97,7 +97,7 @@ void opacket::compress(compression_helper& compressor, boost::system::error_code
 {
 	z_stream& zstream(compressor);
 	
-	zstream.next_in = &m_data[0];
+	zstream.next_in = m_data.data();
 	zstream.avail_in = m_data.size();
 	zstream.total_in = 0;
 	
@@ -161,8 +161,8 @@ void opacket::write(ostream& os, int blocksize) const
 	header[0] = static_cast<uint8_t>(size);
 
 	os.write(reinterpret_cast<const char*>(header), 5);
-	os.write(reinterpret_cast<const char*>(&m_data[0]), m_data.size());
-	os.write(reinterpret_cast<const char*>(&padding[0]), padding_size);
+	os.write(reinterpret_cast<const char*>(m_data.data()), m_data.size());
+	os.write(reinterpret_cast<const char*>(padding.data()), padding_size);
 }
 
 //void opacket::append(const uint8_t* data, uint32_t size)
@@ -219,7 +219,7 @@ opacket& opacket::operator<<(const CryptoPP::Integer& v)
 	operator<<(l);
 	uint32_t s = m_data.size();
 	m_data.insert(m_data.end(), l, uint8_t(0));
-	v.Encode(&m_data[0] + s, l, CryptoPP::Integer::SIGNED);
+	v.Encode(m_data.data() + s, l, CryptoPP::Integer::SIGNED);
 	
 	assert(n + l + sizeof(uint32_t) == m_data.size());
 	
@@ -606,12 +606,12 @@ ipacket& ipacket::operator>>(vector<uint8_t>& v)
 
 bool operator==(const opacket& lhs, const ipacket& rhs)
 {
-	return lhs.m_data.size() == rhs.m_length and memcmp(&lhs.m_data[0], rhs.m_data, rhs.m_length) == 0;
+	return lhs.m_data.size() == rhs.m_length and memcmp(lhs.m_data.data(), rhs.m_data, rhs.m_length) == 0;
 }
 
 bool operator==(const ipacket& lhs, const opacket& rhs)
 {
-	return rhs.m_data.size() == lhs.m_length and memcmp(&rhs.m_data[0], lhs.m_data, lhs.m_length) == 0;
+	return rhs.m_data.size() == lhs.m_length and memcmp(rhs.m_data.data(), lhs.m_data, lhs.m_length) == 0;
 }
 
 

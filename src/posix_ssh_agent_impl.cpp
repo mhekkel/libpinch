@@ -133,7 +133,7 @@ bool ssh_agent_impl::process(const opacket& request, ipacket& reply)
 	uint32_t l = htonl(req.size());
 	
 	if (write(m_fd, &l, sizeof(l)) == sizeof(l) and
-		write(m_fd, &req[0], req.size()) == int32_t(req.size()) and
+		write(m_fd, req.data(), req.size()) == int32_t(req.size()) and
 		read(m_fd, &l, sizeof(l)) == sizeof(l))
 	{
 		l = ntohl(l);
@@ -161,7 +161,7 @@ bool ssh_agent_impl::process(const opacket& request, ipacket& reply)
 	}
 	
 	if (result)
-		reply = ipacket(&rep[0], rep.size());
+		reply = ipacket(rep.data(), rep.size());
 	
 	return result;
 }

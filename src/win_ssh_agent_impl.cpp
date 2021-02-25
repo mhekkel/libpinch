@@ -136,14 +136,14 @@ bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer& e, Integer
 		
 		if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
 			RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
-		    0, &b[0], &cbPublicKeyStruc))
+		    0, b.data(), &cbPublicKeyStruc))
 		{
-			PUBLICKEYSTRUC* pks = reinterpret_cast<PUBLICKEYSTRUC*>(&b[0]);
+			PUBLICKEYSTRUC* pks = reinterpret_cast<PUBLICKEYSTRUC*>(b.data());
 			
 			if ((pks->aiKeyAlg & ALG_TYPE_RSA) != 0)
 			{
-				RSAPUBKEY* pkd = reinterpret_cast<RSAPUBKEY*>(&b[0] + sizeof(PUBLICKEYSTRUC));
-				byte* data = reinterpret_cast<byte*>(&b[0] + sizeof(RSAPUBKEY) + sizeof(PUBLICKEYSTRUC));
+				RSAPUBKEY* pkd = reinterpret_cast<RSAPUBKEY*>(b.data() + sizeof(PUBLICKEYSTRUC));
+				byte* data = reinterpret_cast<byte*>(b.data() + sizeof(RSAPUBKEY) + sizeof(PUBLICKEYSTRUC));
 				
 				// public key is in little endian format
 				uint32_t len = pkd->bitlen / 8;
@@ -322,8 +322,8 @@ vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t>& session_id, c
 		{
 			const vector<uint8_t>& data(inData);
 			
-			if ((session_id.size() == 0 or ::CryptHashData(hash, &session_id[0], session_id.size(), 0)) and
-				(data.size() == 0 or ::CryptHashData(hash, &data[0], data.size(), 0)))
+			if ((session_id.size() == 0 or ::CryptHashData(hash, session_id.data(), session_id.size(), 0)) and
+				(data.size() == 0 or ::CryptHashData(hash, data.data(), data.size(), 0)))
 			{
 				cb = 0;
 				::CryptSignHash(hash, keySpec, nullptr, 0, nullptr, &cb);
@@ -332,7 +332,7 @@ vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t>& session_id, c
 				{
 					digest = vector<uint8_t>(cb);
 					
-					if (::CryptSignHash(hash, keySpec, nullptr, 0, &digest[0], &cb))
+					if (::CryptSignHash(hash, keySpec, nullptr, 0, digest.data(), &cb))
 					{
 						// data is in little endian format
 						reverse(digest.begin(), digest.end());
@@ -368,7 +368,7 @@ string MWinSshPrivateKeyImpl::get_comment() const
 		{
 			vector<wchar_t> b(cb);
 			::CertGetNameString(mCertificateContext, type,
-				CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, &b[0], cb);
+				CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, b.data(), cb);
 
 			while (cb > 0 and b[cb - 1] == 0)
 				--cb;
@@ -390,7 +390,7 @@ vector<uint8_t> MWinSshPrivateKeyImpl::get_hash() const
 	DWORD cbHash = 20;
 			
 	if (not ::CertGetCertificateContextProperty(mCertificateContext,
-		CERT_HASH_PROP_ID, &result[0], &cbHash))
+		CERT_HASH_PROP_ID, result.data(), &cbHash))
 	{
 		result.clear();
 	}

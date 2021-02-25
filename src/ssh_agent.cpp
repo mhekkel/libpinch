@@ -97,7 +97,7 @@ vector<uint8_t> ssh_basic_private_key_impl::sign(const vector<uint8_t>& session_
     size_t length = signer.MaxSignatureLength();
 	vector<uint8_t> digest(length);
 
-    signer.SignMessage(rng, &message[0], message.size(), &digest[0]);
+    signer.SignMessage(rng, message.data(), message.size(), digest.data());
 
 	opacket signature;
 	signature << "ssh-rsa" << digest;

@@ -12,3 +12,4 @@ test/service-test
 .libs
 libassh.la
 libtool
+test/unit-test
