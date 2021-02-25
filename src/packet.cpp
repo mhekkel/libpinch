@@ -5,8 +5,8 @@
 
 #include <assh/config.hpp>
 
-#include <boost/random/random_device.hpp>
-#include <boost/random/uniform_int_distribution.hpp>
+#include <random>
+
 #include <boost/algorithm/string.hpp>
 
 #include <zlib.h>
@@ -15,7 +15,6 @@
 #include <assh/channel.hpp>
 
 using namespace std;
-namespace r = boost::random;
 namespace ba = boost::algorithm;
 
 namespace assh
@@ -134,7 +133,7 @@ void opacket::compress(compression_helper& compressor, boost::system::error_code
 
 void opacket::write(ostream& os, int blocksize) const
 {
-	static r::random_device rng;
+	static std::random_device rng;
 
 	assert(blocksize < numeric_limits<uint8_t>::max());
 
@@ -149,7 +148,7 @@ void opacket::write(ostream& os, int blocksize) const
 	while (padding_size < 4)
 		padding_size += blocksize;
 	
-	r::uniform_int_distribution<uint8_t> rb;
+	std::uniform_int_distribution<uint8_t> rb;
 	for (uint32_t i = 0; i < padding_size; ++i)
 		padding.push_back(rb(rng));
 	

@@ -71,5 +71,15 @@ Can't find the libcrypto++ header files. Make sure that libcrypto++ is installed
 		[AC_MSG_ERROR([libcrtypo++ not found])])
 fi
 
+dnl These are still needed outside the Debian environment
+AX_CHECK_LIBRARY([LIBZ], [zlib.h], [z],
+	[ LIBS="$LIBS -lz" ],
+	[AC_MSG_ERROR([libz not found - compressed files not supported])])
+AX_CHECK_LIBRARY([LIBBZ2], [bzlib.h], [bz2],
+	[ LIBS="$LIBS -lbz2"],
+	[AC_MSG_ERROR([libbz2 not found - compressed files not supported])])
+
+AC_SUBST([LIBS], [$LIBS])
+
 dnl Process Makefile.in to create Makefile
 AC_OUTPUT([GNUmakefile])

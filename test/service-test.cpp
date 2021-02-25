@@ -8,6 +8,9 @@
 #include <type_traits>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+
+#include <cryptopp/cryptlib.h>
 
 #include "assh/connection.hpp"
 #include "assh/connection_pool.hpp"
@@ -15,9 +18,95 @@
 #include "assh/terminal_channel.hpp"
 
 namespace ba = boost::algorithm;
+namespace io = boost::iostreams;
 
 namespace assh
 {
+
+namespace detail
+{
+
+struct packet_encryptor
+{
+	typedef char char_type;
+	struct category : io::multichar_output_filter_tag, io::flushable_tag
+	{
+	};
+
+	packet_encryptor(CryptoPP::StreamTransformation &cipher,
+						CryptoPP::MessageAuthenticationCode &signer, uint32_t blocksize, uint32_t seq_nr)
+		: m_cipher(cipher), m_signer(signer), m_blocksize(blocksize), m_flushed(false)
+	{
+		for (int i = 3; i >= 0; --i)
+		{
+			uint8_t ch = static_cast<uint8_t>(seq_nr >> (i * 8));
+			m_signer.Update(&ch, 1);
+		}
+
+		m_block.reserve(m_blocksize);
+	}
+
+	template <typename Sink>
+	std::streamsize write(Sink &sink, const char *s, std::streamsize n)
+	{
+		std::streamsize result = 0;
+
+		for (std::streamsize o = 0; o < n; o += m_blocksize)
+		{
+			size_t k = n;
+			if (k > m_blocksize - m_block.size())
+				k = m_blocksize - m_block.size();
+
+			const uint8_t *sp = reinterpret_cast<const uint8_t *>(s);
+
+			m_signer.Update(sp, static_cast<size_t>(k));
+			m_block.insert(m_block.end(), sp, sp + k);
+
+			result += k;
+			s += k;
+
+			if (m_block.size() == m_blocksize)
+			{
+				std::vector<uint8_t> block(m_blocksize);
+				m_cipher.ProcessData(&block[0], &m_block[0], m_blocksize);
+
+				for (uint32_t i = 0; i < m_blocksize; ++i)
+					io::put(sink, block[i]);
+
+				m_block.clear();
+			}
+		}
+
+		return result;
+	}
+
+	template <typename Sink>
+	bool flush(Sink &sink)
+	{
+		if (not m_flushed)
+		{
+			assert(m_block.size() == 0);
+
+			std::vector<uint8_t> digest(m_signer.DigestSize());
+			m_signer.Final(&digest[0]);
+			for (size_t i = 0; i < digest.size(); ++i)
+				io::put(sink, digest[i]);
+
+			m_flushed = true;
+		}
+
+		return true;
+	}
+
+	CryptoPP::StreamTransformation &m_cipher;
+	CryptoPP::MessageAuthenticationCode &m_signer;
+	std::vector<uint8_t> m_block;
+	uint32_t m_blocksize;
+	bool m_flushed;
+};
+	
+}
+
 
 template<typename Stream>
 class connection2 : public std::enable_shared_from_this<connection2<Stream>>
@@ -29,6 +118,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		: m_next_layer(std::forward<Arg>(arg))
 		, m_user(user)
 	{
+		reset();
 	}
 
 	/// The type of the next layer.
@@ -134,7 +224,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 
 	void async_write(opacket&& out)
 	{
-		async_write(std::move(out), [this](boost::system::error_code& ec)
+		async_write(std::move(out), [this](const boost::system::error_code& ec, std::size_t)
 		{
 			if (ec)
 				this->handle_error(ec);
@@ -142,7 +232,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	}
 
 	template<typename Handler>
-	auto async_write(opacket&& out, Handler&& handler)
+	auto async_write(opacket&& p, Handler&& handler)
 	{
 		auto request = std::make_unique<boost::asio::streambuf>();
 
@@ -158,21 +248,43 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 			}
 		}
 
-		{
-			io::filtering_stream<io::output> out;
+		io::filtering_stream<io::output> out;
+		if (m_encryptor)
+			out.push(detail::packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
+		out.push(*request);
 
-			if (m_encryptor)
-				out.push(packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
-
-			out.push(*request);
-
-			p.write(out, m_oblocksize);
-		}
+		p.write(out, m_oblocksize);
 
 		++m_out_seq_nr;
-		async_write_int(request, op);
-
+		return async_write(std::move(request), std::move(handler));
 	}
+
+	template<typename Handler>
+	auto async_write(std::unique_ptr<boost::asio::streambuf> buffer, Handler&& handler)
+	{
+		enum { start, writing };
+
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
+			[
+				&socket = m_next_layer,
+				buffer = std::move(buffer),
+				conn = this->shared_from_this(),
+				state = start
+			]
+			(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_received = 0) mutable
+			{
+				if (not ec and state == start)
+				{
+					state = writing;
+					boost::asio::async_write(socket, *buffer, std::move(self));
+					return;
+				}
+
+				self.complete(ec, 0);
+			}, handler, m_next_layer
+		);
+	}
+
 
 	void async_read(uint32_t at_least)
 	{
@@ -514,7 +626,7 @@ int main() {
 	auto conn = std::make_shared<assh::connection2<boost::asio::ip::tcp::socket>>(io_context, "maarten");
 
 	tcp::resolver resolver(io_context);
-	tcp::resolver::results_type endpoints = resolver.resolve("localhost", "ssh");
+	tcp::resolver::results_type endpoints = resolver.resolve("localhost", "2022");
 
 	boost::asio::connect(conn->lowest_layer(), endpoints);
 	conn->async_handshake([](boost::system::error_code ec)

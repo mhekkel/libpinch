@@ -78,21 +78,21 @@ $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
 OBJECTS = \
-	$(OBJDIR)/channel.ol \
-	$(OBJDIR)/connection.ol \
-	$(OBJDIR)/connection_pool.ol \
-	$(OBJDIR)/debug.ol \
-	$(OBJDIR)/error.ol \
-	$(OBJDIR)/key_exchange.ol \
-	$(OBJDIR)/packet.ol \
-	$(OBJDIR)/posix_ssh_agent_impl.ol \
-	$(OBJDIR)/terminal_channel.ol \
-	$(OBJDIR)/ssh_agent.ol \
+	$(OBJDIR)/channel.lo \
+	$(OBJDIR)/connection.lo \
+	$(OBJDIR)/connection_pool.lo \
+	$(OBJDIR)/debug.lo \
+	$(OBJDIR)/error.lo \
+	$(OBJDIR)/key_exchange.lo \
+	$(OBJDIR)/packet.lo \
+	$(OBJDIR)/posix_ssh_agent_impl.lo \
+	$(OBJDIR)/terminal_channel.lo \
+	$(OBJDIR)/ssh_agent.lo \
 
-	# $(OBJDIR)/port_forwarding.ol \
-	# $(OBJDIR)/proxy_cmd.ol \
-	# $(OBJDIR)/sftp_channel.ol \
-	# $(OBJDIR)/x11_channel.ol
+	# $(OBJDIR)/port_forwarding.lo \
+	# $(OBJDIR)/proxy_cmd.lo \
+	# $(OBJDIR)/sftp_channel.lo \
+	# $(OBJDIR)/x11_channel.lo
 
 $(LIB_TARGET): $(OBJECTS)
 	$(CXXLINK) -rpath $(libdir) $(OBJECTS) $(LIBS)
@@ -134,7 +134,7 @@ $(1)_OBJECTS = $$(OBJDIR)/$(1)-test.o
 
 test/$(1)-test: $(LIB_TARGET) $$($(1)_OBJECTS)
 	@ echo ">>> building $(1)-test"
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $$@ $$($(1)_OBJECTS) -L.libs -lcifpp -lboost_program_options $(LIBS)
+	$(LIBTOOL) --mode=link $(CXX) $(CXXFLAGS) $(LDFLAGS) -o $$@ $$($(1)_OBJECTS) -lassh -lboost_program_options $(LIBS)
 
 .PHONY: $(1)-test
 $(1)-test: test/$(1)-test
