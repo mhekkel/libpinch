@@ -221,147 +221,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		std::deque<opacket> private_keys;
 
 		template<typename Self>
-		void operator()(Self& self, boost::system::error_code ec = {}, std::size_t bytes_transferred = 0)
-		{
-			if (not ec)
-			{
-				switch (state)
-				{
-					case start:
-					{
-						conn->m_auth_state = auth_state::connected;
-
-						std::ostream out(request.get());
-						out << kSSHVersionString << "\r\n";
-						state = wrote_version;
-						boost::asio::async_write(socket, *request, std::move(self));
-						return;
-					}
-					
-					case wrote_version:
-						state = reading;
-						boost::asio::async_read_until(socket, response, "\n", std::move(self));
-						return;
-
-					case reading:
-					{
-						std::istream response_stream(&response);
-						std::getline(response_stream, host_version);
-						ba::trim_right(host_version);
-
-						if (not ba::starts_with(host_version, "SSH-2.0"))
-						{
-							self.complete(error::make_error_code(error::protocol_version_not_supported));
-							return;
-						}
-
-						state = rekeying;
-						kex = std::make_unique<key_exchange>(host_version);
-
-						conn->async_write(kex->init());
-						
-						boost::asio::async_read(socket, response, boost::asio::transfer_at_least(8), std::move(self));
-						return;
-					}
-
-					case rekeying:
-					{
-						for (;;)
-						{
-
-							if (not conn->receive_packet(*packet, ec) and not ec)
-							{
-								boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
-								return;
-							}
-
-std::cerr << (int)(message_type)*packet << std::endl;
-
-							opacket out;
-							if (*packet == msg_newkeys)
-							{
-								conn->newkeys(*kex, ec);
-
-								if (ec)
-								{
-									self.complete(ec);
-									return;
-								}
-
-								kex.reset();
-
-								state = authenticating;
-
-								out = msg_service_request;
-								out << "ssh-userauth";
-
-								// we might not be known yet
-								// ssh_agent::instance().register_connection(conn);
-
-								// fetch the private keys
-								for (auto& pk: ssh_agent::instance())
-								{
-									opacket blob;
-									blob << pk;
-									private_keys.push_back(blob);
-								}
-							}
-							else if (not kex->process(*packet, out, ec))
-							{
-								self.complete(error::make_error_code(error::key_exchange_failed));
-								return;
-							}
-
-							if (out)
-								conn->async_write(std::move(out));
-							
-							packet->clear();
-						}
-					}
-
-					case authenticating:
-					{
-						if (not conn->receive_packet(*packet, ec) and not ec)
-						{
-							boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
-							return;
-						}
-
-						auto& in = *packet;
-						opacket out;
-
-						switch ((message_type)in)
-						{
-							case msg_service_accept:
-								conn->process_service_accept(in, out, ec);
-								break;
-							case msg_userauth_success:
-								conn->process_userauth_success(in, out, ec);
-								break;
-							case msg_userauth_failure:
-								conn->process_userauth_failure(in, out, ec);
-								break;
-							case msg_userauth_banner:
-								conn->process_userauth_banner(in, out, ec);
-								break;
-							case msg_userauth_info_request:
-								conn->process_userauth_info_request(in, out, ec);
-								break;
-						}
-
-						if (out)
-							conn->async_write(std::move(out));
-						
-						packet->clear();
-						boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
-						return;
-					}
-				}
-			}
-
-			self.complete(ec);
-		}
-
+		void operator()(Self& self, boost::system::error_code ec = {}, std::size_t bytes_transferred = 0);
 	};
 
 	template<typename Handler>
@@ -847,6 +707,150 @@ std::cerr << (int)(message_type)*packet << std::endl;
 		m_alg_enc_c2s = kEncryptionAlgorithms, m_alg_ver_c2s = kMacAlgorithms, m_alg_cmp_c2s = kCompressionAlgorithms,
 		m_alg_enc_s2c = kEncryptionAlgorithms, m_alg_ver_s2c = kMacAlgorithms, m_alg_cmp_s2c = kCompressionAlgorithms;
 };
+
+template<typename Stream>
+template<typename Self>
+void connection2<Stream>::async_connect_impl::operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transferred)
+{
+	if (not ec)
+	{
+		switch (state)
+		{
+			case start:
+			{
+				conn->m_auth_state = auth_state::connected;
+
+				std::ostream out(request.get());
+				out << kSSHVersionString << "\r\n";
+				state = wrote_version;
+				boost::asio::async_write(socket, *request, std::move(self));
+				return;
+			}
+			
+			case wrote_version:
+				state = reading;
+				boost::asio::async_read_until(socket, response, "\n", std::move(self));
+				return;
+
+			case reading:
+			{
+				std::istream response_stream(&response);
+				std::getline(response_stream, host_version);
+				ba::trim_right(host_version);
+
+				if (not ba::starts_with(host_version, "SSH-2.0"))
+				{
+					self.complete(error::make_error_code(error::protocol_version_not_supported));
+					return;
+				}
+
+				state = rekeying;
+				kex = std::make_unique<key_exchange>(host_version);
+
+				conn->async_write(kex->init());
+				
+				boost::asio::async_read(socket, response, boost::asio::transfer_at_least(8), std::move(self));
+				return;
+			}
+
+			case rekeying:
+			{
+				for (;;)
+				{
+
+					if (not conn->receive_packet(*packet, ec) and not ec)
+					{
+						boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+						return;
+					}
+
+std::cerr << (int)(message_type)*packet << std::endl;
+
+					opacket out;
+					if (*packet == msg_newkeys)
+					{
+						conn->newkeys(*kex, ec);
+
+						if (ec)
+						{
+							self.complete(ec);
+							return;
+						}
+
+						kex.reset();
+
+						state = authenticating;
+
+						out = msg_service_request;
+						out << "ssh-userauth";
+
+						// we might not be known yet
+						// ssh_agent::instance().register_connection(conn);
+
+						// fetch the private keys
+						for (auto& pk: ssh_agent::instance())
+						{
+							opacket blob;
+							blob << pk;
+							private_keys.push_back(blob);
+						}
+					}
+					else if (not kex->process(*packet, out, ec))
+					{
+						self.complete(error::make_error_code(error::key_exchange_failed));
+						return;
+					}
+
+					if (out)
+						conn->async_write(std::move(out));
+					
+					packet->clear();
+				}
+			}
+
+			case authenticating:
+			{
+				if (not conn->receive_packet(*packet, ec) and not ec)
+				{
+					boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+					return;
+				}
+
+				auto& in = *packet;
+				opacket out;
+
+				switch ((message_type)in)
+				{
+					case msg_service_accept:
+						conn->process_service_accept(in, out, ec);
+						break;
+					case msg_userauth_success:
+						conn->process_userauth_success(in, out, ec);
+						break;
+					case msg_userauth_failure:
+						conn->process_userauth_failure(in, out, ec);
+						break;
+					case msg_userauth_banner:
+						conn->process_userauth_banner(in, out, ec);
+						break;
+					case msg_userauth_info_request:
+						conn->process_userauth_info_request(in, out, ec);
+						break;
+				}
+
+				if (out)
+					conn->async_write(std::move(out));
+				
+				packet->clear();
+				boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+				return;
+			}
+		}
+	}
+
+	self.complete(ec);
+}
+
 
 // the read loop, this routine keeps calling itself until an error condition is met
 template<typename Stream>
