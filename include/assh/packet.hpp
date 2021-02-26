@@ -155,6 +155,8 @@ class opacket
 	bool empty() const { return m_data.empty() or static_cast<message_type>(m_data[0]) == msg_undefined; }
 	std::size_t size() const { return m_data.size(); }
 
+	explicit operator bool() const 		{ return not empty(); }
+
 	template <typename INT>
 	opacket& operator<<(INT v);
 	opacket& operator<<(const char *v);

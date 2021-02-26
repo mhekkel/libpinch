@@ -19,6 +19,7 @@ struct key_exchange_impl;
 class key_exchange
 {
   public:
+	key_exchange(const std::string& host_version);
 	key_exchange(const std::string& host_version, const std::vector<uint8_t>& session_id);
 	~key_exchange();
 

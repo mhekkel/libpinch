@@ -342,6 +342,11 @@ void key_exchange_dh_gex<HashAlgorithm>::calculate_hash(const std::string& host_
 
 // --------------------------------------------------------------------
 
+key_exchange::key_exchange(const std::string& host_version)
+	: m_host_version(host_version)
+{
+}
+
 key_exchange::key_exchange(const std::string& host_version, const std::vector<uint8_t>& session_id)
 	: m_host_version(host_version), m_session_id(session_id)
 {

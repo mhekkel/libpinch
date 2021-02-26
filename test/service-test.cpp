@@ -217,7 +217,8 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 
 		enum state_type { start, wrote_version, reading, rekeying, authenticating } state = start;
 		std::unique_ptr<ipacket> packet = std::make_unique<ipacket>();
-		std::unique_ptr<key_exchange> key_exchange;
+		std::unique_ptr<key_exchange> kex;
+		std::deque<opacket> private_keys;
 
 		template<typename Self>
 		void operator()(Self& self, boost::system::error_code ec = {}, std::size_t bytes_transferred = 0)
@@ -255,9 +256,9 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 						}
 
 						state = rekeying;
-						key_exchange.reset(new key_exchange);
+						kex = std::make_unique<key_exchange>(host_version);
 
-						conn->async_write(key_exchange->init());
+						conn->async_write(kex->init());
 						
 						boost::asio::async_read(socket, response, boost::asio::transfer_at_least(8), std::move(self));
 						return;
@@ -265,57 +266,95 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 
 					case rekeying:
 					{
+						for (;;)
+						{
+
+							if (not conn->receive_packet(*packet, ec) and not ec)
+							{
+								boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+								return;
+							}
+
+std::cerr << (int)(message_type)*packet << std::endl;
+
+							opacket out;
+							if (*packet == msg_newkeys)
+							{
+								conn->newkeys(*kex, ec);
+
+								if (ec)
+								{
+									self.complete(ec);
+									return;
+								}
+
+								kex.reset();
+
+								state = authenticating;
+
+								out = msg_service_request;
+								out << "ssh-userauth";
+
+								// we might not be known yet
+								// ssh_agent::instance().register_connection(conn);
+
+								// fetch the private keys
+								for (auto& pk: ssh_agent::instance())
+								{
+									opacket blob;
+									blob << pk;
+									private_keys.push_back(blob);
+								}
+							}
+							else if (not kex->process(*packet, out, ec))
+							{
+								self.complete(error::make_error_code(error::key_exchange_failed));
+								return;
+							}
+
+							if (out)
+								conn->async_write(std::move(out));
+							
+							packet->clear();
+						}
+					}
+
+					case authenticating:
+					{
 						if (not conn->receive_packet(*packet, ec) and not ec)
 						{
 							boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
 							return;
 						}
 
-						if (*packet == msg_newkeys)
-						{
-							conn->newkeys(*key_exchange);
-
-							key_exchange.reset();
-
-							state = authenticating;
-						}
-						else
-						{
-							
-						} 
-
+						auto& in = *packet;
 						opacket out;
-						bool handled = m_key_exchange->process(*packet, out, ec);
-						if (not handled)
+
+						switch ((message_type)in)
 						{
-							auto& in = *packet;
-							switch ((message_type)in)
-							{
-								case msg_service_accept:
-									process_service_accept(in, out, ec);
-									break;
-
-								case msg_newkeys:
-									process_newkeys(in, out, ec);
-									state = authenticating;
-									key_exchange.reset();
-									break;
-							}
-
-								case msg_userauth_success:
-									process_userauth_success(in, out, ec);
-									break;
-								case msg_userauth_failure:
-									process_userauth_failure(in, out, ec);
-									break;
-								case msg_userauth_banner:
-									process_userauth_banner(in, out, ec);
-									break;
-								case msg_userauth_info_request:
-									process_userauth_info_request(in, out, ec);
-									break;
-							}
+							case msg_service_accept:
+								conn->process_service_accept(in, out, ec);
+								break;
+							case msg_userauth_success:
+								conn->process_userauth_success(in, out, ec);
+								break;
+							case msg_userauth_failure:
+								conn->process_userauth_failure(in, out, ec);
+								break;
+							case msg_userauth_banner:
+								conn->process_userauth_banner(in, out, ec);
+								break;
+							case msg_userauth_info_request:
+								conn->process_userauth_info_request(in, out, ec);
+								break;
 						}
+
+						if (out)
+							conn->async_write(std::move(out));
+						
+						packet->clear();
+						boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+						return;
 					}
 				}
 			}
@@ -711,6 +750,8 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	void process_channel_open(ipacket &in, opacket &out);
 	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
 
+	void newkeys(key_exchange& kex, boost::system::error_code &ec);
+
 	void async_read()
 	{
 		uint32_t at_least = m_iblocksize;
@@ -1035,7 +1076,32 @@ void connection2<Stream>::process_newkeys(ipacket &in, opacket &out, boost::syst
 		return;
 	}
 
-	ipacket payload = m_key_exchange->host_payload();
+	newkeys(*m_key_exchange, ec);
+
+	if (m_auth_state == auth_state::authenticated)
+		m_key_exchange.reset();
+	else
+	{
+		out = msg_service_request;
+		out << "ssh-userauth";
+
+		// we might not be known yet
+		// ssh_agent::instance().register_connection(shared_from_this());
+
+		// fetch the private keys
+		for (auto& pk: ssh_agent::instance())
+		{
+			opacket blob;
+			blob << pk;
+			m_private_keys.push_back(blob);
+		}
+	}
+}
+
+template<typename Stream>
+void connection2<Stream>::newkeys(key_exchange& kex, boost::system::error_code &ec)
+{
+	ipacket payload = kex.host_payload();
 
 	std::string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
 		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
@@ -1046,8 +1112,8 @@ void connection2<Stream>::process_newkeys(ipacket &in, opacket &out, boost::syst
 	// Client to server encryption
 	std::string protocol = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s);
 
-	const uint8_t *key = m_key_exchange->key(key_exchange::C);
-	const uint8_t *iv = m_key_exchange->key(key_exchange::A);
+	const uint8_t *key = kex.key(key_exchange::C);
+	const uint8_t *iv = kex.key(key_exchange::A);
 
 	if (protocol == "3des-cbc")
 		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption(key, 24, iv));
@@ -1069,8 +1135,8 @@ void connection2<Stream>::process_newkeys(ipacket &in, opacket &out, boost::syst
 	// Server to client encryption
 	protocol = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c);
 
-	key = m_key_exchange->key(key_exchange::D);
-	iv = m_key_exchange->key(key_exchange::B);
+	key = kex.key(key_exchange::D);
+	iv = kex.key(key_exchange::B);
 
 	if (protocol == "3des-cbc")
 		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption(key, 24, iv));
@@ -1091,7 +1157,7 @@ void connection2<Stream>::process_newkeys(ipacket &in, opacket &out, boost::syst
 
 	// Client To Server verification
 	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
-	iv = m_key_exchange->key(key_exchange::E);
+	iv = kex.key(key_exchange::E);
 
 	if (protocol == "hmac-sha2-512")
 		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
@@ -1107,7 +1173,7 @@ void connection2<Stream>::process_newkeys(ipacket &in, opacket &out, boost::syst
 	// Server to Client verification
 
 	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
-	iv = m_key_exchange->key(key_exchange::F);
+	iv = kex.key(key_exchange::F);
 
 	if (protocol == "hmac-sha2-512")
 		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
@@ -1138,25 +1204,6 @@ void connection2<Stream>::process_newkeys(ipacket &in, opacket &out, boost::syst
 	{
 		m_iblocksize = m_decryptor->OptimalBlockSize();
 		m_oblocksize = m_encryptor->OptimalBlockSize();
-	}
-
-	if (m_auth_state == auth_state::authenticated)
-		m_key_exchange.reset();
-	else
-	{
-		out = msg_service_request;
-		out << "ssh-userauth";
-
-		// we might not be known yet
-		// ssh_agent::instance().register_connection(shared_from_this());
-
-		// fetch the private keys
-		for (auto& pk: ssh_agent::instance())
-		{
-			opacket blob;
-			blob << pk;
-			m_private_keys.push_back(blob);
-		}
 	}
 }
 
