@@ -495,8 +495,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	// callbacks to be installed by owning object
 
 	// bool validate_host_key(host, alg, key)
-	typedef std::function<bool(const std::string &, const std::string &, const std::vector<uint8_t> &)>
-		validate_callback_type;
+	using validate_callback_type = std::function<bool(const std::string&, const std::string&, const std::vector<uint8_t>&)>;
 
 	// void request_password()
 	typedef std::function<void()> password_callback_type;
@@ -627,204 +626,11 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	}
 
 	template<typename Handler>
-	auto async_read_packet(Handler&& handler)
-	{
-		auto packet = std::make_unique<ipacket>();
-
-		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-			[
-				&socket = this->m_next_layer,
-				conn = this->shared_from_this(),
-				packet = std::move(packet),
-				this
-			]
-			(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) mutable
-			{
-				if (ec)
-				{
-					self.complete(ec, {});
-					return;
-				}
-
-				while (m_response.size() >= m_iblocksize)
-				{
-					if (not packet->complete())
-					{
-						std::vector<uint8_t> block(m_iblocksize);
-						m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
-
-						if (m_decryptor)
-						{
-							std::vector<uint8_t> data(m_iblocksize);
-							m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
-							std::swap(data, block);
-						}
-
-						if (m_verifier)
-						{
-							if (packet->empty())
-							{
-								for (int32_t i = 3; i >= 0; --i)
-								{
-									uint8_t b = m_in_seq_nr >> (i * 8);
-									m_verifier->Update(&b, 1);
-								}
-							}
-
-							m_verifier->Update(block.data(), block.size());
-						}
-
-						packet->append(block);
-					}
-
-					if (packet->complete())
-					{
-						if (m_verifier)
-						{
-							if (m_response.size() < m_verifier->DigestSize())
-								break;
-
-							std::vector<uint8_t> digest(m_verifier->DigestSize());
-							m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
-
-							if (not m_verifier->Verify(digest.data()))
-							{
-								handle_error(error::make_error_code(error::mac_error));
-								return;
-							}
-						}
-
-						if (m_decompressor)
-						{
-							boost::system::error_code ec;
-							packet->decompress(*m_decompressor, ec);
-							if (ec)
-							{
-								handle_error(ec);
-								break;
-							}
-						}
-
-						++m_in_seq_nr;
-
-						self.complete({}, *packet);
-						return;
-					}
-				}
-
-				uint32_t at_least = m_iblocksize;
-				if (m_response.size() >= m_iblocksize)
-				{
-					// if we arrive here, we might have read a block, but not the digest?
-					// call readsome with 0 as at-least, that will return something we hope.
-					at_least = 1;
-				}
-				else
-					at_least -= m_response.size();
-
-				boost::asio::async_read(socket, m_response, boost::asio::transfer_at_least(at_least), std::move(self));
-			}
-		);
-	}
+	auto async_read_packet(Handler&& handler);
 
   private:
 
-	bool receive_packet(ipacket& packet, boost::system::error_code& ec)
-	{
-		bool result = false;
-		ec = {};
-
-		while (m_response.size() >= m_iblocksize)
-		{
-			if (not packet.complete())
-			{
-				std::vector<uint8_t> block(m_iblocksize);
-				m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
-
-				if (m_decryptor)
-				{
-					std::vector<uint8_t> data(m_iblocksize);
-					m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
-					std::swap(data, block);
-				}
-
-				if (m_verifier)
-				{
-					if (packet.empty())
-					{
-						for (int32_t i = 3; i >= 0; --i)
-						{
-							uint8_t b = m_in_seq_nr >> (i * 8);
-							m_verifier->Update(&b, 1);
-						}
-					}
-
-					m_verifier->Update(block.data(), block.size());
-				}
-
-				packet.append(block);
-			}
-
-			if (packet.complete())
-			{
-				if (m_verifier)
-				{
-					if (m_response.size() < m_verifier->DigestSize())
-						break;
-
-					std::vector<uint8_t> digest(m_verifier->DigestSize());
-					m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
-
-					if (not m_verifier->Verify(digest.data()))
-					{
-						ec = error::make_error_code(error::mac_error);
-						return false;
-					}
-				}
-
-				if (m_decompressor)
-				{
-					boost::system::error_code ec;
-					packet.decompress(*m_decompressor, ec);
-					if (ec)
-					{
-						handle_error(ec);
-						break;
-					}
-				}
-
-				++m_in_seq_nr;
-				result = true;
-				break;
-			}
-		}
-
-		if (result)
-		{
-			switch ((message_type)packet)
-			{
-				case msg_disconnect:
-					m_next_layer.close();
-					break;
-
-				case msg_service_request:
-					disconnect();
-					break;
-
-				case msg_ignore:
-				case msg_unimplemented:
-				case msg_debug:
-					packet.clear();
-					result = false;
-					break;
-				
-				default:
-					;
-			}
-		}
-
-		return result;
-	}
+	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
 
 	void received_data(const boost::system::error_code& ec);
 
@@ -915,6 +721,109 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		m_alg_enc_c2s = kEncryptionAlgorithms, m_alg_ver_c2s = kMacAlgorithms, m_alg_cmp_c2s = kCompressionAlgorithms,
 		m_alg_enc_s2c = kEncryptionAlgorithms, m_alg_ver_s2c = kMacAlgorithms, m_alg_cmp_s2c = kCompressionAlgorithms;
 };
+
+template<typename Stream>
+template<typename Handler>
+auto connection2<Stream>::async_read_packet(Handler&& handler)
+{
+	auto packet = std::make_unique<ipacket>();
+
+	return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+		[
+			&socket = this->m_next_layer,
+			conn = this->shared_from_this(),
+			packet = std::move(packet),
+			this
+		]
+		(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) mutable
+		{
+			if (ec)
+			{
+				self.complete(ec, {});
+				return;
+			}
+
+			while (m_response.size() >= m_iblocksize)
+			{
+				if (not packet->complete())
+				{
+					std::vector<uint8_t> block(m_iblocksize);
+					m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
+
+					if (m_decryptor)
+					{
+						std::vector<uint8_t> data(m_iblocksize);
+						m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
+						std::swap(data, block);
+					}
+
+					if (m_verifier)
+					{
+						if (packet->empty())
+						{
+							for (int32_t i = 3; i >= 0; --i)
+							{
+								uint8_t b = m_in_seq_nr >> (i * 8);
+								m_verifier->Update(&b, 1);
+							}
+						}
+
+						m_verifier->Update(block.data(), block.size());
+					}
+
+					packet->append(block);
+				}
+
+				if (packet->complete())
+				{
+					if (m_verifier)
+					{
+						if (m_response.size() < m_verifier->DigestSize())
+							break;
+
+						std::vector<uint8_t> digest(m_verifier->DigestSize());
+						m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
+
+						if (not m_verifier->Verify(digest.data()))
+						{
+							handle_error(error::make_error_code(error::mac_error));
+							return;
+						}
+					}
+
+					if (m_decompressor)
+					{
+						boost::system::error_code ec;
+						packet->decompress(*m_decompressor, ec);
+						if (ec)
+						{
+							handle_error(ec);
+							break;
+						}
+					}
+
+					++m_in_seq_nr;
+
+					self.complete({}, *packet);
+					return;
+				}
+			}
+
+			uint32_t at_least = m_iblocksize;
+			if (m_response.size() >= m_iblocksize)
+			{
+				// if we arrive here, we might have read a block, but not the digest?
+				// call readsome with 0 as at-least, that will return something we hope.
+				at_least = 1;
+			}
+			else
+				at_least -= m_response.size();
+
+			boost::asio::async_read(socket, m_response, boost::asio::transfer_at_least(at_least), std::move(self));
+		}
+	);
+}
+
 
 
 // the read loop, this routine keeps calling itself until an error condition is met
@@ -1088,6 +997,104 @@ void connection2<Stream>::process_packet(ipacket& in)
 
 	if (not out.empty())
 		async_write(std::move(out));
+}
+
+template<typename Stream>
+bool connection2<Stream>::receive_packet(ipacket& packet, boost::system::error_code& ec)
+{
+	bool result = false;
+	ec = {};
+
+	while (m_response.size() >= m_iblocksize)
+	{
+		if (not packet.complete())
+		{
+			std::vector<uint8_t> block(m_iblocksize);
+			m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
+
+			if (m_decryptor)
+			{
+				std::vector<uint8_t> data(m_iblocksize);
+				m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
+				std::swap(data, block);
+			}
+
+			if (m_verifier)
+			{
+				if (packet.empty())
+				{
+					for (int32_t i = 3; i >= 0; --i)
+					{
+						uint8_t b = m_in_seq_nr >> (i * 8);
+						m_verifier->Update(&b, 1);
+					}
+				}
+
+				m_verifier->Update(block.data(), block.size());
+			}
+
+			packet.append(block);
+		}
+
+		if (packet.complete())
+		{
+			if (m_verifier)
+			{
+				if (m_response.size() < m_verifier->DigestSize())
+					break;
+
+				std::vector<uint8_t> digest(m_verifier->DigestSize());
+				m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
+
+				if (not m_verifier->Verify(digest.data()))
+				{
+					ec = error::make_error_code(error::mac_error);
+					return false;
+				}
+			}
+
+			if (m_decompressor)
+			{
+				boost::system::error_code ec;
+				packet.decompress(*m_decompressor, ec);
+				if (ec)
+				{
+					handle_error(ec);
+					break;
+				}
+			}
+
+			++m_in_seq_nr;
+			result = true;
+			break;
+		}
+	}
+
+	if (result)
+	{
+		switch ((message_type)packet)
+		{
+			case msg_disconnect:
+				m_next_layer.close();
+				break;
+
+			case msg_service_request:
+				disconnect();
+				break;
+
+			case msg_ignore:
+			case msg_unimplemented:
+			case msg_debug:
+				packet.clear();
+				result = false;
+				break;
+			
+			default:
+				;
+		}
+	}
+
+	return result;
 }
 
 template<typename Stream>
