@@ -23,6 +23,9 @@
 #include <cryptopp/files.h>
 #include <cryptopp/factory.h>
 #include <cryptopp/modes.h>
+#include <cryptopp/eccrypto.h>
+#include <cryptopp/oids.h>
+#include <cryptopp/dsa.h>
 
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
@@ -36,7 +39,7 @@ namespace assh
 
 const std::string
 	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256"),
-	kServerHostKeyAlgorithms("ssh-rsa,ssh-dss"),
+	kServerHostKeyAlgorithms("ecdsa-sha2-nistp256,ssh-rsa,ssh-dss"),
 	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,blowfish-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256,hmac-ripemd160"),
 	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
@@ -119,7 +122,8 @@ struct key_exchange_impl
 
 		switch ((message_type)in)
 		{
-			case msg_kex_dh_reply:		
+			case msg_kex_dh_reply:
+			case msg_kex_dh_gex_reply:
 				process_kex_dh_reply(in, out, ec);
 				break;
 
@@ -201,6 +205,21 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 			hostkey >> h_e >> h_n;
 	
 			h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
+		}
+		else if (h_pk_type == "ecdsa-sha2-nistp256")
+		{
+			std::string identifier, Q;
+			hostkey >> identifier >> Q;
+
+			ECP::Point point;
+
+			ECDSA<ECP, SHA256>::PublicKey pubKey;
+			pubKey.AccessGroupParameters().Initialize(ASN1::secp256r1());
+
+			pubKey.GetGroupParameters().GetCurve().DecodePoint(point, (byte*)Q.data(), Q.length());
+			pubKey.SetPublicElement(point);
+
+			h_key.reset(new ECDSA<ECP, SHA256>::Verifier(pubKey));
 		}
 	
 		std::vector<uint8_t> pk_rs_d = pk_rs;

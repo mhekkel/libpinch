@@ -259,6 +259,12 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 						return;
 					}
 
+					if (ec)
+					{
+						self.complete(ec);
+						return;
+					}
+
 					if (out)
 						conn->async_write(std::move(out));
 					
