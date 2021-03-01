@@ -29,7 +29,7 @@ int main() {
 	auto conn = std::make_shared<assh::connection>(io_context, "maarten");
 
 	tcp::resolver resolver(io_context);
-	tcp::resolver::results_type endpoints = resolver.resolve("localhost", "2022");
+	tcp::resolver::results_type endpoints = resolver.resolve("s4", "2022");
 
 	boost::asio::connect(conn->lowest_layer(), endpoints);
 
@@ -39,7 +39,7 @@ int main() {
 	// 	// t->close();
 	// });
 
-	auto channel = std::make_shared<assh::channel<assh::connection>>(conn);
+	auto channel = std::make_shared<assh::channel>(conn);
 
 	channel->async_open([](const boost::system::error_code& ec)
 	{

@@ -36,6 +36,234 @@ const string
 
 // --------------------------------------------------------------------
 
+void connection_base::handle_error(const boost::system::error_code &ec)
+{
+	if (ec)
+	{
+		for (auto ch: m_channels)
+			ch->error(ec.message(), "");
+
+		disconnect();
+
+		m_auth_state = auth_state_type::connected;
+		// handle_connect_result(ec);
+	}
+}
+
+void connection_base::reset()
+{
+	m_auth_state = auth_state_type::none;
+	m_private_key_hash.clear();
+	m_session_id.clear();
+	m_crypto_engine.reset();
+	m_last_io = 0;
+}
+
+// the read loop, this routine keeps calling itself until an error condition is met
+
+void connection_base::received_data(boost::system::error_code ec)
+{
+	if (ec)
+	{
+		handle_error(ec);
+		return;
+	}
+
+	// don't process data at all if we're no longer willing
+	if (m_auth_state == auth_state_type::none)
+		return;
+
+	try
+	{
+		auto p = m_crypto_engine.get_next_packet(m_response, ec);
+
+		if (ec)
+			handle_error(ec);
+		else if (p)
+			process_packet(*p);
+
+		async_read();
+	}
+	catch (...)
+	{
+		disconnect();
+	}
+}
+
+void connection_base::process_packet(ipacket& in)
+{
+	// update time for keep alive
+	struct timeval tv;
+	gettimeofday(&tv, nullptr);
+	m_last_io = tv.tv_sec;
+
+	opacket out;
+	boost::system::error_code ec;
+
+	switch ((message_type)in)
+	{
+		case msg_disconnect:
+		{
+			uint32_t reasonCode;
+			in >> reasonCode;
+			handle_error(error::make_error_code(error::disconnect_errors(reasonCode)));
+			break;
+		}
+
+		case msg_ignore:
+		case msg_unimplemented:
+		case msg_debug:
+			break;
+
+		case msg_service_request:
+			disconnect();
+			break;
+
+		// channel
+		case msg_channel_open:
+			if (m_auth_state == auth_state_type::authenticated)
+				process_channel_open(in, out);
+			break;
+		case msg_channel_open_confirmation:
+		case msg_channel_open_failure:
+		case msg_channel_window_adjust:
+		case msg_channel_data:
+		case msg_channel_extended_data:
+		case msg_channel_eof:
+		case msg_channel_close:
+		case msg_channel_request:
+		case msg_channel_success:
+		case msg_channel_failure:
+			if (m_auth_state == auth_state_type::authenticated)
+				process_channel(in, out, ec);
+			break;
+
+		case msg_global_request:
+		{
+			std::string request;
+			bool want_reply;
+			in >> request >> want_reply;
+			if (want_reply)
+				async_write(opacket(msg_request_failure));
+			break;
+		}
+
+		default:
+		{
+			opacket out(msg_unimplemented);
+			out << m_crypto_engine.get_next_out_seq_nr();
+			async_write(std::move(out));
+			break;
+		}
+	}
+
+	if (ec)
+		// handle_connect_result(ec);
+		handle_error(ec);
+
+	if (not out.empty())
+		async_write(std::move(out));
+}
+
+bool connection_base::receive_packet(ipacket& packet, boost::system::error_code& ec)
+{
+	bool result = false;
+	ec = {};
+
+	auto p = m_crypto_engine.get_next_packet(m_response, ec);
+
+	if (not ec and p)
+	{
+		result = true;
+		std::swap(packet, *p);
+
+		switch ((message_type)packet)
+		{
+			case msg_disconnect:
+				disconnect();
+				break;
+
+			case msg_service_request:
+				disconnect();
+				break;
+
+			case msg_ignore:
+			case msg_unimplemented:
+			case msg_debug:
+				packet.clear();
+				result = false;
+				break;
+			
+			default:
+				;
+		}
+	}
+
+	return result;
+}
+
+void connection_base::process_channel_open(ipacket &in, opacket &out)
+{
+	channel_ptr c;
+
+	std::string type;
+
+	in >> type;
+
+	try
+	{
+		// if (type == "x11")
+		// 	c.reset(new x11_channel(shared_from_this()));
+		// else if (type == "auth-agent@openssh.com" and m_forward_agent)
+		// 	c.reset(new ssh_agent_channel(this->shared_from_this()));
+	}
+	catch (...)
+	{
+	}
+
+	if (c)
+	{
+		in.message(msg_channel_open_confirmation);
+		c->process(in);
+		m_channels.push_back(c);
+	}
+	else
+	{
+		uint32_t host_channel_id;
+		in >> host_channel_id;
+
+		const uint32_t SSH_OPEN_UNKNOWN_CHANNEL_TYPE = 3;
+		out = msg_channel_open_failure;
+		out << host_channel_id << SSH_OPEN_UNKNOWN_CHANNEL_TYPE << "unsupported channel type"
+			<< "en";
+	}
+}
+
+void connection_base::process_channel(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	try
+	{
+		uint32_t channel_id;
+		in >> channel_id;
+
+		for (channel_ptr c : m_channels)
+		{
+			if (c->my_channel_id() == channel_id)
+			{
+				c->process(in);
+				break;
+			}
+		}
+	}
+	catch (...)
+	{
+	}
+}
+
+
+// --------------------------------------------------------------------
+
+
 // basic_connection::basic_connection(boost::asio::io_service &io_service, const string &user)
 // 	: m_io_service(io_service)
 // 	, m_user(user)

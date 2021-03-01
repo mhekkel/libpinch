@@ -34,12 +34,11 @@ const uint32_t
 	kMaxPacketSize = 0x8000,
 	kWindowSize = 4 * kMaxPacketSize;
 
-template<typename Stream>
-class channel : public std::enable_shared_from_this<channel<Stream>>
+class channel : public std::enable_shared_from_this<channel>
 {
 	public:
 
-	using connection_type = basic_connection<Stream>;
+	using connection_type = basic_connection<boost::asio::ip::tcp::socket>;
 
 	/// The type of the next layer.
 	using next_layer_type = connection_type;
@@ -135,7 +134,13 @@ class channel : public std::enable_shared_from_this<channel<Stream>>
 					{
 						case start:
 							if (connection->is_connected())
+							{
+
+								// m_my_window_size = kWindowSize;
+								// m_my_channel_id = s_next_channel_id++;
+								// connection->open_channel(shared_from_this(), m_my_channel_id);
 								state = connected;
+							}
 							else
 								connection->async_connect(std::move(self));
 							return;
@@ -206,24 +211,24 @@ class channel : public std::enable_shared_from_this<channel<Stream>>
 
 	// void send_signal(const std::string& inSignal);
 
-	// uint32_t my_channel_id() const { return m_my_channel_id; }
+	uint32_t my_channel_id() const { return m_my_channel_id; }
 	// bool is_open() const { return m_channel_open; }
 
-	// typedef std::function<void(const std::string &, const std::string &)> message_callback_type;
+	typedef std::function<void(const std::string &, const std::string &)> message_callback_type;
 
-	// void set_message_callbacks(message_callback_type banner_handler, message_callback_type message_handler, message_callback_type error_handler)
-	// {
-	// 	m_banner_handler = banner_handler;
-	// 	m_message_handler = message_handler;
-	// 	m_error_handler = error_handler;
-	// }
+	void set_message_callbacks(message_callback_type banner_handler, message_callback_type message_handler, message_callback_type error_handler)
+	{
+		m_banner_handler = banner_handler;
+		m_message_handler = message_handler;
+		m_error_handler = error_handler;
+	}
 
-	// virtual void banner(const std::string& msg, const std::string& lang);
-	// virtual void message(const std::string& msg, const std::string& lang);
-	// virtual void error(const std::string& msg, const std::string& lang);
+	virtual void banner(const std::string& msg, const std::string& lang);
+	virtual void message(const std::string& msg, const std::string& lang);
+	virtual void error(const std::string& msg, const std::string& lang);
 
 	// virtual void init(ipacket& in, opacket& out);
-	// virtual void process(ipacket& in);
+	virtual void process(ipacket& in);
 
 	// // boost::asio AsyncWriteStream interface
 	// boost::asio::io_service& get_io_service();
@@ -574,9 +579,9 @@ class channel : public std::enable_shared_from_this<channel<Stream>>
 	// std::deque<basic_read_op *> m_read_ops;
 	bool m_eof;
 
-	// message_callback_type m_banner_handler;
-	// message_callback_type m_message_handler;
-	// message_callback_type m_error_handler;
+	message_callback_type m_banner_handler;
+	message_callback_type m_message_handler;
+	message_callback_type m_error_handler;
 
   private:
 	static uint32_t s_next_channel_id;
@@ -628,9 +633,5 @@ class channel : public std::enable_shared_from_this<channel<Stream>>
 // 	std::string m_command;
 // 	basic_result_handler *m_handler;
 // };
-
-template<typename Stream> uint32_t channel<Stream>::s_next_channel_id = 1;
-
-
 
 } // namespace assh

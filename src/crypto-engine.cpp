@@ -292,6 +292,8 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf& 
 	if (not m_packet)
 		m_packet = std::make_unique<ipacket>();
 
+	bool complete_and_verified = false;
+
 	while (buffer.size() >= m_iblocksize)
 	{
 		if (not m_packet->complete())
@@ -318,11 +320,13 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf& 
 				m_packet->decompress(*m_decompressor, ec);
 
 			++m_in_seq_nr;
+
+			complete_and_verified = true;
 			break;
 		}
 	}
 
-	return m_packet->complete() ? std::move(m_packet) : std::unique_ptr<ipacket>();
+	return complete_and_verified ? std::move(m_packet) : std::unique_ptr<ipacket>();
 }
 
 

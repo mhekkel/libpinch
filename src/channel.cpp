@@ -14,7 +14,7 @@ using namespace CryptoPP;
 namespace assh
 {
 
-// uint32_t channel::s_next_channel_id = 1;
+uint32_t channel::s_next_channel_id = 1;
 
 // channel::channel(std::shared_ptr<connection_base> inConnection)
 // 	: m_connection(inConnection)
@@ -241,10 +241,10 @@ namespace assh
 // 	m_connection->async_write(move(out));
 // }
 
-// void channel::process(ipacket& in)
-// {
-// 	switch ((message_type)in)
-// 	{
+void channel::process(ipacket& in)
+{
+	switch ((message_type)in)
+	{
 // 		case msg_channel_open_confirmation:
 // 			setup(in);
 // 			m_channel_open = true;
@@ -338,7 +338,7 @@ namespace assh
 // 		default:
 // 			//PRINT(("Unhandled channel message %d", inMessage));
 // 			;
-// 	}
+	}
 
 // 	if (m_channel_open and m_my_window_size < kWindowSize - 2 * kMaxPacketSize)
 // 	{
@@ -349,25 +349,25 @@ namespace assh
 // 		out	<< m_host_channel_id << adjust;
 // 		m_connection->async_write(move(out));
 // 	}
-// }
+}
 
-// void channel::banner(const string& msg, const string& lang)
-// {
-// 	if (m_banner_handler)
-// 		m_banner_handler(msg, lang);
-// }
+void channel::banner(const string& msg, const string& lang)
+{
+	if (m_banner_handler)
+		m_banner_handler(msg, lang);
+}
 
-// void channel::message(const string& msg, const string& lang)
-// {
-// 	if (m_message_handler)
-// 		m_message_handler(msg, lang);
-// }
+void channel::message(const string& msg, const string& lang)
+{
+	if (m_message_handler)
+		m_message_handler(msg, lang);
+}
 
-// void channel::error(const string& msg, const string& lang)
-// {
-// 	if (m_error_handler)
-// 		m_error_handler(msg, lang);
-// }
+void channel::error(const string& msg, const string& lang)
+{
+	if (m_error_handler)
+		m_error_handler(msg, lang);
+}
 
 // void channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
 // {

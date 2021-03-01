@@ -33,8 +33,8 @@ class socket_closed_exception : public exception
 
 class key_exchange;
 
-template<typename> class channel;
-template<typename S> using channel_ptr = std::shared_ptr<channel<S>>;
+class channel;
+using channel_ptr = std::shared_ptr<channel>;
 
 class port_forward_listener;
 
@@ -50,27 +50,17 @@ struct prompt
 	std::string str;
 	bool echo;
 };
-typedef std::function<void(const std::string &, const std::string &, const std::vector<prompt> &)> keyboard_interactive_callback_type;
+
+using keyboard_interactive_callback_type = std::function<void(const std::string &, const std::string &, const std::vector<prompt> &)>;
+
+// bool validate_host_key(host, alg, key)
+using validate_callback_type = std::function<bool(const std::string&, const std::string&, const std::vector<uint8_t>&)>;
+
+// void request_password()
+using password_callback_type = std::function<void()>;
+
 
 // --------------------------------------------------------------------
-
-class connection_base
-{
-  public:
-	virtual ~connection_base() {}
-
-	virtual bool is_connected() const = 0;
-	virtual void disconnect() = 0;
-
-	virtual void async_write(opacket&& p) = 0;
-
-	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) = 0;
-};
-
-
-namespace detail
-{
-
 
 enum class auth_state_type
 {
@@ -82,6 +72,110 @@ enum class auth_state_type
 	connected,
 	authenticated
 };
+
+// --------------------------------------------------------------------
+
+class connection_base
+{
+  public:
+	connection_base(const connection_base&) = delete;
+	connection_base& operator=(const connection_base& ) = delete;
+
+	virtual ~connection_base() {}
+
+	virtual void disconnect() = 0;
+
+	virtual void async_write(opacket&& p) = 0;
+	virtual void async_read() = 0;
+
+	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) = 0;
+
+	void set_validate_callback(const validate_callback_type &cb)
+	{
+		m_validate_host_key_cb = cb;
+	}
+
+	void set_password_callback(const password_callback_type &cb)
+	{
+		m_request_password_cb = cb;
+	}
+
+	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
+	{
+		m_keyboard_interactive_cb = cb;
+	}
+
+	virtual bool is_connected() const
+	{
+		return m_auth_state == auth_state_type::authenticated;
+	}
+
+	virtual void handle_error(const boost::system::error_code &ec);
+	void reset();
+
+	void newkeys(key_exchange& kex, boost::system::error_code &ec)
+	{
+		m_crypto_engine.newkeys(kex, m_auth_state == auth_state_type::authenticated);
+	}
+
+	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
+	{
+		m_auth_state = auth_state_type::authenticated;
+
+		m_crypto_engine.enable_compression();
+
+		m_host_version = host_version;
+		m_session_id = session_id;
+
+		// start the read loop
+		async_read();
+	}
+
+  protected:
+
+	connection_base(const std::string& user)
+		: m_user(user)
+	{
+		
+	}
+
+	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
+
+	void received_data(boost::system::error_code ec);
+
+	void process_packet(ipacket &in);
+	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	void process_channel_open(ipacket &in, opacket &out);
+	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	std::string m_user;
+
+	auth_state_type m_auth_state = auth_state_type::none;
+	std::string m_host_version;
+	std::vector<uint8_t> m_session_id;
+
+	crypto_engine m_crypto_engine;
+
+	// connect_handler_list m_connect_handlers;
+
+	int64_t m_last_io;
+	std::vector<uint8_t> m_private_key_hash;
+	boost::asio::streambuf m_response;
+
+	validate_callback_type m_validate_host_key_cb;
+	password_callback_type m_request_password_cb;
+	keyboard_interactive_callback_type m_keyboard_interactive_cb;
+
+	std::list<channel_ptr> m_channels;
+	bool m_forward_agent;
+	port_forward_listener *m_port_forwarder;
+};
+
+
+namespace detail
+{
+
 
 template<typename Stream>
 struct async_connect_impl
@@ -384,13 +478,10 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 {
   public:
 
-	using channel_type = channel<Stream>;
-	using channel_ptr = channel_ptr<Stream>;
-
 	template<typename Arg>
 	basic_connection(Arg&& arg, const std::string& user)
-		: m_next_layer(std::forward<Arg>(arg))
-		, m_user(user)
+		: connection_base(user)
+		, m_next_layer(std::forward<Arg>(arg))
 	{
 		reset();
 	}
@@ -436,31 +527,6 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 
 	// callbacks to be installed by owning object
 
-	// bool validate_host_key(host, alg, key)
-	using validate_callback_type = std::function<bool(const std::string&, const std::string&, const std::vector<uint8_t>&)>;
-
-	// void request_password()
-	typedef std::function<void()> password_callback_type;
-
-	void set_validate_callback(const validate_callback_type &cb)
-	{
-		m_validate_host_key_cb = cb;
-	}
-
-	void set_password_callback(const password_callback_type &cb)
-	{
-		m_request_password_cb = cb;
-	}
-
-	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
-	{
-		m_keyboard_interactive_cb = cb;
-	}
-
-	virtual bool is_connected() const override
-	{
-		return m_auth_state == detail::auth_state_type::authenticated;
-	}
 
 	using async_connect_impl = detail::async_connect_impl<next_layer_type>;
 	friend async_connect_impl;
@@ -543,49 +609,14 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 
   protected:
 
-	virtual void handle_error(const boost::system::error_code &ec)
-	{
-		if (ec)
-		{
-			// std::for_each(m_channels.begin(), m_channels.end(), [&ec](channel_ptr ch) { ch->error(ec.message(), ""); });
-			disconnect();
-
-			m_auth_state = detail::auth_state_type::connected;
-			// handle_connect_result(ec);
-		}
-	}
-
 	template<typename Handler>
 	auto async_read_packet(Handler&& handler);
 
   private:
 
-	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
 
-	void received_data(const boost::system::error_code& ec);
 
-	void process_packet(ipacket &in);
-	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
-
-	void process_channel_open(ipacket &in, opacket &out);
-	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
-
-	void newkeys(key_exchange& kex, boost::system::error_code &ec)
-	{
-		m_crypto_engine.newkeys(kex, m_auth_state == detail::auth_state_type::authenticated);
-	}
-
-	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
-	{
-		m_auth_state = detail::auth_state_type::authenticated;
-
-		m_crypto_engine.enable_compression();
-
-		m_host_version = host_version;
-		m_session_id = session_id;
-	}
-
-	void async_read()
+	virtual void async_read() override
 	{
 		boost::asio::async_read(m_next_layer, m_response, boost::asio::transfer_at_least(1),
 			[
@@ -597,37 +628,7 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 			});
 	}
 
-	void reset()
-	{
-		m_auth_state = detail::auth_state_type::none;
-		m_private_key_hash.clear();
-		m_session_id.clear();
-		m_crypto_engine.reset();
-		m_last_io = 0;
-	}
-
 	Stream m_next_layer;
-	std::string m_user;
-
-	detail::auth_state_type m_auth_state = detail::auth_state_type::none;
-	std::string m_host_version;
-	std::vector<uint8_t> m_session_id;
-
-	crypto_engine m_crypto_engine;
-
-	// connect_handler_list m_connect_handlers;
-
-	int64_t m_last_io;
-	std::vector<uint8_t> m_private_key_hash;
-	boost::asio::streambuf m_response;
-
-	validate_callback_type m_validate_host_key_cb;
-	password_callback_type m_request_password_cb;
-	keyboard_interactive_callback_type m_keyboard_interactive_cb;
-
-	std::list<channel_ptr> m_channels;
-	bool m_forward_agent;
-	port_forward_listener *m_port_forwarder;
 };
 
 using connection = basic_connection<boost::asio::ip::tcp::socket>;
@@ -653,202 +654,6 @@ auto basic_connection<Stream>::async_read_packet(Handler&& handler)
 				boost::asio::async_read(socket, m_response, boost::asio::transfer_at_least(1), std::move(self));
 		}
 	);
-}
-
-
-// the read loop, this routine keeps calling itself until an error condition is met
-template<typename Stream>
-void basic_connection<Stream>::received_data(const boost::system::error_code& ec)
-{
-	if (ec)
-	{
-		handle_error(ec);
-		return;
-	}
-
-	// don't process data at all if we're no longer willing
-	if (m_auth_state == detail::auth_state_type::none)
-		return;
-
-	try
-	{
-		auto p = m_crypto_engine.get_next_packet(m_response, ec);
-
-		if (ec)
-			handle_error(ec);
-		else if (p)
-			process_packet(*p);
-
-		async_read();
-	}
-	catch (...)
-	{
-		disconnect();
-	}
-}
-
-template<typename Stream>
-void basic_connection<Stream>::process_packet(ipacket& in)
-{
-	// update time for keep alive
-	struct timeval tv;
-	gettimeofday(&tv, nullptr);
-	m_last_io = tv.tv_sec;
-
-	opacket out;
-	boost::system::error_code ec;
-
-	switch ((message_type)in)
-	{
-		case msg_disconnect:
-		{
-			uint32_t reasonCode;
-			in >> reasonCode;
-			handle_error(error::make_error_code(error::disconnect_errors(reasonCode)));
-			break;
-		}
-
-		case msg_ignore:
-		case msg_unimplemented:
-		case msg_debug:
-			break;
-
-		case msg_service_request:
-			disconnect();
-			break;
-
-		// channel
-		case msg_channel_open:
-			if (m_auth_state == detail::auth_state_type::authenticated)
-				process_channel_open(in, out);
-			break;
-		case msg_channel_open_confirmation:
-		case msg_channel_open_failure:
-		case msg_channel_window_adjust:
-		case msg_channel_data:
-		case msg_channel_extended_data:
-		case msg_channel_eof:
-		case msg_channel_close:
-		case msg_channel_request:
-		case msg_channel_success:
-		case msg_channel_failure:
-			if (m_auth_state == detail::auth_state_type::authenticated)
-				process_channel(in, out, ec);
-			break;
-
-		default:
-		{
-			opacket out(msg_unimplemented);
-			out << m_crypto_engine.get_next_out_seq_nr();
-			async_write(std::move(out));
-			break;
-		}
-	}
-
-	if (ec)
-		// handle_connect_result(ec);
-		handle_error(ec);
-
-	if (not out.empty())
-		async_write(std::move(out));
-}
-
-template<typename Stream>
-bool basic_connection<Stream>::receive_packet(ipacket& packet, boost::system::error_code& ec)
-{
-	bool result = false;
-	ec = {};
-
-	auto p = m_crypto_engine.get_next_packet(m_response, ec);
-
-	if (not ec and p)
-	{
-		result = true;
-		std::swap(packet, *p);
-
-		switch ((message_type)packet)
-		{
-			case msg_disconnect:
-				m_next_layer.close();
-				break;
-
-			case msg_service_request:
-				disconnect();
-				break;
-
-			case msg_ignore:
-			case msg_unimplemented:
-			case msg_debug:
-				packet.clear();
-				result = false;
-				break;
-			
-			default:
-				;
-		}
-	}
-
-	return result;
-}
-
-template<typename Stream>
-void basic_connection<Stream>::process_channel_open(ipacket &in, opacket &out)
-{
-	channel_ptr c;
-
-	std::string type;
-
-	in >> type;
-
-	try
-	{
-		// if (type == "x11")
-		// 	c.reset(new x11_channel(shared_from_this()));
-		// else if (type == "auth-agent@openssh.com" and m_forward_agent)
-		// 	c.reset(new ssh_agent_channel(this->shared_from_this()));
-	}
-	catch (...)
-	{
-	}
-
-	if (c)
-	{
-		in.message(msg_channel_open_confirmation);
-		c->process(in);
-		m_channels.push_back(c);
-	}
-	else
-	{
-		uint32_t host_channel_id;
-		in >> host_channel_id;
-
-		const uint32_t SSH_OPEN_UNKNOWN_CHANNEL_TYPE = 3;
-		out = msg_channel_open_failure;
-		out << host_channel_id << SSH_OPEN_UNKNOWN_CHANNEL_TYPE << "unsupported channel type"
-			<< "en";
-	}
-}
-
-template<typename Stream>
-void basic_connection<Stream>::process_channel(ipacket &in, opacket &out, boost::system::error_code &ec)
-{
-	try
-	{
-		uint32_t channel_id;
-		in >> channel_id;
-
-		for (channel_ptr c : m_channels)
-		{
-			if (c->my_channel_id() == channel_id)
-			{
-				c->process(in);
-				break;
-			}
-		}
-	}
-	catch (...)
-	{
-	}
 }
 
 }
