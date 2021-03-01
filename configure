@@ -638,10 +638,10 @@ LIBBZ2_LDFLAGS
 LIBBZ2_CPPFLAGS
 LIBZ_LDFLAGS
 LIBZ_CPPFLAGS
-CRYPTOPP_LDFLAGS
-CRYPTOPP_CPPFLAGS
 AX_PACKAGE_REQUIRES_PRIVATE
 AX_PACKAGE_REQUIRES
+CRYPTOPP_LDFLAGS
+CRYPTOPP_CPPFLAGS
 CRYPTOPP_LIBS
 CRYPTOPP_CFLAGS
 BOOST_IOSTREAMS_LIB
@@ -766,6 +766,7 @@ with_boost_asio
 with_boost_date_time
 with_boost_regex
 with_boost_iostreams
+with_cryptopp
 '
       ac_precious_vars='build_alias
 host_alias
@@ -785,10 +786,10 @@ LT_SYS_LIBRARY_PATH
 CPP
 CXXCPP
 DEBUG
-CRYPTOPP_CFLAGS
-CRYPTOPP_LIBS
 CRYPTOPP_CPPFLAGS
 CRYPTOPP_LDFLAGS
+CRYPTOPP_CFLAGS
+CRYPTOPP_LIBS
 LIBZ_CPPFLAGS
 LIBZ_LDFLAGS
 LIBBZ2_CPPFLAGS
@@ -1461,6 +1462,8 @@ Optional Packages:
                           possible to specify a certain library for the linker
                           e.g.
                           --with-boost-iostreams=boost_iostreams-gcc-mt-d-1_33_1
+  --with-cryptopp=[location]
+                          Use the libcryptopp library as specified.
 
 Some influential environment variables:
   CXX         C++ compiler command
@@ -1482,10 +1485,6 @@ Some influential environment variables:
   CPP         C preprocessor
   CXXCPP      C++ preprocessor
   DEBUG       Build a debug version of the application
-  CRYPTOPP_CFLAGS
-              C compiler flags for CRYPTOPP, overriding pkg-config
-  CRYPTOPP_LIBS
-              linker flags for CRYPTOPP, overriding pkg-config
   CRYPTOPP_CPPFLAGS
               C preprocessor flags for CRYPTOPP headers
   CRYPTOPP_LDFLAGS
@@ -17915,8 +17914,128 @@ fi
 	fi
 
 
-if test -x "$PKG_CONFIG"
-then
+
+# Check whether --with-cryptopp was given.
+if test "${with_cryptopp+set}" = set; then :
+  withval=$with_cryptopp;
+		if test -d ${withval}; then :
+
+else
+
+			as_fn_error $? "'${withval}'' is not a valid directory for --with-cryptopp" "$LINENO" 5
+
+fi
+
+		CRYPTOPP_CFLAGS="-I ${withval}"
+		CRYPTOPP_LIBS="-L${withval} -lcryptopp"
+
+		CRYPTOPP_CFLAGS=$CRYPTOPP_CFLAGS
+
+		CRYPTOPP_LIBS=$CRYPTOPP_LIBS
+
+
+fi
+
+
+
+if test "x$CRYPTOPP_LIBS" = "x" ; then :
+
+	ac_fn_cxx_check_header_mongrel "$LINENO" "cryptopp/cryptlib.h" "ac_cv_header_cryptopp_cryptlib_h" "$ac_includes_default"
+if test "x$ac_cv_header_cryptopp_cryptlib_h" = xyes; then :
+
+else
+  as_fn_error $? "Can't find the libcrypto++ header files. Make sure that libcrypto++ is installed." "$LINENO" 5
+fi
+
+
+
+
+
+
+
+  if ${ax_cv_have_CRYPTOPP+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  save_CPPFLAGS="$CPPFLAGS"
+     save_LDFLAGS="$LDFLAGS"
+     save_LIBS="$LIBS"
+
+     if test "x$CRYPTOPP_CPPFLAGS" != "x"; then :
+  CPPFLAGS="$CPPFLAGS $CRYPTOPP_CPPFLAGS"
+fi
+
+     if test "x$CRYPTOPP_LDFLAGS" != "x"; then :
+  LDFLAGS="$LDFLAGS $CRYPTOPP_LDFLAGS"
+fi
+
+     ac_fn_cxx_check_header_mongrel "$LINENO" "cryptopp/cryptlib.h" "ac_cv_header_cryptopp_cryptlib_h" "$ac_includes_default"
+if test "x$ac_cv_header_cryptopp_cryptlib_h" = xyes; then :
+
+       { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lcryptopp" >&5
+$as_echo_n "checking for main in -lcryptopp... " >&6; }
+if ${ac_cv_lib_cryptopp_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lcryptopp  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_link "$LINENO"; then :
+  ac_cv_lib_cryptopp_main=yes
+else
+  ac_cv_lib_cryptopp_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_cryptopp_main" >&5
+$as_echo "$ac_cv_lib_cryptopp_main" >&6; }
+if test "x$ac_cv_lib_cryptopp_main" = xyes; then :
+  ax_cv_have_CRYPTOPP=yes
+else
+  ax_cv_have_CRYPTOPP=no
+fi
+
+
+else
+  ax_cv_have_CRYPTOPP=no
+fi
+
+
+
+     CPPFLAGS="$save_CPPFLAGS"
+     LDFLAGS="$save_LDFLAGS"
+     LIBS="$save_LIBS"
+
+fi
+
+
+  if test "$ax_cv_have_CRYPTOPP" = "yes"; then :
+
+$as_echo "#define HAVE_CRYPTOPP 1" >>confdefs.h
+
+
+			CRYPTOPP_LIBS="-lcryptopp $LIBS"
+
+else
+  as_fn_error $? "libcrtypo++ not found" "$LINENO" 5
+fi
+
+
+fi
+
+if  test "x$CRYPTOPP_LIBS" = "x" && test -x "$PKG_CONFIG" ; then :
 
 
 
@@ -17924,6 +18043,10 @@ then
     AX_PACKAGE_REQUIRES="$AX_PACKAGE_REQUIRES libcrypto++"
     AX_PACKAGE_REQUIRES_PRIVATE="$AX_PACKAGE_REQUIRES_PRIVATE "
 
+      CRYPTOPP_CFLAGS
+              C compiler flags for CRYPTOPP, overriding pkg-config
+  CRYPTOPP_LIBS
+              linker flags for CRYPTOPP, overriding pkg-config
 
 pkg_failed=no
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for CRYPTOPP" >&5
@@ -17983,11 +18106,35 @@ fi
 	# Put the nasty error message in config.log where it belongs
 	echo "$CRYPTOPP_PKG_ERRORS" >&5
 
-	as_fn_error $? "the required package libcrypto++ is not installed" "$LINENO" 5
+	as_fn_error $? "Package requirements (libcrypto++ ) were not met:
+
+$CRYPTOPP_PKG_ERRORS
+
+Consider adjusting the PKG_CONFIG_PATH environment variable if you
+installed software in a non-standard prefix.
+
+Alternatively
+elif you may set the environment variables CRYPTOPP_CFLAGS
+and CRYPTOPP_LIBS to avoid the need to call pkg-config.
+See the pkg-config man page for more details." "$LINENO" 5
 elif test $pkg_failed = untried; then
      	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
-	as_fn_error $? "the required package libcrypto++ is not installed" "$LINENO" 5
+	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error $? "The pkg-config script could not be found or is too old.  Make sure it
+is in your PATH or set the PKG_CONFIG environment variable to the full
+path to pkg-config.
+
+Alternatively; then :
+  you may set the environment variables CRYPTOPP_CFLAGS
+and CRYPTOPP_LIBS to avoid the need to call pkg-config.
+See the pkg-config man page for more details.
+
+To get pkg-config
+else
+  see <http://pkg-config.freedesktop.org/>.
+See \`config.log' for more details" "$LINENO" 5; }
 else
 	CRYPTOPP_CFLAGS=$pkg_cv_CRYPTOPP_CFLAGS
 	CRYPTOPP_LIBS=$pkg_cv_CRYPTOPP_LIBS
@@ -18000,102 +18147,6 @@ fi
 
 
 
-else
-
-ac_fn_cxx_check_header_mongrel "$LINENO" "cryptopp/cryptlib.h" "ac_cv_header_cryptopp_cryptlib_h" "$ac_includes_default"
-if test "x$ac_cv_header_cryptopp_cryptlib_h" = xyes; then :
-
-			CRYPTOPP_CFLAGS="-I ${withval}/include"
-
-else
-  as_fn_error $? "
-Can't find the libcrypto++ header files. Make sure that libcrypto++ is installed." "$LINENO" 5
-fi
-
-
-
-
-
-
-
-  if ${ax_cv_have_CRYPTOPP+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  save_CPPFLAGS="$CPPFLAGS"
-     save_LDFLAGS="$LDFLAGS"
-     save_LIBS="$LIBS"
-
-     if test "x$CRYPTOPP_CPPFLAGS" != "x"; then :
-  CPPFLAGS="$CPPFLAGS $CRYPTOPP_CPPFLAGS"
-fi
-
-     if test "x$CRYPTOPP_LDFLAGS" != "x"; then :
-  LDFLAGS="$LDFLAGS $CRYPTOPP_LDFLAGS"
-fi
-
-     ac_fn_cxx_check_header_mongrel "$LINENO" "cryptopp/cryptlib.h" "ac_cv_header_cryptopp_cryptlib_h" "$ac_includes_default"
-if test "x$ac_cv_header_cryptopp_cryptlib_h" = xyes; then :
-
-       { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lcrypto++" >&5
-$as_echo_n "checking for main in -lcrypto++... " >&6; }
-if ${ac_cv_lib_cryptopp_main+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lcrypto++  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-
-int
-main ()
-{
-return main ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_cxx_try_link "$LINENO"; then :
-  ac_cv_lib_cryptopp_main=yes
-else
-  ac_cv_lib_cryptopp_main=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_cryptopp_main" >&5
-$as_echo "$ac_cv_lib_cryptopp_main" >&6; }
-if test "x$ac_cv_lib_cryptopp_main" = xyes; then :
-  ax_cv_have_CRYPTOPP=yes
-else
-  ax_cv_have_CRYPTOPP=no
-fi
-
-
-else
-  ax_cv_have_CRYPTOPP=no
-fi
-
-
-
-     CPPFLAGS="$save_CPPFLAGS"
-     LDFLAGS="$save_LDFLAGS"
-     LIBS="$save_LIBS"
-
-fi
-
-
-  if test "$ax_cv_have_CRYPTOPP" = "yes"; then :
-
-$as_echo "#define HAVE_CRYPTOPP 1" >>confdefs.h
-
-
-			LIBS="-L${withval}/lib -lcrypto++ $LIBS"
-
-else
-  as_fn_error $? "libcrtypo++ not found" "$LINENO" 5
-fi
 
 fi
 

@@ -39,12 +39,12 @@ void print(ostream& os, const vector<uint8_t>& b)
 		
 		for (size_t i = 0; i < rr; ++i)
 		{
-			uint8_t byte = b[offset + i];
+			uint8_t uint8_t = b[offset + i];
 			
-			s[kHexOffset[i] + 0] = kHex[byte >> 4];
-			s[kHexOffset[i] + 1] = kHex[byte & 0x0f];
-			if (byte < 128 and not iscntrl(byte) and isprint(byte))
-				s[kAsciiOffset + i] = byte;
+			s[kHexOffset[i] + 0] = kHex[uint8_t >> 4];
+			s[kHexOffset[i] + 1] = kHex[uint8_t & 0x0f];
+			if (uint8_t < 128 and not iscntrl(uint8_t) and isprint(uint8_t))
+				s[kAsciiOffset + i] = uint8_t;
 			else
 				s[kAsciiOffset + i] = '.';
 		}

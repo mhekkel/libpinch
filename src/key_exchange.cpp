@@ -15,10 +15,6 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/aes.h>
 #include <cryptopp/des.h>
-#define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
-#include <cryptopp/md5.h>
-#include <cryptopp/ripemd.h>
-#include <cryptopp/blowfish.h>
 #include <cryptopp/filters.h>
 #include <cryptopp/files.h>
 #include <cryptopp/factory.h>
@@ -39,9 +35,9 @@ namespace assh
 
 const std::string
 	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256"),
-	kServerHostKeyAlgorithms("ecdsa-sha2-nistp256,ssh-rsa,ssh-dss"),
-	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,blowfish-cbc,3des-cbc"),
-	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256,hmac-ripemd160"),
+	kServerHostKeyAlgorithms("ecdsa-sha2-nistp256" /* ",rsa-sha2-512,rsa-sha2-256" */",ssh-rsa"),
+	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc"),
+	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256"),
 	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
 
 static AutoSeededRandomPool	rng;
@@ -183,7 +179,7 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 
 	std::string pk_type;
 	ipacket pk_rs;
-	signature >> pk_type >> pk_rs;
+	signature >> pk_type;
 
 	if (m_kx.cb_verify_host_key and not m_kx.cb_verify_host_key(pk_type, hostkey))
 		ec = error::make_error_code(error::host_key_verification_failed);
@@ -191,24 +187,44 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 	{
 		std::string h_pk_type;
 		hostkey >> h_pk_type;
-	
+
+		std::vector<uint8_t> pk_rs_d;
+
 		if (h_pk_type == "ssh-dss")
 		{
 			Integer h_p, h_q, h_g, h_y;
 			hostkey >> h_p >> h_q >> h_g >> h_y;
 	
 			h_key.reset(new GDSA<SHA1>::Verifier(h_p, h_q, h_g, h_y));
+	
+			signature >> pk_rs_d;
 		}
 		else if (h_pk_type == "ssh-rsa")
 		{
 			Integer h_e, h_n;
 			hostkey >> h_e >> h_n;
-	
-			h_key.reset(new RSASSA_PKCS1v15_SHA_Verifier(h_n, h_e));
+
+			ipacket payload(m_host_payload.data(), m_host_payload.size());
+			std::string key_exchange_alg, server_host_key_alg;
+
+			payload.skip(16);
+			payload >> key_exchange_alg >> server_host_key_alg;
+
+			std::string alg = choose_protocol(server_host_key_alg, kServerHostKeyAlgorithms);
+
+			if (alg == "ssh-rsa")
+				 h_key.reset(new RSASS<PKCS1v15, SHA1>::Verifier(h_n, h_e));
+			else if (pk_type == "rsa-sha2-256" and pk_type == alg)
+				h_key.reset(new RSASS<PKCS1v15, SHA256>::Verifier(h_n, h_e));
+			else if (alg == "rsa-sha2-512" and pk_type == alg)
+				h_key.reset(new RSASS<PKCS1v15, SHA512>::Verifier(h_n, h_e));
+
+			signature >> pk_rs_d;
 		}
 		else if (h_pk_type == "ecdsa-sha2-nistp256")
 		{
-			std::string identifier, Q;
+			std::string identifier;
+			std::vector<uint8_t> Q;
 			hostkey >> identifier >> Q;
 
 			ECP::Point point;
@@ -216,17 +232,34 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 			ECDSA<ECP, SHA256>::PublicKey pubKey;
 			pubKey.AccessGroupParameters().Initialize(ASN1::secp256r1());
 
-			pubKey.GetGroupParameters().GetCurve().DecodePoint(point, (byte*)Q.data(), Q.length());
+			pubKey.GetGroupParameters().GetCurve().DecodePoint(point, Q.data(), Q.size());
 			pubKey.SetPublicElement(point);
 
 			h_key.reset(new ECDSA<ECP, SHA256>::Verifier(pubKey));
+
+			std::vector<uint8_t> r, s;
+
+			ipacket sig_rs;
+			signature >> sig_rs;
+
+			sig_rs >> r >> s;
+
+			// convert to IEEE's P1363 format
+
+			if (r.size() == 33)
+				r.erase(r.begin(), r.begin() + 1);
+			
+			if (s.size() == 33)
+				s.erase(s.begin(), s.begin() + 1);
+
+			std::swap(r, pk_rs_d);
+			pk_rs_d.insert(pk_rs_d.end(), s.begin(), s.end());
 		}
 	
-		std::vector<uint8_t> pk_rs_d = pk_rs;
-		if (pk_type != h_pk_type or not h_key->VerifyMessage(m_H.data(), m_H.size(), pk_rs_d.data(), pk_rs_d.size()))
-			ec = error::make_error_code(error::host_key_verification_failed);
-		else
+		if (pk_type == h_pk_type and h_key and h_key->VerifyMessage(m_H.data(), m_H.size(), pk_rs_d.data(), pk_rs_d.size()))
 			out = msg_newkeys;
+		else
+			ec = error::make_error_code(error::host_key_verification_failed);
 	}
 
 	derive_keys();
@@ -532,10 +565,13 @@ void key_exchange::process_kexinit(ipacket& in, opacket& out, boost::system::err
 				0x60, 0xC9, 0x80, 0xDD, 0x98, 0xED, 0xD3, 0xDF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 			};
 
-		     if (key_exchange_alg == "diffie-hellman-group14-sha256")		m_impl = new key_exchange_dh_group<SHA256>(*this, Integer(p14, sizeof(p14)));
-		else if (key_exchange_alg == "diffie-hellman-group16-sha512")		m_impl = new key_exchange_dh_group<SHA512>(*this, Integer(p16, sizeof(p16)));
-		else if (key_exchange_alg == "diffie-hellman-group18-sha512")		m_impl = new key_exchange_dh_group<SHA512>(*this, Integer(p18, sizeof(p18)));
-		else if (key_exchange_alg == "diffie-hellman-group-exchange-sha256")m_impl = new key_exchange_dh_gex<SHA256>(*this);
+		     if (key_exchange_alg == "diffie-hellman-group1-sha1")			 m_impl = new key_exchange_dh_group<SHA1>(*this, Integer(p2, sizeof(p2)));
+		else if (key_exchange_alg == "diffie-hellman-group14-sha1")			 m_impl = new key_exchange_dh_group<SHA1>(*this, Integer(p14, sizeof(p14)));
+		else if (key_exchange_alg == "diffie-hellman-group14-sha256")		 m_impl = new key_exchange_dh_group<SHA256>(*this, Integer(p14, sizeof(p14)));
+		else if (key_exchange_alg == "diffie-hellman-group16-sha512")		 m_impl = new key_exchange_dh_group<SHA512>(*this, Integer(p16, sizeof(p16)));
+		else if (key_exchange_alg == "diffie-hellman-group18-sha512")		 m_impl = new key_exchange_dh_group<SHA512>(*this, Integer(p18, sizeof(p18)));
+		else if (key_exchange_alg == "diffie-hellman-group-exchange-sha1")	 m_impl = new key_exchange_dh_gex<SHA1>(*this);
+		else if (key_exchange_alg == "diffie-hellman-group-exchange-sha256") m_impl = new key_exchange_dh_gex<SHA256>(*this);
 		else
 			assert(false);
 		

@@ -52,24 +52,36 @@ AX_BOOST_DATE_TIME
 AX_BOOST_REGEX
 AX_BOOST_IOSTREAMS
 
-if test -x "$PKG_CONFIG"
-then
-	AX_PKG_CHECK_MODULES([CRYPTOPP], [libcrypto++], [], [], [AC_MSG_ERROR([the required package libcrypto++ is not installed])])
-else
-	AC_CHECK_HEADER(
-		[cryptopp/cryptlib.h],
-		[
-			CRYPTOPP_CFLAGS="-I ${withval}/include"
-		],
-		[AC_MSG_ERROR([
-Can't find the libcrypto++ header files. Make sure that libcrypto++ is installed.])])
+dnl Check for libcryptopp
+AC_ARG_WITH([cryptopp],
+	AS_HELP_STRING([--with-cryptopp=@<:@location@:>@], [Use the libcryptopp library as specified.]),
+	[
+		AS_IF([test -d ${withval}], [], [
+			AC_MSG_ERROR(['${withval}'' is not a valid directory for --with-cryptopp])
+		])
 
-	AX_CHECK_LIBRARY([CRYPTOPP], [cryptopp/cryptlib.h], [crypto++],
+		CRYPTOPP_CFLAGS="-I ${withval}"
+		CRYPTOPP_LIBS="-L${withval} -lcryptopp"
+
+		AC_SUBST([CRYPTOPP_CFLAGS], [$CRYPTOPP_CFLAGS])
+		AC_SUBST([CRYPTOPP_LIBS], [$CRYPTOPP_LIBS])
+	])
+
+AS_IF([test "x$CRYPTOPP_LIBS" = "x" ], [
+	AC_CHECK_HEADER(
+		[cryptopp/cryptlib.h], [],
+		[AC_MSG_ERROR([Can't find the libcrypto++ header files. Make sure that libcrypto++ is installed.])])
+
+	AX_CHECK_LIBRARY([CRYPTOPP], [cryptopp/cryptlib.h], [cryptopp],
 		[
-			LIBS="-L${withval}/lib -lcrypto++ $LIBS"
+			CRYPTOPP_LIBS="-lcryptopp $LIBS"
 		],
 		[AC_MSG_ERROR([libcrtypo++ not found])])
-fi
+])
+
+AS_IF([ test "x$CRYPTOPP_LIBS" = "x" && test -x "$PKG_CONFIG" ],
+	AX_PKG_CHECK_MODULES([CRYPTOPP], [libcrypto++])
+)
 
 dnl These are still needed outside the Debian environment
 AX_CHECK_LIBRARY([LIBZ], [zlib.h], [z],

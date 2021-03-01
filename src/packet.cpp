@@ -419,7 +419,7 @@ void ipacket::append(const vector<uint8_t>& block)
 		if (m_length > kMaxPacketSize + 32)	// weird, allow some overhead?
 			throw packet_exception();
 		
-		m_length -= 1;	// the padding byte
+		m_length -= 1;	// the padding uint8_t
 
 		m_message = static_cast<message_type>(block[5]);
 		m_padding = block[4];

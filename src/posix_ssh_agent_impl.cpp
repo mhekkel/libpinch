@@ -213,7 +213,7 @@ vector<uint8_t> posix_ssh_private_key_impl::get_hash() const
 	vector<uint8_t> hash;
 
 //	// and create a hash for this key
-//	byte sha1[20];	// SHA1 hash is always 20 bytes
+//	uint8_t sha1[20];	// SHA1 hash is always 20 bytes
 //	DWORD cbHash = sizeof(sha1);
 //			
 //	if (::CertGetCertificateContextProperty(mCertificateContext,
@@ -234,12 +234,12 @@ vector<uint8_t> posix_ssh_private_key_impl::get_hash() const
 ////	string hash;
 ////
 ////	Base64Decoder d(new StringSink(hash));
-////	d.Put(reinterpret_cast<const byte*>(inHash.c_str()), inHash.length());
+////	d.Put(reinterpret_cast<const uint8_t*>(inHash.c_str()), inHash.length());
 ////	d.MessageEnd();
 ////	
 //////	CRYPT_HASH_BLOB k;
 //////	k.cbData = hash.length();
-//////	k.pbData = const_cast<byte*>(reinterpret_cast<const byte*>(hash.c_str()));
+//////	k.pbData = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(hash.c_str()));
 //////	
 //////	PCCERT_CONTEXT context = ::CertFindCertificateInStore(
 //////		MCertificateStore::Instance(), X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,

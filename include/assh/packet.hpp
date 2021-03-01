@@ -163,7 +163,7 @@ class opacket
 	opacket& operator<<(const std::string& v);
 	opacket& operator<<(const std::vector<std::string> &v);
 	opacket& operator<<(const char *v[]);
-	opacket& operator<<(const std::vector<byte> &v);
+	opacket& operator<<(const std::vector<uint8_t> &v);
 	opacket& operator<<(const CryptoPP::Integer& v);
 	opacket& operator<<(const opacket& v);
 	opacket& operator<<(const ipacket& v);
@@ -231,7 +231,7 @@ class ipacket
 	ipacket& operator>>(INT& v);
 	ipacket& operator>>(std::string& v);
 	ipacket& operator>>(std::vector<std::string> &v);
-	ipacket& operator>>(std::vector<byte> &v);
+	ipacket& operator>>(std::vector<uint8_t> &v);
 	ipacket& operator>>(CryptoPP::Integer& v);
 	ipacket& operator>>(ipacket& v);
 	ipacket& operator>>(std::pair<const char *, std::size_t> &v);

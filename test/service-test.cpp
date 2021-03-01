@@ -16,8 +16,6 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/aes.h>
 #include <cryptopp/des.h>
-#include <cryptopp/ripemd.h>
-#include <cryptopp/blowfish.h>
 #include <cryptopp/filters.h>
 #include <cryptopp/files.h>
 #include <cryptopp/factory.h>
@@ -1122,8 +1120,6 @@ void connection2<Stream>::newkeys(key_exchange& kex, boost::system::error_code &
 
 	if (protocol == "3des-cbc")
 		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption(key, 24, iv));
-	else if (protocol == "blowfish-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::Blowfish>::Encryption(key, 16, iv));
 	else if (protocol == "aes128-cbc")
 		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
 	else if (protocol == "aes192-cbc")
@@ -1145,8 +1141,6 @@ void connection2<Stream>::newkeys(key_exchange& kex, boost::system::error_code &
 
 	if (protocol == "3des-cbc")
 		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption(key, 24, iv));
-	else if (protocol == "blowfish-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::Blowfish>::Decryption(key, 16, iv));
 	else if (protocol == "aes128-cbc")
 		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
 	else if (protocol == "aes192-cbc")
@@ -1168,8 +1162,6 @@ void connection2<Stream>::newkeys(key_exchange& kex, boost::system::error_code &
 		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
 	else if (protocol == "hmac-sha2-256")
 		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (protocol == "hmac-ripemd160")
-		m_signer.reset(new CryptoPP::HMAC<CryptoPP::RIPEMD160>(iv, 20));
 	else if (protocol == "hmac-sha1")
 		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
 	else
@@ -1184,8 +1176,6 @@ void connection2<Stream>::newkeys(key_exchange& kex, boost::system::error_code &
 		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
 	else if (protocol == "hmac-sha2-256")
 		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (protocol == "hmac-ripemd160")
-		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::RIPEMD160>(iv, 20));
 	else if (protocol == "hmac-sha1")
 		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
 	else
