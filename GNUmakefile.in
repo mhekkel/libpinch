@@ -81,6 +81,7 @@ OBJECTS = \
 	$(OBJDIR)/channel.lo \
 	$(OBJDIR)/connection.lo \
 	$(OBJDIR)/connection_pool.lo \
+	$(OBJDIR)/crypto-engine.lo \
 	$(OBJDIR)/debug.lo \
 	$(OBJDIR)/error.lo \
 	$(OBJDIR)/key_exchange.lo \

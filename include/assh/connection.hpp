@@ -21,8 +21,6 @@
 namespace assh
 {
 
-std::string choose_protocol(const std::string &server, const std::string &client);
-
 // --------------------------------------------------------------------
 
 class socket_closed_exception : public exception

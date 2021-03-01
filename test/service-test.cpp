@@ -10,22 +10,12 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 
-#include <cryptopp/cryptlib.h>
-#include <cryptopp/gfpcrypt.h>
-#include <cryptopp/rsa.h>
-#include <cryptopp/osrng.h>
-#include <cryptopp/aes.h>
-#include <cryptopp/des.h>
-#include <cryptopp/filters.h>
-#include <cryptopp/files.h>
-#include <cryptopp/factory.h>
-#include <cryptopp/modes.h>
-
 #include "assh/connection.hpp"
 #include "assh/connection_pool.hpp"
 #include "assh/channel.hpp"
 #include "assh/terminal_channel.hpp"
 #include "assh/ssh_agent.hpp"
+#include "assh/crypto-engine.hpp"
 
 namespace ba = boost::algorithm;
 namespace io = boost::iostreams;
@@ -48,84 +38,6 @@ namespace detail
 
 
 
-struct packet_encryptor
-{
-	typedef char char_type;
-	struct category : io::multichar_output_filter_tag, io::flushable_tag
-	{
-	};
-
-	packet_encryptor(CryptoPP::StreamTransformation &cipher,
-						CryptoPP::MessageAuthenticationCode &signer, uint32_t blocksize, uint32_t seq_nr)
-		: m_cipher(cipher), m_signer(signer), m_blocksize(blocksize), m_flushed(false)
-	{
-		for (int i = 3; i >= 0; --i)
-		{
-			uint8_t ch = static_cast<uint8_t>(seq_nr >> (i * 8));
-			m_signer.Update(&ch, 1);
-		}
-
-		m_block.reserve(m_blocksize);
-	}
-
-	template <typename Sink>
-	std::streamsize write(Sink &sink, const char *s, std::streamsize n)
-	{
-		std::streamsize result = 0;
-
-		for (std::streamsize o = 0; o < n; o += m_blocksize)
-		{
-			size_t k = n;
-			if (k > m_blocksize - m_block.size())
-				k = m_blocksize - m_block.size();
-
-			const uint8_t *sp = reinterpret_cast<const uint8_t *>(s);
-
-			m_signer.Update(sp, static_cast<size_t>(k));
-			m_block.insert(m_block.end(), sp, sp + k);
-
-			result += k;
-			s += k;
-
-			if (m_block.size() == m_blocksize)
-			{
-				std::vector<uint8_t> block(m_blocksize);
-				m_cipher.ProcessData(block.data(), m_block.data(), m_blocksize);
-
-				for (uint32_t i = 0; i < m_blocksize; ++i)
-					io::put(sink, block[i]);
-
-				m_block.clear();
-			}
-		}
-
-		return result;
-	}
-
-	template <typename Sink>
-	bool flush(Sink &sink)
-	{
-		if (not m_flushed)
-		{
-			assert(m_block.size() == 0);
-
-			std::vector<uint8_t> digest(m_signer.DigestSize());
-			m_signer.Final(digest.data());
-			for (size_t i = 0; i < digest.size(); ++i)
-				io::put(sink, digest[i]);
-
-			m_flushed = true;
-		}
-
-		return true;
-	}
-
-	CryptoPP::StreamTransformation &m_cipher;
-	CryptoPP::MessageAuthenticationCode &m_signer;
-	std::vector<uint8_t> m_block;
-	uint32_t m_blocksize;
-	bool m_flushed;
-};
 
 enum class auth_state_type
 {
@@ -551,31 +463,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	template<typename Handler>
 	auto async_write(opacket&& p, Handler&& handler)
 	{
-		auto request = std::make_unique<boost::asio::streambuf>();
-
-		if (m_compressor)
-		{
-			boost::system::error_code ec;
-			p.compress(*m_compressor, ec);
-
-			if (ec)
-			{
-				handler(ec, 0);
-				return;
-			}
-		}
-
-		{
-			io::filtering_stream<io::output> out;
-			if (m_encryptor)
-				out.push(detail::packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
-			out.push(*request);
-
-			p.write(out, m_oblocksize);
-		}
-
-		++m_out_seq_nr;
-		return async_write(std::move(request), std::move(handler));
+		return async_write(m_crypto_engine.get_next_request(std::move(p)), std::move(handler));
 	}
 
 	template<typename Handler>
@@ -675,15 +563,7 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 		m_private_key_hash.clear();
 		m_session_id.clear();
 		m_packet.clear();
-		m_encryptor.reset(nullptr);
-		m_decryptor.reset(nullptr);
-		m_signer.reset(nullptr);
-		m_verifier.reset(nullptr);
-		m_compressor.reset(nullptr);
-		m_decompressor.reset(nullptr);
-		m_delay_decompressor = m_delay_compressor = false;
-		m_in_seq_nr = m_out_seq_nr = 0;
-		m_iblocksize = m_oblocksize = 8;
+		m_crypto_engine.reset();
 		m_last_io = 0;
 	}
 
@@ -694,12 +574,13 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	std::string m_host_version;
 	std::vector<uint8_t> m_session_id;
 
+	crypto_engine m_crypto_engine;
+
 	// connect_handler_list m_connect_handlers;
 
 	int64_t m_last_io;
 	// uint32_t m_password_attempts;
 	std::vector<uint8_t> m_private_key_hash;
-	uint32_t m_in_seq_nr, m_out_seq_nr;
 	ipacket m_packet;
 	uint32_t m_iblocksize, m_oblocksize;
 	boost::asio::streambuf m_response;
@@ -708,22 +589,9 @@ class connection2 : public std::enable_shared_from_this<connection2<Stream>>
 	password_callback_type m_request_password_cb;
 	keyboard_interactive_callback_type m_keyboard_interactive_cb;
 
-	std::unique_ptr<CryptoPP::StreamTransformation> m_decryptor;
-	std::unique_ptr<CryptoPP::StreamTransformation> m_encryptor;
-	std::unique_ptr<CryptoPP::MessageAuthenticationCode> m_signer;
-	std::unique_ptr<CryptoPP::MessageAuthenticationCode> m_verifier;
-
-	std::unique_ptr<compression_helper> m_compressor;
-	std::unique_ptr<compression_helper> m_decompressor;
-	bool m_delay_compressor, m_delay_decompressor;
-
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;
 	port_forward_listener *m_port_forwarder;
-
-	std::string m_alg_kex,
-		m_alg_enc_c2s = kEncryptionAlgorithms, m_alg_ver_c2s = kMacAlgorithms, m_alg_cmp_c2s = kCompressionAlgorithms,
-		m_alg_enc_s2c = kEncryptionAlgorithms, m_alg_ver_s2c = kMacAlgorithms, m_alg_cmp_s2c = kCompressionAlgorithms;
 };
 
 template<typename Stream>
@@ -747,71 +615,7 @@ auto connection2<Stream>::async_read_packet(Handler&& handler)
 				return;
 			}
 
-			while (m_response.size() >= m_iblocksize)
-			{
-				if (not packet->complete())
-				{
-					std::vector<uint8_t> block(m_iblocksize);
-					m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
-
-					if (m_decryptor)
-					{
-						std::vector<uint8_t> data(m_iblocksize);
-						m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
-						std::swap(data, block);
-					}
-
-					if (m_verifier)
-					{
-						if (packet->empty())
-						{
-							for (int32_t i = 3; i >= 0; --i)
-							{
-								uint8_t b = m_in_seq_nr >> (i * 8);
-								m_verifier->Update(&b, 1);
-							}
-						}
-
-						m_verifier->Update(block.data(), block.size());
-					}
-
-					packet->append(block);
-				}
-
-				if (packet->complete())
-				{
-					if (m_verifier)
-					{
-						if (m_response.size() < m_verifier->DigestSize())
-							break;
-
-						std::vector<uint8_t> digest(m_verifier->DigestSize());
-						m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
-
-						if (not m_verifier->Verify(digest.data()))
-						{
-							handle_error(error::make_error_code(error::mac_error));
-							return;
-						}
-					}
-
-					if (m_decompressor)
-					{
-						boost::system::error_code ec;
-						packet->decompress(*m_decompressor, ec);
-						if (ec)
-						{
-							handle_error(ec);
-							break;
-						}
-					}
-
-					++m_in_seq_nr;
-
-					self.complete({}, *packet);
-					return;
-				}
-			}
+			
 
 			uint32_t at_least = m_iblocksize;
 			if (m_response.size() >= m_iblocksize)
@@ -846,81 +650,12 @@ void connection2<Stream>::received_data(const boost::system::error_code& ec)
 
 	try
 	{
-		while (m_response.size() >= m_iblocksize)
-		{
-			if (not m_packet.complete())
-			{
-				std::vector<uint8_t> block(m_iblocksize);
-				m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
+		auto p = m_crypto_engine.get_next_packet(m_response, ec);
 
-				if (m_decryptor)
-				{
-					std::vector<uint8_t> data(m_iblocksize);
-					m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
-					std::swap(data, block);
-				}
-
-				if (m_verifier)
-				{
-					if (m_packet.empty())
-					{
-						for (int32_t i = 3; i >= 0; --i)
-						{
-							uint8_t b = m_in_seq_nr >> (i * 8);
-							m_verifier->Update(&b, 1);
-						}
-					}
-
-					m_verifier->Update(block.data(), block.size());
-				}
-
-				m_packet.append(block);
-			}
-
-			if (m_packet.complete())
-			{
-				if (m_verifier)
-				{
-					if (m_response.size() < m_verifier->DigestSize())
-						break;
-
-					std::vector<uint8_t> digest(m_verifier->DigestSize());
-					m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
-
-					if (not m_verifier->Verify(digest.data()))
-					{
-						handle_error(error::make_error_code(error::mac_error));
-						return;
-					}
-				}
-
-				if (m_decompressor)
-				{
-					boost::system::error_code ec;
-					m_packet.decompress(*m_decompressor, ec);
-					if (ec)
-					{
-						handle_error(ec);
-						break;
-					}
-				}
-
-				process_packet(m_packet);
-
-				m_packet.clear();
-				++m_in_seq_nr;
-			}
-		}
-
-		uint32_t at_least = m_iblocksize;
-		if (m_response.size() >= m_iblocksize)
-		{
-			// if we arrive here, we might have read a block, but not the digest?
-			// call readsome with 0 as at-least, that will return something we hope.
-			at_least = 1;
-		}
-		else
-			at_least -= m_response.size();
+		if (ec)
+			handle_error(ec);
+		else if (p)
+			process_packet(*p);
 
 		async_read();
 	}
@@ -989,7 +724,7 @@ void connection2<Stream>::process_packet(ipacket& in)
 		default:
 		{
 			opacket out(msg_unimplemented);
-			out << (uint32_t)m_in_seq_nr;
+			out << m_crypto_engine.get_next_out_seq_nr();
 			async_write(std::move(out));
 			break;
 		}
@@ -1009,73 +744,13 @@ bool connection2<Stream>::receive_packet(ipacket& packet, boost::system::error_c
 	bool result = false;
 	ec = {};
 
-	while (m_response.size() >= m_iblocksize)
+	auto p = m_crypto_engine.get_next_packet(m_response, ec);
+
+	if (not ec and p)
 	{
-		if (not packet.complete())
-		{
-			std::vector<uint8_t> block(m_iblocksize);
-			m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
+		result = true;
+		std::swap(packet, *p);
 
-			if (m_decryptor)
-			{
-				std::vector<uint8_t> data(m_iblocksize);
-				m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
-				std::swap(data, block);
-			}
-
-			if (m_verifier)
-			{
-				if (packet.empty())
-				{
-					for (int32_t i = 3; i >= 0; --i)
-					{
-						uint8_t b = m_in_seq_nr >> (i * 8);
-						m_verifier->Update(&b, 1);
-					}
-				}
-
-				m_verifier->Update(block.data(), block.size());
-			}
-
-			packet.append(block);
-		}
-
-		if (packet.complete())
-		{
-			if (m_verifier)
-			{
-				if (m_response.size() < m_verifier->DigestSize())
-					break;
-
-				std::vector<uint8_t> digest(m_verifier->DigestSize());
-				m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
-
-				if (not m_verifier->Verify(digest.data()))
-				{
-					ec = error::make_error_code(error::mac_error);
-					return false;
-				}
-			}
-
-			if (m_decompressor)
-			{
-				boost::system::error_code ec;
-				packet.decompress(*m_decompressor, ec);
-				if (ec)
-				{
-					handle_error(ec);
-					break;
-				}
-			}
-
-			++m_in_seq_nr;
-			result = true;
-			break;
-		}
-	}
-
-	if (result)
-	{
 		switch ((message_type)packet)
 		{
 			case msg_disconnect:
@@ -1104,102 +779,7 @@ bool connection2<Stream>::receive_packet(ipacket& packet, boost::system::error_c
 template<typename Stream>
 void connection2<Stream>::newkeys(key_exchange& kex, boost::system::error_code &ec)
 {
-	ipacket payload = kex.host_payload();
-
-	std::string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
-
-	payload.skip(16);
-	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
-
-	// Client to server encryption
-	std::string protocol = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s);
-
-	const uint8_t *key = kex.key(key_exchange::C);
-	const uint8_t *iv = kex.key(key_exchange::A);
-
-	if (protocol == "3des-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption(key, 24, iv));
-	else if (protocol == "aes128-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
-	else if (protocol == "aes192-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
-	else if (protocol == "aes256-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
-	else if (protocol == "aes128-ctr")
-		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
-	else if (protocol == "aes192-ctr")
-		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
-	else if (protocol == "aes256-ctr")
-		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
-
-	// Server to client encryption
-	protocol = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c);
-
-	key = kex.key(key_exchange::D);
-	iv = kex.key(key_exchange::B);
-
-	if (protocol == "3des-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption(key, 24, iv));
-	else if (protocol == "aes128-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
-	else if (protocol == "aes192-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
-	else if (protocol == "aes256-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
-	else if (protocol == "aes128-ctr")
-		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
-	else if (protocol == "aes192-ctr")
-		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
-	else if (protocol == "aes256-ctr")
-		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
-
-	// Client To Server verification
-	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
-	iv = kex.key(key_exchange::E);
-
-	if (protocol == "hmac-sha2-512")
-		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
-	else if (protocol == "hmac-sha2-256")
-		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (protocol == "hmac-sha1")
-		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
-	else
-		assert(false);
-
-	// Server to Client verification
-
-	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
-	iv = kex.key(key_exchange::F);
-
-	if (protocol == "hmac-sha2-512")
-		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
-	else if (protocol == "hmac-sha2-256")
-		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (protocol == "hmac-sha1")
-		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
-	else
-		assert(false);
-
-	// Client to Server compression
-	protocol = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
-	if ((not m_compressor and protocol == "zlib") or (m_auth_state == detail::auth_state_type::authenticated and protocol == "zlib@openssh.com"))
-		m_compressor.reset(new compression_helper(true));
-	else if (protocol == "zlib@openssh.com")
-		m_delay_compressor = true;
-
-	// Server to Client compression
-	protocol = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
-	if ((not m_decompressor and protocol == "zlib") or (m_auth_state == detail::auth_state_type::authenticated and protocol == "zlib@openssh.com"))
-		m_decompressor.reset(new compression_helper(false));
-	else if (protocol == "zlib@openssh.com")
-		m_delay_decompressor = true;
-
-	if (m_decryptor)
-	{
-		m_iblocksize = m_decryptor->OptimalBlockSize();
-		m_oblocksize = m_encryptor->OptimalBlockSize();
-	}
+	m_crypto_engine.newkeys(kex, m_auth_state == detail::auth_state_type::authenticated);
 }
 
 template<typename Stream>
@@ -1207,11 +787,7 @@ void connection2<Stream>::userauth_success(const std::string& host_version, cons
 {
 	m_auth_state = detail::auth_state_type::authenticated;
 
-	if (m_delay_compressor)
-		m_compressor.reset(new compression_helper(true));
-
-	if (m_delay_decompressor)
-		m_decompressor.reset(new compression_helper(false));
+	m_crypto_engine.enable_compression();
 
 	m_host_version = host_version;
 	m_session_id = session_id;

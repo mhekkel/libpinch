@@ -31,6 +31,7 @@
 #include <assh/key_exchange.hpp>
 #include <assh/error.hpp>
 // #include <assh/port_forwarding.hpp>
+#include <assh/crypto-engine.hpp>
 
 using namespace std;
 using namespace CryptoPP;
@@ -51,30 +52,6 @@ AutoSeededRandomPool rng;
 
 const string
 	kSSHVersionString("SSH-2.0-libassh");
-
-string choose_protocol(const string &server, const string &client)
-{
-	string result;
-	bool found = false;
-
-	typedef ba::split_iterator<string::const_iterator> split_iter_type;
-	split_iter_type c = ba::make_split_iterator(client, ba::first_finder(",", ba::is_equal()));
-	split_iter_type s = ba::make_split_iterator(server, ba::first_finder(",", ba::is_equal()));
-
-	for (split_iter_type ci = c; not found and ci != split_iter_type(); ++ci)
-	{
-		for (split_iter_type si = s; not found and si != split_iter_type(); ++si)
-		{
-			if (*ci == *si)
-			{
-				result = boost::copy_range<string>(*ci);
-				found = true;
-			}
-		}
-	}
-
-	return result;
-}
 
 // --------------------------------------------------------------------
 

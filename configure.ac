@@ -79,9 +79,9 @@ AS_IF([test "x$CRYPTOPP_LIBS" = "x" ], [
 		[AC_MSG_ERROR([libcrtypo++ not found])])
 ])
 
-AS_IF([ test "x$CRYPTOPP_LIBS" = "x" && test -x "$PKG_CONFIG" ],
-	AX_PKG_CHECK_MODULES([CRYPTOPP], [libcrypto++])
-)
+dnl AS_IF([ test "x$CRYPTOPP_LIBS" = "x" && test -x "$PKG_CONFIG" ],
+dnl 	AX_PKG_CHECK_MODULES([CRYPTOPP], [libcrypto++])
+dnl )
 
 dnl These are still needed outside the Debian environment
 AX_CHECK_LIBRARY([LIBZ], [zlib.h], [z],
