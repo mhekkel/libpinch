@@ -232,21 +232,21 @@ void ssh_agent::update()
 	
 	for (vector<uint8_t>& hash: deleted)
 	{
-		for (std::shared_ptr<basic_connection> connection: connections)
+		for (std::shared_ptr<connection_base> connection: connections)
 		{
-			if (connection->get_used_private_key() == hash)
+			if (connection->uses_private_key(hash))
 				connection->disconnect();
 		}
 	}
 }
 
-void ssh_agent::register_connection(std::shared_ptr<basic_connection> connection)
+void ssh_agent::register_connection(std::shared_ptr<connection_base> connection)
 {
 	if (find(m_registered_connections.begin(), m_registered_connections.end(), connection) == m_registered_connections.end())
 		m_registered_connections.push_back(connection);
 }
 
-void ssh_agent::unregister_connection(std::shared_ptr<basic_connection> connection)
+void ssh_agent::unregister_connection(std::shared_ptr<connection_base> connection)
 {
 	m_registered_connections.erase(
 		remove(m_registered_connections.begin(), m_registered_connections.end(), connection),
@@ -489,51 +489,51 @@ ssh_private_key ssh_agent::get_key(ipacket& blob) const
 	throw runtime_error("private key not found");
 }
 
-// --------------------------------------------------------------------
+// // --------------------------------------------------------------------
 
-ssh_agent_channel::ssh_agent_channel(std::shared_ptr<basic_connection> connection)
-	: channel(connection)
-{
-}
+// ssh_agent_channel::ssh_agent_channel(std::shared_ptr<connection_base> connection)
+// 	: channel(connection)
+// {
+// }
 
-ssh_agent_channel::~ssh_agent_channel()
-{
-}
+// ssh_agent_channel::~ssh_agent_channel()
+// {
+// }
 
-void ssh_agent_channel::opened()
-{
-	channel::opened();
+// void ssh_agent_channel::opened()
+// {
+// 	channel::opened();
 	
-	opacket out(msg_channel_open_confirmation);
-	out << m_host_channel_id << m_my_channel_id << m_my_window_size << kMaxPacketSize;
-	m_connection->async_write(move(out));
-}
+// 	opacket out(msg_channel_open_confirmation);
+// 	out << m_host_channel_id << m_my_channel_id << m_my_window_size << kMaxPacketSize;
+// 	m_connection->async_write(move(out));
+// }
 
-void ssh_agent_channel::receive_data(const char* data, size_t size)
-{
-	while (size > 0)
-	{
-		if (m_packet.empty() and size < 4)
-		{
-			close();	// we have an empty packet and less than 4 bytes... 
-			break;		// simply fail this agent. I guess this should never happen
-		}
+// void ssh_agent_channel::receive_data(const char* data, size_t size)
+// {
+// 	while (size > 0)
+// 	{
+// 		if (m_packet.empty() and size < 4)
+// 		{
+// 			close();	// we have an empty packet and less than 4 bytes... 
+// 			break;		// simply fail this agent. I guess this should never happen
+// 		}
 		
-		size_t r = m_packet.read(data, size);
+// 		size_t r = m_packet.read(data, size);
 		
-		if (m_packet.complete())
-		{
-			opacket out;
-			ssh_agent::instance().process_agent_request(m_packet, out);
-			out = (opacket() << out);
-			send_data(out);
+// 		if (m_packet.complete())
+// 		{
+// 			opacket out;
+// 			ssh_agent::instance().process_agent_request(m_packet, out);
+// 			out = (opacket() << out);
+// 			send_data(out);
 			
-			m_packet.clear();
-		}
+// 			m_packet.clear();
+// 		}
 		
-		data += r;
-		size -= r;
-	}
-}
+// 		data += r;
+// 		size -= r;
+// 	}
+// }
 
 }

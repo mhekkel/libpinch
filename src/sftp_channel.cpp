@@ -190,7 +190,7 @@ void sftp_channel::sftp_reply_handler::handle_handle(const std::string& handle, 
 // --------------------------------------------------------------------
 // 
 
-sftp_channel::sftp_channel(std::shared_ptr<basic_connection> connection)
+sftp_channel::sftp_channel(std::shared_ptr<connection_base> connection)
 	: channel(connection)
 	, m_request_id(0)
 	, m_version(0)

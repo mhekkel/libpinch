@@ -15,12 +15,12 @@
 // namespace assh
 // {
 
-// class basic_connection;
+// class connection_base;
 
 // class port_forward_listener
 // {
 //   public:
-// 	port_forward_listener(std::shared_ptr<basic_connection> connection);
+// 	port_forward_listener(std::shared_ptr<connection_base> connection);
 // 	~port_forward_listener();
 
 // 	void forward_port(
@@ -40,7 +40,7 @@
 
 // 	//typedef std::list<bound_port*> bound_port_list;
 
-// 	std::shared_ptr<basic_connection> m_connection;
+// 	std::shared_ptr<connection_base> m_connection;
 // 	//bound_port_list m_bound_ports;
 // };
 
@@ -49,7 +49,7 @@
 // class forwarding_channel : public channel
 // {
 //   public:
-// 	forwarding_channel(std::shared_ptr<basic_connection> inConnection, const std::string& remote_addr, int16_t remote_port);
+// 	forwarding_channel(std::shared_ptr<connection_base> inConnection, const std::string& remote_addr, int16_t remote_port);
 
 // 	virtual std::string channel_type() const		{ return "direct-tcpip"; }
 // 	virtual void fill_open_opacket(opacket& out);

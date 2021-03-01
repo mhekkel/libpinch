@@ -24,7 +24,7 @@ namespace assh
 class proxy_channel : public channel
 {
   public:
-					proxy_channel(std::shared_ptr<basic_connection> connection, const string& nc_cmd, const string& user, const string& host, int16_t port)
+					proxy_channel(std::shared_ptr<connection_base> connection, const string& nc_cmd, const string& user, const string& host, int16_t port)
 						: channel(connection), m_cmd(nc_cmd)
 					{
 						ba::replace_regex(m_cmd, std::regex("(?<!%)%r"), user);
@@ -43,8 +43,8 @@ class proxy_channel : public channel
 
 // --------------------------------------------------------------------
 
-proxied_connection::proxied_connection(basic_connection* proxy, const string& nc_cmd, const string& user, const string& host, int16_t port)
-	: basic_connection(proxy->get_io_service(), user)
+proxied_connection::proxied_connection(connection_base* proxy, const string& nc_cmd, const string& user, const string& host, int16_t port)
+	: connection_base(proxy->get_io_service(), user)
 	, m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
 {
 	m_proxy->reference();
@@ -61,7 +61,7 @@ proxied_connection::~proxied_connection()
 void proxied_connection::set_validate_callback(const validate_callback_type& cb)
 {
 	m_proxy->set_validate_callback(cb);
-	basic_connection::set_validate_callback(cb);
+	connection_base::set_validate_callback(cb);
 }
 
 void proxied_connection::start_handshake()
@@ -87,7 +87,7 @@ void proxied_connection::start_handshake()
 		});
 	}
 	else	// proxy connection and channel are now open
-		basic_connection::start_handshake();
+		connection_base::start_handshake();
 }
 
 bool proxied_connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8_t>& host_key)

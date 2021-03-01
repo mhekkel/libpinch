@@ -13,10 +13,10 @@
 
 // 	class proxy_channel;
 
-// 	class proxied_connection : public basic_connection
+// 	class proxied_connection : public connection_base
 // 	{
 // 	public:
-// 		proxied_connection(std::shared_ptr<basic_connection> proxy,
+// 		proxied_connection(std::shared_ptr<connection_base> proxy,
 // 						   const std::string &nc_cmd,
 // 						   const std::string &user,
 // 						   const std::string &host, int16_t port = 22);
@@ -31,7 +31,7 @@
 
 // 		virtual void set_validate_callback(const validate_callback_type &cb);
 
-// 		virtual std::shared_ptr<basic_connection> get_proxy() const
+// 		virtual std::shared_ptr<connection_base> get_proxy() const
 // 		{
 // 			return m_proxy;
 // 		}
@@ -46,7 +46,7 @@
 // 		virtual void async_read(uint32_t at_least);
 
 // 	private:
-// 		std::shared_ptr<basic_connection> m_proxy;
+// 		std::shared_ptr<connection_base> m_proxy;
 // 		std::shared_ptr<proxy_channel> m_channel;
 // 		std::string m_host;
 // 	};

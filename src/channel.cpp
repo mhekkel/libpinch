@@ -14,467 +14,462 @@ using namespace CryptoPP;
 namespace assh
 {
 
-uint32_t channel::s_next_channel_id = 1;
+// uint32_t channel::s_next_channel_id = 1;
 
-channel::channel(std::shared_ptr<basic_connection> inConnection)
-	: m_connection(inConnection)
-	, m_open_handler(nullptr)
-	, m_max_send_packet_size(0)
-	, m_channel_open(false)
-	, m_send_pending(false)
-	, m_my_channel_id(s_next_channel_id++)
-	, m_host_channel_id(0)
-	, m_my_window_size(kWindowSize)
-	, m_host_window_size(0)
-	, m_eof(false)
-{
-}
+// channel::channel(std::shared_ptr<connection_base> inConnection)
+// 	: m_connection(inConnection)
+// 	, m_open_handler(nullptr)
+// 	, m_max_send_packet_size(0)
+// 	, m_channel_open(false)
+// 	, m_send_pending(false)
+// 	, m_my_channel_id(s_next_channel_id++)
+// 	, m_host_channel_id(0)
+// 	, m_my_window_size(kWindowSize)
+// 	, m_host_window_size(0)
+// 	, m_eof(false)
+// {
+// }
 
-channel::~channel()
-{
-	assert(not is_open());
+// channel::~channel()
+// {
+// 	assert(not is_open());
 	
-	if (is_open())
-	{
-		try
-		{
-			close();
-		}
-		catch (...) {}
-	}
+// 	if (is_open())
+// 	{
+// 		try
+// 		{
+// 			close();
+// 		}
+// 		catch (...) {}
+// 	}
 	
-	if (m_open_handler)
-		m_open_handler->cancel();
+// 	if (m_open_handler)
+// 		m_open_handler->cancel();
 
-	// if (m_connection != nullptr)
-	// 	m_connection->release();
+// 	// if (m_connection != nullptr)
+// 	// 	m_connection->release();
 
-	m_open_handler = nullptr;
-	// delete m_open_handler;
-}
+// 	m_open_handler = nullptr;
+// 	// delete m_open_handler;
+// }
 
-boost::asio::io_service& channel::get_io_service()
-{
-	return m_connection->get_io_service();
-}
+// void channel::fill_open_opacket(opacket& out)
+// {
+// 	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
+// }
 
-void channel::fill_open_opacket(opacket& out)
-{
-	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
-}
+// void channel::setup(ipacket& in)
+// {
+// 	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
+// }
 
-void channel::setup(ipacket& in)
-{
-	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
-}
+// void channel::open()
+// {
+// 	if (not m_connection->is_connected())
+// 	{
+// 		m_connection->async_connect([this](const boost::system::error_code& ec)
+// 		{
+// 			if (ec)
+// 			{
+// 				if (m_open_handler)
+// 					m_open_handler->handle_open_result(ec);
+// 				else
+// 					this->error(ec.message(), "en");
+// 			}
+// 			else
+// 				this->open();
+// 		}, shared_from_this());
+// 	}
+// 	else
+// 	{
+// 		m_my_window_size = kWindowSize;
+// 		m_my_channel_id = s_next_channel_id++;
+// 		m_connection->open_channel(shared_from_this(), m_my_channel_id);
+// 	}
+// }
 
-void channel::open()
-{
-	if (not m_connection->is_connected())
-	{
-		m_connection->async_connect([this](const boost::system::error_code& ec)
-		{
-			if (ec)
-			{
-				if (m_open_handler)
-					m_open_handler->handle_open_result(ec);
-				else
-					this->error(ec.message(), "en");
-			}
-			else
-				this->open();
-		}, shared_from_this());
-	}
-	else
-	{
-		m_my_window_size = kWindowSize;
-		m_my_channel_id = s_next_channel_id++;
-		m_connection->open_channel(shared_from_this(), m_my_channel_id);
-	}
-}
+// void channel::opened()
+// {
+// 	if (m_open_handler)
+// 	{
+// 		m_open_handler->handle_open_result(boost::system::error_code());
+// 		delete m_open_handler;
+// 		m_open_handler = nullptr;
+// 	}
+// }
 
-void channel::opened()
-{
-	if (m_open_handler)
-	{
-		m_open_handler->handle_open_result(boost::system::error_code());
-		delete m_open_handler;
-		m_open_handler = nullptr;
-	}
-}
+// void channel::close()
+// {
+// 	if (m_open_handler)
+// 	{
+// 		auto handler = m_open_handler;
+// 		m_open_handler = nullptr;
+// 		handler->handle_open_result(make_error_code(error::by_application));
+// 		delete handler;
+// 	}
 
-void channel::close()
-{
-	if (m_open_handler)
-	{
-		auto handler = m_open_handler;
-		m_open_handler = nullptr;
-		handler->handle_open_result(make_error_code(error::by_application));
-		delete handler;
-	}
+// 	m_connection->close_channel(shared_from_this(), m_host_channel_id);
+// }
 
-	m_connection->close_channel(shared_from_this(), m_host_channel_id);
-}
-
-void channel::closed()
-{
-	m_channel_open = false;
-	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
-	{
-		op->error(error::make_error_code(error::channel_closed));
-		delete op;
-	});
-	m_pending.clear();
+// void channel::closed()
+// {
+// 	m_channel_open = false;
+// 	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
+// 	{
+// 		op->error(error::make_error_code(error::channel_closed));
+// 		delete op;
+// 	});
+// 	m_pending.clear();
 	
-	for_each(m_read_ops.begin(), m_read_ops.end(), [](basic_read_op* op)
-	{
-		op->error(error::make_error_code(error::channel_closed));
-		delete op;
-	});
-	m_read_ops.clear();
-}
+// 	for_each(m_read_ops.begin(), m_read_ops.end(), [](basic_read_op* op)
+// 	{
+// 		op->error(error::make_error_code(error::channel_closed));
+// 		delete op;
+// 	});
+// 	m_read_ops.clear();
+// }
 
-void channel::disconnect(bool disconnectProxy)
-{
-	m_connection->disconnect();
+// void channel::disconnect(bool disconnectProxy)
+// {
+// 	m_connection->disconnect();
 
-	auto proxy = m_connection->get_proxy();
+// 	auto proxy = m_connection->get_proxy();
 
-	if (proxy != nullptr and disconnectProxy)
-		proxy->disconnect();
-}
+// 	if (proxy != nullptr and disconnectProxy)
+// 		proxy->disconnect();
+// }
 
-void channel::succeeded()
-{
-}
+// void channel::succeeded()
+// {
+// }
 
-void channel::end_of_file()
-{
-	m_eof = true;
-	push_received();
-}
+// void channel::end_of_file()
+// {
+// 	m_eof = true;
+// 	push_received();
+// }
 
-void channel::keep_alive()
-{
-	if (is_open())
-		m_connection->keep_alive();
-}
+// void channel::keep_alive()
+// {
+// 	if (is_open())
+// 		m_connection->keep_alive();
+// }
 
-string channel::get_connection_parameters(direction dir) const
-{
-	return is_open() ? m_connection->get_connection_parameters(dir) : "";
-}
+// string channel::get_connection_parameters(direction dir) const
+// {
+// 	return is_open() ? m_connection->get_connection_parameters(dir) : "";
+// }
 
-string channel::get_key_exchange_algoritm() const
-{
-	return is_open() ? m_connection->get_key_exchange_algoritm() : "";
-}
+// string channel::get_key_exchange_algoritm() const
+// {
+// 	return is_open() ? m_connection->get_key_exchange_algoritm() : "";
+// }
 
-void channel::init(ipacket& in, opacket& out)
-{
-	in >> m_host_window_size >> m_max_send_packet_size;
-}
+// void channel::init(ipacket& in, opacket& out)
+// {
+// 	in >> m_host_window_size >> m_max_send_packet_size;
+// }
 
-void channel::open_pty(uint32_t width, uint32_t height,
-	const string& terminal_type, bool forward_agent, bool forward_x11,
-	const environment& env)
-{
-	if (forward_x11)
-	{
-		opacket out(msg_channel_request);
-		out	<< m_host_channel_id
-			<< "x11-req"
-			<< false << false
-			<< "MIT-MAGIC-COOKIE-1"
-			<< "0000000000000000"
-			<< uint32_t(0);
-		m_connection->async_write(move(out));
-	}
+// void channel::open_pty(uint32_t width, uint32_t height,
+// 	const string& terminal_type, bool forward_agent, bool forward_x11,
+// 	const environment& env)
+// {
+// 	if (forward_x11)
+// 	{
+// 		opacket out(msg_channel_request);
+// 		out	<< m_host_channel_id
+// 			<< "x11-req"
+// 			<< false << false
+// 			<< "MIT-MAGIC-COOKIE-1"
+// 			<< "0000000000000000"
+// 			<< uint32_t(0);
+// 		m_connection->async_write(move(out));
+// 	}
 
-	if (forward_agent)
-	{
-		m_connection->forward_agent(true);
+// 	if (forward_agent)
+// 	{
+// 		m_connection->forward_agent(true);
 		
-		opacket out(msg_channel_request);
-		out	<< m_host_channel_id
-			<< "auth-agent-req@openssh.com"
-			<< false;
-		m_connection->async_write(move(out));
-	}
+// 		opacket out(msg_channel_request);
+// 		out	<< m_host_channel_id
+// 			<< "auth-agent-req@openssh.com"
+// 			<< false;
+// 		m_connection->async_write(move(out));
+// 	}
 	
-	for_each(env.begin(), env.end(), [this](const environment_variable& v)
-	{
-		opacket out(msg_channel_request);
-		out	<< m_host_channel_id
-			<< "env"
-			<< false
-			<< v.name
-			<< v.value;
-		m_connection->async_write(move(out));
-	});
+// 	for_each(env.begin(), env.end(), [this](const environment_variable& v)
+// 	{
+// 		opacket out(msg_channel_request);
+// 		out	<< m_host_channel_id
+// 			<< "env"
+// 			<< false
+// 			<< v.name
+// 			<< v.value;
+// 		m_connection->async_write(move(out));
+// 	});
 	
-	opacket out(msg_channel_request);
-	out	<< m_host_channel_id
-		<< "pty-req"
-		<< true				// confirmation, ignore it?
-		<< terminal_type
-		<< width << height
-		<< uint32_t(0) << uint32_t(0)
-		<< "";
-	m_connection->async_write(move(out));
-}
+// 	opacket out(msg_channel_request);
+// 	out	<< m_host_channel_id
+// 		<< "pty-req"
+// 		<< true				// confirmation, ignore it?
+// 		<< terminal_type
+// 		<< width << height
+// 		<< uint32_t(0) << uint32_t(0)
+// 		<< "";
+// 	m_connection->async_write(move(out));
+// }
 
-void channel::send_request_and_command(
-	const string& request, const string& command)
-{
-	opacket out(msg_channel_request);
-	out	<< m_host_channel_id
-		<< request
-		<< true;
-	if (not command.empty())
-		out	<< command;
-	m_connection->async_write(move(out));
-}
+// void channel::send_request_and_command(
+// 	const string& request, const string& command)
+// {
+// 	opacket out(msg_channel_request);
+// 	out	<< m_host_channel_id
+// 		<< request
+// 		<< true;
+// 	if (not command.empty())
+// 		out	<< command;
+// 	m_connection->async_write(move(out));
+// }
 
-void channel::send_signal(const string& signal)
-{
-	opacket out(msg_channel_request);
-	out	<< m_host_channel_id
-		<< "signal"
-		<< false
-		<< signal;
-	m_connection->async_write(move(out));
-}
+// void channel::send_signal(const string& signal)
+// {
+// 	opacket out(msg_channel_request);
+// 	out	<< m_host_channel_id
+// 		<< "signal"
+// 		<< false
+// 		<< signal;
+// 	m_connection->async_write(move(out));
+// }
 
-void channel::process(ipacket& in)
-{
-	switch ((message_type)in)
-	{
-		case msg_channel_open_confirmation:
-			setup(in);
-			m_channel_open = true;
-			m_eof = false;
-			opened();
-			break;
+// void channel::process(ipacket& in)
+// {
+// 	switch ((message_type)in)
+// 	{
+// 		case msg_channel_open_confirmation:
+// 			setup(in);
+// 			m_channel_open = true;
+// 			m_eof = false;
+// 			opened();
+// 			break;
 
-		case msg_channel_open_failure:
-		{
-			uint32_t reasonCode;
-			string reason;
+// 		case msg_channel_open_failure:
+// 		{
+// 			uint32_t reasonCode;
+// 			string reason;
 			
-			in >> reasonCode >> reason;
+// 			in >> reasonCode >> reason;
 			
-			error(reason, "en");
+// 			error(reason, "en");
 
-			m_connection->close_channel(shared_from_this(), 0);
+// 			m_connection->close_channel(shared_from_this(), 0);
 			
-			if (m_open_handler)
-			{
-				m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
-				delete m_open_handler;
-				m_open_handler = nullptr;
-			}
+// 			if (m_open_handler)
+// 			{
+// 				m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
+// 				delete m_open_handler;
+// 				m_open_handler = nullptr;
+// 			}
 
-			break;
-		}
+// 			break;
+// 		}
 
-		case msg_channel_close:
-			closed();
-			m_connection->close_channel(shared_from_this(), 0);
-			break;
+// 		case msg_channel_close:
+// 			closed();
+// 			m_connection->close_channel(shared_from_this(), 0);
+// 			break;
 
-		case msg_channel_success:
-			succeeded();
-			break;
+// 		case msg_channel_success:
+// 			succeeded();
+// 			break;
 
-		case msg_channel_window_adjust:
-		{
-			int32_t extra;
-			in >> extra;
-			m_host_window_size += extra;
-			send_pending();
-			break;
-		}
+// 		case msg_channel_window_adjust:
+// 		{
+// 			int32_t extra;
+// 			in >> extra;
+// 			m_host_window_size += extra;
+// 			send_pending();
+// 			break;
+// 		}
 		
-		case msg_channel_data:
-			if (m_channel_open)
-			{
-				pair<const char*,size_t> data;
-				in >> data;
-				m_my_window_size -= data.second;
-				receive_data(data.first, data.second);
-			}
-			break;
+// 		case msg_channel_data:
+// 			if (m_channel_open)
+// 			{
+// 				pair<const char*,size_t> data;
+// 				in >> data;
+// 				m_my_window_size -= data.second;
+// 				receive_data(data.first, data.second);
+// 			}
+// 			break;
 
-		case msg_channel_extended_data:
-			if (m_channel_open)
-			{
-				uint32_t type;
-				pair<const char*,size_t> data;
-				in >> type >> data;
-				m_my_window_size -= data.second;
-				receive_extended_data(data.first, data.second, type);
-			}
-			break;
+// 		case msg_channel_extended_data:
+// 			if (m_channel_open)
+// 			{
+// 				uint32_t type;
+// 				pair<const char*,size_t> data;
+// 				in >> type >> data;
+// 				m_my_window_size -= data.second;
+// 				receive_extended_data(data.first, data.second, type);
+// 			}
+// 			break;
 		
-		case msg_channel_eof:
-			end_of_file();
-			break;
+// 		case msg_channel_eof:
+// 			end_of_file();
+// 			break;
 
-		case msg_channel_request:
-		{
-			string request;
-			bool want_reply = false;
+// 		case msg_channel_request:
+// 		{
+// 			string request;
+// 			bool want_reply = false;
 			
-			in >> request >> want_reply;
+// 			in >> request >> want_reply;
 
-			opacket out;
-			handle_channel_request(request, in, out);
+// 			opacket out;
+// 			handle_channel_request(request, in, out);
 			
-			if (want_reply)
-			{
-				if (out.empty())
-					out = opacket(msg_channel_failure) << m_host_channel_id;
-				m_connection->async_write(move(out));
-			}
-			break;
-		}
+// 			if (want_reply)
+// 			{
+// 				if (out.empty())
+// 					out = opacket(msg_channel_failure) << m_host_channel_id;
+// 				m_connection->async_write(move(out));
+// 			}
+// 			break;
+// 		}
 		
-		default:
-			//PRINT(("Unhandled channel message %d", inMessage));
-			;
-	}
+// 		default:
+// 			//PRINT(("Unhandled channel message %d", inMessage));
+// 			;
+// 	}
 
-	if (m_channel_open and m_my_window_size < kWindowSize - 2 * kMaxPacketSize)
-	{
-		uint32_t adjust = kWindowSize - m_my_window_size;
-		m_my_window_size += adjust;
+// 	if (m_channel_open and m_my_window_size < kWindowSize - 2 * kMaxPacketSize)
+// 	{
+// 		uint32_t adjust = kWindowSize - m_my_window_size;
+// 		m_my_window_size += adjust;
 
-		opacket out(msg_channel_window_adjust);
-		out	<< m_host_channel_id << adjust;
-		m_connection->async_write(move(out));
-	}
-}
+// 		opacket out(msg_channel_window_adjust);
+// 		out	<< m_host_channel_id << adjust;
+// 		m_connection->async_write(move(out));
+// 	}
+// }
 
-void channel::banner(const string& msg, const string& lang)
-{
-	if (m_banner_handler)
-		m_banner_handler(msg, lang);
-}
+// void channel::banner(const string& msg, const string& lang)
+// {
+// 	if (m_banner_handler)
+// 		m_banner_handler(msg, lang);
+// }
 
-void channel::message(const string& msg, const string& lang)
-{
-	if (m_message_handler)
-		m_message_handler(msg, lang);
-}
+// void channel::message(const string& msg, const string& lang)
+// {
+// 	if (m_message_handler)
+// 		m_message_handler(msg, lang);
+// }
 
-void channel::error(const string& msg, const string& lang)
-{
-	if (m_error_handler)
-		m_error_handler(msg, lang);
-}
+// void channel::error(const string& msg, const string& lang)
+// {
+// 	if (m_error_handler)
+// 		m_error_handler(msg, lang);
+// }
 
-void channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
-{
-}
+// void channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
+// {
+// }
 
-void channel::receive_data(const char* data, size_t size)
-{
-	m_received.insert(m_received.end(), data, data + size);
-	push_received();
-}
+// void channel::receive_data(const char* data, size_t size)
+// {
+// 	m_received.insert(m_received.end(), data, data + size);
+// 	push_received();
+// }
 
-void channel::receive_extended_data(const char* data, size_t size, uint32_t type)
-{
-}
+// void channel::receive_extended_data(const char* data, size_t size, uint32_t type)
+// {
+// }
 
-void channel::send_pending()
-{
-	while (not m_pending.empty() and not m_send_pending)
-	{
-		basic_write_op* op = m_pending.front();
+// void channel::send_pending()
+// {
+// 	while (not m_pending.empty() and not m_send_pending)
+// 	{
+// 		basic_write_op* op = m_pending.front();
 		
-		if (op->m_packets.empty())
-		{
-			m_pending.pop_front();
-			op->written(boost::system::error_code(), 0, get_io_service());
-			delete op;
-			continue;
-		}
+// 		if (op->m_packets.empty())
+// 		{
+// 			m_pending.pop_front();
+// 			op->written(boost::system::error_code(), 0, get_io_service());
+// 			delete op;
+// 			continue;
+// 		}
 		
-		size_t size = op->m_packets.front().size() - 9;
-		if (size > m_host_window_size)
-			break;
+// 		size_t size = op->m_packets.front().size() - 9;
+// 		if (size > m_host_window_size)
+// 			break;
 		
-		m_host_window_size -= size;
-		m_send_pending = true;
+// 		m_host_window_size -= size;
+// 		m_send_pending = true;
 
-		opacket out(move(op->m_packets.front()));
-		op->m_packets.pop_front();
+// 		opacket out(move(op->m_packets.front()));
+// 		op->m_packets.pop_front();
 
-		m_connection->async_write(move(out),
-			[
-				this,
-				self = shared_from_this(),
-				op
-			]
-			(const boost::system::error_code& ec, size_t bytes_transferred)
-		{
-			m_send_pending = false;
+// 		m_connection->async_write(move(out),
+// 			[
+// 				this,
+// 				self = shared_from_this(),
+// 				op
+// 			]
+// 			(const boost::system::error_code& ec, size_t bytes_transferred)
+// 		{
+// 			m_send_pending = false;
 
-			if (ec)
-			{
-				op->written(ec, bytes_transferred, get_io_service());
-				delete op;
-				m_pending.pop_front();
-			}
+// 			if (ec)
+// 			{
+// 				op->written(ec, bytes_transferred, get_io_service());
+// 				delete op;
+// 				m_pending.pop_front();
+// 			}
 
-			send_pending();
-		});
+// 			send_pending();
+// 		});
 		
-		break;
-	}
-}
+// 		break;
+// 	}
+// }
 
-void channel::push_received()
-{
-	boost::asio::io_service& io_service(get_io_service());
+// void channel::push_received()
+// {
+// 	boost::asio::io_service& io_service(get_io_service());
 
-	deque<char>::iterator b = m_received.begin();
+// 	deque<char>::iterator b = m_received.begin();
 
-	while (b != m_received.end() and not m_read_ops.empty())
-	{
-		basic_read_op* handler = m_read_ops.front();
-		m_read_ops.pop_front();
+// 	while (b != m_received.end() and not m_read_ops.empty())
+// 	{
+// 		basic_read_op* handler = m_read_ops.front();
+// 		m_read_ops.pop_front();
 
-		b = handler->receive_and_post(b, m_received.end(), io_service);
+// 		b = handler->receive_and_post(b, m_received.end(), io_service);
 
-		delete handler;
-	}
+// 		delete handler;
+// 	}
 
-	m_received.erase(m_received.begin(), b);
+// 	m_received.erase(m_received.begin(), b);
 	
-	if (m_received.empty() and m_eof)
-		close();
-}
+// 	if (m_received.empty() and m_eof)
+// 		close();
+// }
 
-// --------------------------------------------------------------------
+// // --------------------------------------------------------------------
 
-void exec_channel::opened()
-{
-	channel::opened();
+// void exec_channel::opened()
+// {
+// 	channel::opened();
 
-	send_request_and_command("exec", m_command);
-}
+// 	send_request_and_command("exec", m_command);
+// }
 
-void exec_channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
-{
-	int32_t status = 1;
+// void exec_channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
+// {
+// 	int32_t status = 1;
 	
-	if (request == "exit-status")
-		in >> status;
+// 	if (request == "exit-status")
+// 		in >> status;
 	
-	m_handler->post_result(request, status);
-}
+// 	m_handler->post_result(request, status);
+// }
 
 }
