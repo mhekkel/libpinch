@@ -13,6 +13,7 @@
 #include <boost/iostreams/filtering_stream.hpp>
 
 #include <list>
+#include <deque>
 #include <functional>
 
 #include <pinch/packet.hpp>
@@ -61,127 +62,6 @@ using password_callback_type = std::function<void()>;
 
 // --------------------------------------------------------------------
 
-class connection_base
-{
-  public:
-	connection_base(const connection_base&) = delete;
-	connection_base& operator=(const connection_base& ) = delete;
-
-	virtual ~connection_base() {}
-
-	virtual void disconnect();
-
-	virtual void async_write(opacket&& p) = 0;
-	virtual void async_read() = 0;
-
-	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) = 0;
-
-	void set_validate_callback(const validate_callback_type &cb)
-	{
-		m_validate_host_key_cb = cb;
-	}
-
-	void set_password_callback(const password_callback_type &cb)
-	{
-		m_request_password_cb = cb;
-	}
-
-	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
-	{
-		m_keyboard_interactive_cb = cb;
-	}
-
-	virtual bool is_connected() const
-	{
-		return m_authenticated;
-	}
-
-	virtual void handle_error(const boost::system::error_code &ec);
-	void reset();
-
-	void newkeys(key_exchange& kex, boost::system::error_code &ec)
-	{
-		m_crypto_engine.newkeys(kex, m_authenticated);
-	}
-
-	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
-	{
-		m_authenticated = true;
-
-		m_crypto_engine.enable_compression();
-
-		m_host_version = host_version;
-		m_session_id = session_id;
-
-		// start the read loop
-		async_read();
-	}
-
-	void open_channel(channel_ptr ch, uint32_t id);
-	void close_channel(channel_ptr ch, uint32_t id);
-
-	bool has_open_channels();
-
-	enum wait_type
-	{
-		wait_read, wait_write, wait_error
-	};
-
-	// template<typename Handler>
-	// auto async_wait(wait_type type, Handler&& handler)
-	// {
-	// 	boost::asio::async_initiate<Handler, void(boost::system::error_code)>(
-	// 		initiate_async_wait(type, this), handler
-	// 	);
-	// }
-
-  protected:
-
-	connection_base(const std::string& user)
-		: m_user(user)
-	{
-		
-	}
-
-	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
-
-	void received_data(boost::system::error_code ec);
-
-	void process_packet(ipacket &in);
-	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
-
-	void process_channel_open(ipacket &in, opacket &out);
-	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
-
-	std::string m_user;
-
-	std::string m_host_version;
-	std::vector<uint8_t> m_session_id;
-
-	crypto_engine m_crypto_engine;
-
-	bool m_authenticated = false;
-
-	// connect_handler_list m_connect_handlers;
-
-	int64_t m_last_io;
-	std::vector<uint8_t> m_private_key_hash;
-	boost::asio::streambuf m_response;
-
-	validate_callback_type m_validate_host_key_cb;
-	password_callback_type m_request_password_cb;
-	keyboard_interactive_callback_type m_keyboard_interactive_cb;
-
-	std::list<channel_ptr> m_channels;
-	bool m_forward_agent;
-	port_forward_listener *m_port_forwarder;
-
-
-
-
-};
-
-
 namespace detail
 {
 
@@ -202,7 +82,7 @@ struct async_connect_impl
 
 	socket_type& socket;
 	boost::asio::streambuf& response;
-	std::shared_ptr<basic_connection<Stream>> conn;
+	std::shared_ptr<connection_base> conn;
 	std::string user;
 	password_callback_type request_password;
 
@@ -228,108 +108,57 @@ struct async_connect_impl
 	void process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec);
 };
 
-
 template<typename Stream>
 template<typename Self>
 void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transferred)
 {
-	if (not ec)
+	if (ec)
 	{
-		switch (state)
+		self.complete(ec);
+		return;
+	}
+
+	switch (state)
+	{
+		case state_type::start:
 		{
-			case state_type::start:
+			std::ostream out(request.get());
+			out << kSSHVersionString << "\r\n";
+			state = state_type::wrote_version;
+			boost::asio::async_write(socket, *request, std::move(self));
+			return;
+		}
+		
+		case state_type::wrote_version:
+			state = state_type::reading;
+			boost::asio::async_read_until(socket, response, "\n", std::move(self));
+			return;
+
+		case state_type::reading:
+		{
+			std::istream response_stream(&response);
+			std::getline(response_stream, host_version);
+			while (std::isspace(host_version.back()))
+				host_version.pop_back();
+
+			if (host_version.substr(0, 7) != "SSH-2.0")
 			{
-				std::ostream out(request.get());
-				out << kSSHVersionString << "\r\n";
-				state = state_type::wrote_version;
-				boost::asio::async_write(socket, *request, std::move(self));
+				self.complete(error::make_error_code(error::protocol_version_not_supported));
 				return;
 			}
+
+			state = state_type::rekeying;
+			kex = std::make_unique<key_exchange>(host_version);
+
+			conn->async_write(kex->init());
 			
-			case state_type::wrote_version:
-				state = state_type::reading;
-				boost::asio::async_read_until(socket, response, "\n", std::move(self));
-				return;
+			boost::asio::async_read(socket, response, boost::asio::transfer_at_least(8), std::move(self));
+			return;
+		}
 
-			case state_type::reading:
-			{
-				std::istream response_stream(&response);
-				std::getline(response_stream, host_version);
-				while (std::isspace(host_version.back()))
-					host_version.pop_back();
-
-				if (host_version.substr(0, 7) != "SSH-2.0")
-				{
-					self.complete(error::make_error_code(error::protocol_version_not_supported));
-					return;
-				}
-
-				state = state_type::rekeying;
-				kex = std::make_unique<key_exchange>(host_version);
-
-				conn->async_write(kex->init());
-				
-				boost::asio::async_read(socket, response, boost::asio::transfer_at_least(8), std::move(self));
-				return;
-			}
-
-			case state_type::rekeying:
-			{
-				for (;;)
-				{
-					if (not conn->receive_packet(*packet, ec) and not ec)
-					{
-						boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
-						return;
-					}
-
-					opacket out;
-					if (*packet == msg_newkeys)
-					{
-						conn->newkeys(*kex, ec);
-
-						if (ec)
-						{
-							self.complete(ec);
-							return;
-						}
-
-						state = state_type::authenticating;
-
-						out = msg_service_request;
-						out << "ssh-userauth";
-
-						// we might not be known yet
-						// ssh_agent::instance().register_connection(conn);
-
-						// fetch the private keys
-						for (auto& pk: ssh_agent::instance())
-						{
-							opacket blob;
-							blob << pk;
-							private_keys.push_back(blob);
-						}
-					}
-					else if (not kex->process(*packet, out, ec))
-					{
-						self.complete(error::make_error_code(error::key_exchange_failed));
-						return;
-					}
-
-					if (ec)
-					{
-						self.complete(ec);
-						return;
-					}
-
-					if (out)
-						conn->async_write(std::move(out));
-					
-					packet->clear();
-				}
-			}
-
-			case state_type::authenticating:
+		case state_type::rekeying:
+		{
+			for (;;)
 			{
 				if (not conn->receive_packet(*packet, ec) and not ec)
 				{
@@ -337,52 +166,107 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 					return;
 				}
 
-				auto& in = *packet;
 				opacket out;
-
-				switch ((message_type)in)
+				if (*packet == msg_newkeys)
 				{
-					case msg_service_accept:
-						out = msg_userauth_request;
-						out << user << "ssh-connection"
-							<< "none";
-						break;
+					conn->newkeys(*kex, ec);
 
-					case msg_userauth_failure:
-						process_userauth_failure(in, out, ec);
-						break;
-
-					case msg_userauth_banner:
-						process_userauth_banner(in);
-						break;
-
-					case msg_userauth_info_request:
-						process_userauth_info_request(in, out, ec);
-						break;
-
-					case msg_userauth_success:
-						conn->userauth_success(host_version, kex->session_id());
-						self.complete({});
+					if (ec)
+					{
+						self.complete(ec);
 						return;
+					}
+
+					state = state_type::authenticating;
+
+					out = msg_service_request;
+					out << "ssh-userauth";
+
+					// we might not be known yet
+					// ssh_agent::instance().register_connection(conn);
+
+					// fetch the private keys
+					for (auto& pk: ssh_agent::instance())
+					{
+						opacket blob;
+						blob << pk;
+						private_keys.push_back(blob);
+					}
+				}
+				else if (not kex->process(*packet, out, ec))
+				{
+					self.complete(error::make_error_code(error::key_exchange_failed));
+					return;
+				}
+
+				if (ec)
+				{
+					self.complete(ec);
+					return;
 				}
 
 				if (out)
 					conn->async_write(std::move(out));
 				
-				if (ec)
-					self.complete(ec);
-				else
-				{
-					packet->clear();
-					boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
-				}
-
-				return;
+				packet->clear();
 			}
 		}
-	}
 
-	self.complete(ec);
+		case state_type::authenticating:
+		{
+			if (not conn->receive_packet(*packet, ec) and not ec)
+			{
+				boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+				return;
+			}
+
+			auto& in = *packet;
+			opacket out;
+
+			switch ((message_type)in)
+			{
+				case msg_service_accept:
+					out = msg_userauth_request;
+					out << user << "ssh-connection"
+						<< "none";
+					break;
+
+				case msg_userauth_failure:
+					process_userauth_failure(in, out, ec);
+					break;
+
+				case msg_userauth_banner:
+					process_userauth_banner(in);
+					break;
+
+				case msg_userauth_info_request:
+					process_userauth_info_request(in, out, ec);
+					break;
+
+				case msg_userauth_success:
+					conn->userauth_success(host_version, kex->session_id());
+					self.complete({});
+					return;
+				
+				default:
+std::cerr << "Unexpected packet: " << in << std::endl;
+					break;
+			}
+
+			if (out)
+				conn->async_write(std::move(out));
+			
+			if (ec)
+				self.complete(ec);
+			else
+			{
+				packet->clear();
+				boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+			}
+
+			return;
+		}
+	}
 }
 
 template<typename Stream>
@@ -496,162 +380,127 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 	}
 }
 
-// --------------------------------------------------------------------
-
-class open_channel_op : public boost::asio::detail::operation
-{
-  public:
-	boost::system::error_code m_ec;
-	uint32_t m_channel_id;
-
-  protected:
-	open_channel_op(func_type func)
-		: boost::asio::detail::operation(func)
-		, m_channel_id(0)
-	{
-	}
-};
-
-template <typename Handler, typename IoExecutor>
-class open_channel_handler : public open_channel_op
-{
-  public:
-	BOOST_ASIO_DEFINE_HANDLER_PTR(open_channel_handler);
-
-	open_channel_handler(Handler& h, const IoExecutor& io_ex)
-		: open_channel_op(&open_channel_handler::do_complete)
-		, handler_(BOOST_ASIO_MOVE_CAST(Handler)(h))
-		, io_executor_(io_ex)
-	{
-		boost::asio::detail::handler_work<Handler, IoExecutor>::start(handler_, io_executor_);
-	}
-
-	static void do_complete(void* owner, boost::asio::detail::operation* base,
-		const boost::system::error_code& /*ec*/,
-		std::size_t /*bytes_transferred*/)
-	{
-		// Take ownership of the handler object.
-		open_channel_handler* h(static_cast<open_channel_handler*>(base));
-		ptr p = { boost::asio::detail::addressof(h->handler_), h, h };
-		boost::asio::detail::handler_work<Handler, IoExecutor> w(h->handler_, h->io_executor_);
-
-		// BOOST_ASIO_HANDLER_COMPLETION((*h));
-
-		// Make a copy of the handler so that the memory can be deallocated before
-		// the upcall is made. Even if we're not about to make an upcall, a
-		// sub-object of the handler may be the true owner of the memory associated
-		// with the handler. Consequently, a local copy of the handler is required
-		// to ensure that any owning sub-object remains valid until after we have
-		// deallocated the memory here.
-		boost::asio::detail::binder2<Handler, boost::system::error_code, int> handler(h->handler_, h->ec_, h->signal_number_);
-		p.h = boost::asio::detail::addressof(handler.handler_);
-		p.reset();
-
-		// Make the upcall if required.
-		if (owner)
-		{
-			boost::asio::detail::fenced_block b(boost::asio::detail::fenced_block::half);
-			w.complete(handler, handler.handler_);
-		}
-	}
-
-  private:
-	Handler handler_;
-	IoExecutor io_executor_;
-};
-
-
-class connection_service : public boost::asio::detail::execution_context_service_base<connection_service>
-{
-  public:
-
-
-	// The implementation type of the signal_set.
-	class implementation_type
-	{
- 	  public:
-		// Default constructor.
-		implementation_type()
-			// : signals_(0)
-		{
-		}
-
-	private:
-		// Only this service will have access to the internal values.
-		friend class connection_service;
-
-		// The pending signal handlers.
-		boost::asio::detail::op_queue<open_channel_op> m_queue;
-
-		// // Linked list of registered signals.
-		// registration* signals_;
-	};
-
-	connection_service(boost::asio::execution_context& context)
-		: boost::asio::detail::execution_context_service_base<connection_service>(context)
-		, m_scheduler(boost::asio::use_service<scheduler_impl>(context))
-		// , m_reactor(boost::asio::use_service<reactor>(context))
-		, m_next(nullptr), m_prev(nullptr)
-	{
-	}
-
-
-  private:
-
-	// Start an asynchronous operation to wait for a channel open
-	template <typename Handler, typename IoExecutor>
-	void async_wait(implementation_type& impl, Handler& handler, const IoExecutor& io_ex)
-	{
-		// Allocate and construct an operation to wrap the handler.
-		typedef open_channel_handler<Handler, IoExecutor> op;
-		typename op::ptr p = { boost::asio::detail::addressof(handler),
-			op::ptr::allocate(handler), 0 };
-		p.p = new (p.v) op(handler, io_ex);
-
-		// BOOST_ASIO_HANDLER_CREATION((scheduler_.context(),
-		// 		*p.p, "signal_set", &impl, 0, "async_wait"));
-
-		start_wait_op(impl, p.p);
-		p.v = p.p = 0;
-	}
-
-	void start_wait_op(implementation_type& impl, open_channel_op* op)
-	{
-		m_scheduler.work_started();
-
-		// signal_state* state = get_signal_state();
-		// static_mutex::scoped_lock lock(state->mutex_);
-
-		// registration* reg = impl.signals_;
-		// while (reg)
-		// {
-		// 	if (reg->undelivered_ > 0)
-		// 	{
-		// 	--reg->undelivered_;
-		// 	op->signal_number_ = reg->signal_number_;
-		// 	scheduler_.post_deferred_completion(op);
-		// 	return;
-		// 	}
-
-		// 	reg = reg->next_in_set_;
-		// }
-
-		impl.m_queue.push(op);
-	}
-
-	typedef class boost::asio::detail::scheduler scheduler_impl;
-
-	scheduler_impl& m_scheduler;
-	// boost::asio::detail::reactor& m_reactor;
-
-	connection_service* m_next;
-	connection_service* m_prev;
-};
-
 }
 
+// --------------------------------------------------------------------
+
+class connection_base : public std::enable_shared_from_this<connection_base>
+{
+  public:
+	connection_base(const connection_base&) = delete;
+	connection_base& operator=(const connection_base& ) = delete;
+
+
+	/// The type of the lowest layer.
+	// using lowest_layer_type = typename next_layer_type::lowest_layer_type;
+	using lowest_layer_type = boost::asio::ip::tcp::socket;
+
+	/// The type of the executor associated with the object.
+	using executor_type = typename lowest_layer_type::executor_type;
+
+	virtual executor_type get_executor() noexcept = 0;
+
+	virtual ~connection_base() {}
+
+	virtual void disconnect();
+
+	virtual void async_write(opacket&& p) = 0;
+	virtual void async_read() = 0;
+
+	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) = 0;
+
+	void set_validate_callback(const validate_callback_type &cb)
+	{
+		m_validate_host_key_cb = cb;
+	}
+
+	void set_password_callback(const password_callback_type &cb)
+	{
+		m_request_password_cb = cb;
+	}
+
+	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
+	{
+		m_keyboard_interactive_cb = cb;
+	}
+
+	virtual bool is_connected() const
+	{
+		return m_authenticated;
+	}
+
+	virtual void handle_error(const boost::system::error_code &ec);
+	void reset();
+
+	void newkeys(key_exchange& kex, boost::system::error_code &ec)
+	{
+		m_crypto_engine.newkeys(kex, m_authenticated);
+	}
+
+	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
+	{
+		m_authenticated = true;
+
+		m_crypto_engine.enable_compression();
+
+		m_host_version = host_version;
+		m_session_id = session_id;
+
+		// start the read loop
+		async_read();
+	}
+
+	void open_channel(channel_ptr ch, uint32_t id);
+	void close_channel(channel_ptr ch, uint32_t id);
+
+	bool has_open_channels();
+
+  protected:
+
+	connection_base(const std::string& user)
+		: m_user(user)
+	{
+		
+	}
+
+	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
+
+	void received_data(boost::system::error_code ec);
+
+	void process_packet(ipacket &in);
+	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	void process_channel_open(ipacket &in, opacket &out);
+	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	std::string m_user;
+
+	std::string m_host_version;
+	std::vector<uint8_t> m_session_id;
+
+	crypto_engine m_crypto_engine;
+
+	bool m_authenticated = false;
+
+	// connect_handler_list m_connect_handlers;
+
+	int64_t m_last_io;
+	std::vector<uint8_t> m_private_key_hash;
+	boost::asio::streambuf m_response;
+
+	validate_callback_type m_validate_host_key_cb;
+	password_callback_type m_request_password_cb;
+	keyboard_interactive_callback_type m_keyboard_interactive_cb;
+
+	std::list<channel_ptr> m_channels;
+	bool m_forward_agent;
+	port_forward_listener *m_port_forwarder;
+};
+
+// --------------------------------------------------------------------
+
 template<typename Stream>
-class basic_connection : public connection_base, public std::enable_shared_from_this<basic_connection<Stream>>
+class basic_connection : public connection_base
 {
   public:
 
@@ -671,13 +520,7 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 	/// The type of the next layer.
 	using next_layer_type = std::remove_reference_t<Stream>;
 
-	/// The type of the lowest layer.
-	using lowest_layer_type = typename next_layer_type::lowest_layer_type;
-
-	/// The type of the executor associated with the object.
-	using executor_type = typename lowest_layer_type::executor_type;
-
-	virtual executor_type get_executor() noexcept
+	virtual executor_type get_executor() noexcept override
 	{
 		return m_next_layer.lowest_layer().get_executor();
 	}
@@ -703,8 +546,6 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 	}
 
 	// callbacks to be installed by owning object
-
-
 	using async_connect_impl = detail::async_connect_impl<next_layer_type>;
 	friend async_connect_impl;
 
@@ -798,38 +639,6 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 				self->received_data(ec);
 			});
 	}
-
-	// class initiate_async_wait
-	// {
-	//   public:
-	// 	explicit initiate_async_wait(basic_connection* self)
-	// 		: m_self(self)
-	// 	{
-	// 	}
-
-	// 	executor_type get_executor() const BOOST_ASIO_NOEXCEPT
-	// 	{
-	// 		return m_self->get_executor();
-	// 	}
-
-	// 	template <typename WaitHandler>
-	// 	void operator()(WaitHandler&& handler) const
-	// 	{
-	// 		// Allocate and construct an operation to wrap the handler.
-	// 		typedef boost::asio::detail::wait_handler<Handler, executor_type> op;
-	// 		typename op::ptr p = { boost::asio::detail::addressof(handler), op::ptr::allocate(handler), 0 };
-	// 		p.p = new (p.v) op(handler, get_executor());
-
-	// 		// BOOST_ASIO_HANDLER_CREATION((scheduler_.context(), *p.p, "object_handle",
-	// 		// 	&impl, reinterpret_cast<uintmax_t>(impl.wait_handle_), "async_wait"));
-
-	// 		start_wait_op(impl, p.p);
-	// 		p.v = p.p = 0;
-	// 	}
-
-	//   private:
-	// 	connection_base* m_self;
-	// };
 
 	Stream m_next_layer;
 };

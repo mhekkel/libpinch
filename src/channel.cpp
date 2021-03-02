@@ -63,50 +63,48 @@ void channel::setup(ipacket& in)
 	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
 }
 
-// void channel::open()
-// {
-// 	if (not m_connection->is_connected())
-// 	{
-// 		m_connection->async_connect([this](const boost::system::error_code& ec)
-// 		{
-// 			if (ec)
-// 			{
-// 				if (m_open_handler)
-// 					m_open_handler->handle_open_result(ec);
-// 				else
-// 					this->error(ec.message(), "en");
-// 			}
-// 			else
-// 				this->open();
-// 		}, shared_from_this());
-// 	}
-// 	else
-// 	{
-// 		m_my_window_size = kWindowSize;
-// 		m_my_channel_id = s_next_channel_id++;
-// 		m_connection->open_channel(shared_from_this(), m_my_channel_id);
-// 	}
-// }
+void channel::open()
+{
+	// if (not m_connection->is_connected())
+	// {
+	// 	m_connection->async_connect([this](const boost::system::error_code& ec)
+	// 	{
+	// 		if (ec)
+	// 		{
+	// 			if (m_open_handler)
+	// 				m_open_handler->handle_open_result(ec);
+	// 			else
+	// 				this->error(ec.message(), "en");
+	// 		}
+	// 		else
+	// 			this->open();
+	// 	}, shared_from_this());
+	// }
+	// else
+	// {
+		m_my_window_size = kWindowSize;
+		m_my_channel_id = s_next_channel_id++;
+		m_connection->open_channel(shared_from_this(), m_my_channel_id);
+	// }
+}
 
 void channel::opened()
 {
-	// if (m_open_handler)
-	// {
-	// 	m_open_handler->handle_open_result(boost::system::error_code());
-	// 	delete m_open_handler;
-	// 	m_open_handler = nullptr;
-	// }
+	if (m_open_handler)
+	{
+		m_open_handler->complete(boost::system::error_code(), 0);
+		m_open_handler.reset();
+	}
 }
 
 void channel::close()
 {
-	// if (m_open_handler)
-	// {
-	// 	auto handler = m_open_handler;
-	// 	m_open_handler = nullptr;
-	// 	handler->handle_open_result(make_error_code(error::by_application));
-	// 	delete handler;
-	// }
+	if (m_open_handler)
+	{
+		std::unique_ptr<detail::open_channel_op> handler;
+		std::swap(m_open_handler, handler);
+		handler->complete(make_error_code(error::by_application), 0);
+	}
 
 	m_connection->close_channel(shared_from_this(), m_host_channel_id);
 }
@@ -170,76 +168,76 @@ void channel::end_of_file()
 // 	in >> m_host_window_size >> m_max_send_packet_size;
 // }
 
-// void channel::open_pty(uint32_t width, uint32_t height,
-// 	const string& terminal_type, bool forward_agent, bool forward_x11,
-// 	const environment& env)
-// {
-// 	if (forward_x11)
-// 	{
-// 		opacket out(msg_channel_request);
-// 		out	<< m_host_channel_id
-// 			<< "x11-req"
-// 			<< false << false
-// 			<< "MIT-MAGIC-COOKIE-1"
-// 			<< "0000000000000000"
-// 			<< uint32_t(0);
-// 		m_connection->async_write(move(out));
-// 	}
+void channel::open_pty(uint32_t width, uint32_t height,
+	const string& terminal_type, bool forward_agent, bool forward_x11,
+	const environment& env)
+{
+	// if (forward_x11)
+	// {
+	// 	opacket out(msg_channel_request);
+	// 	out	<< m_host_channel_id
+	// 		<< "x11-req"
+	// 		<< false << false
+	// 		<< "MIT-MAGIC-COOKIE-1"
+	// 		<< "0000000000000000"
+	// 		<< uint32_t(0);
+	// 	m_connection->async_write(move(out));
+	// }
 
-// 	if (forward_agent)
-// 	{
-// 		m_connection->forward_agent(true);
+	// if (forward_agent)
+	// {
+	// 	m_connection->forward_agent(true);
 		
-// 		opacket out(msg_channel_request);
-// 		out	<< m_host_channel_id
-// 			<< "auth-agent-req@openssh.com"
-// 			<< false;
-// 		m_connection->async_write(move(out));
-// 	}
+	// 	opacket out(msg_channel_request);
+	// 	out	<< m_host_channel_id
+	// 		<< "auth-agent-req@openssh.com"
+	// 		<< false;
+	// 	m_connection->async_write(move(out));
+	// }
 	
-// 	for_each(env.begin(), env.end(), [this](const environment_variable& v)
-// 	{
-// 		opacket out(msg_channel_request);
-// 		out	<< m_host_channel_id
-// 			<< "env"
-// 			<< false
-// 			<< v.name
-// 			<< v.value;
-// 		m_connection->async_write(move(out));
-// 	});
+	for_each(env.begin(), env.end(), [this](const environment_variable& v)
+	{
+		opacket out(msg_channel_request);
+		out	<< m_host_channel_id
+			<< "env"
+			<< false
+			<< v.name
+			<< v.value;
+		m_connection->async_write(move(out));
+	});
 	
-// 	opacket out(msg_channel_request);
-// 	out	<< m_host_channel_id
-// 		<< "pty-req"
-// 		<< true				// confirmation, ignore it?
-// 		<< terminal_type
-// 		<< width << height
-// 		<< uint32_t(0) << uint32_t(0)
-// 		<< "";
-// 	m_connection->async_write(move(out));
-// }
+	opacket out(msg_channel_request);
+	out	<< m_host_channel_id
+		<< "pty-req"
+		<< true				// confirmation, ignore it?
+		<< terminal_type
+		<< width << height
+		<< uint32_t(0) << uint32_t(0)
+		<< "";
+	m_connection->async_write(move(out));
+}
 
-// void channel::send_request_and_command(
-// 	const string& request, const string& command)
-// {
-// 	opacket out(msg_channel_request);
-// 	out	<< m_host_channel_id
-// 		<< request
-// 		<< true;
-// 	if (not command.empty())
-// 		out	<< command;
-// 	m_connection->async_write(move(out));
-// }
+void channel::send_request_and_command(
+	const string& request, const string& command)
+{
+	opacket out(msg_channel_request);
+	out	<< m_host_channel_id
+		<< request
+		<< true;
+	if (not command.empty())
+		out	<< command;
+	m_connection->async_write(move(out));
+}
 
-// void channel::send_signal(const string& signal)
-// {
-// 	opacket out(msg_channel_request);
-// 	out	<< m_host_channel_id
-// 		<< "signal"
-// 		<< false
-// 		<< signal;
-// 	m_connection->async_write(move(out));
-// }
+void channel::send_signal(const string& signal)
+{
+	opacket out(msg_channel_request);
+	out	<< m_host_channel_id
+		<< "signal"
+		<< false
+		<< signal;
+	m_connection->async_write(move(out));
+}
 
 void channel::process(ipacket& in)
 {
@@ -263,12 +261,11 @@ void channel::process(ipacket& in)
 
 			m_connection->close_channel(shared_from_this(), 0);
 			
-			// if (m_open_handler)
-			// {
-			// 	m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
-			// 	delete m_open_handler;
-			// 	m_open_handler = nullptr;
-			// }
+			if (m_open_handler)
+			{
+				auto handler = std::move(m_open_handler);
+				handler->complete(error::make_error_code(error::connection_lost));
+			}
 
 			break;
 		}

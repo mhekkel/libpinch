@@ -280,7 +280,7 @@ void connection_base::open_channel(channel_ptr ch, uint32_t channel_id)
 	if (std::find(m_channels.begin(), m_channels.end(), ch) == m_channels.end())
 	{
 		// some sanity check first
-		assert(find_if(m_channels.begin(), m_channels.end(),
+		assert(std::find_if(m_channels.begin(), m_channels.end(),
 						[channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
 		assert(not ch->is_open());
 

@@ -24,6 +24,7 @@
 #include <pinch/error.hpp>
 #include <pinch/packet.hpp>
 #include <pinch/connection.hpp>
+#include <pinch/operations.hpp>
 
 namespace pinch
 {
@@ -33,6 +34,46 @@ class connection_base;
 const uint32_t
 	kMaxPacketSize = 0x8000,
 	kWindowSize = 4 * kMaxPacketSize;
+
+// --------------------------------------------------------------------
+
+namespace detail
+{
+
+class open_channel_op : public operation
+{
+  public:
+	boost::system::error_code m_ec;
+};
+
+template <typename Handler, typename IoExecutor>
+class open_channel_handler : public open_channel_op
+{
+  public:
+	open_channel_handler(Handler&& h, const IoExecutor& io_ex)
+		: m_handler(std::move(h))
+		, m_io_executor(io_ex)
+	{
+		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
+	}
+
+	virtual void complete(const boost::system::error_code& ec, std::size_t bytes_transferred = 0) override
+	{
+		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
+
+		binder1<Handler, boost::system::error_code> handler(m_handler, m_ec);
+
+		w.complete(handler, handler.m_handler);
+  }
+
+  private:
+	Handler m_handler;
+	IoExecutor m_io_executor;
+};
+
+}
+
+// --------------------------------------------------------------------
 
 class channel : public std::enable_shared_from_this<channel>
 {
@@ -49,7 +90,10 @@ class channel : public std::enable_shared_from_this<channel>
 	/// The type of the executor associated with the object.
 	using executor_type = typename lowest_layer_type::executor_type;
 
-	executor_type get_executor() noexcept;
+	executor_type get_executor() noexcept
+	{
+		return m_connection->get_executor();
+	}
 
 	const next_layer_type& next_layer() const;
 
@@ -67,125 +111,34 @@ class channel : public std::enable_shared_from_this<channel>
 
 	typedef std::list<environment_variable> environment;
 
-
-	// struct basic_open_handler
-	// {
-	// 	basic_open_handler() : m_cancelled(false) {}
-		
-	// 	virtual			~basic_open_handler() {}
-	// 	virtual void	handle_open_result(const boost::system::error_code& ec) = 0;
-
-	// 	virtual void cancel()
-	// 	{
-	// 		m_cancelled = true;
-	// 	}
-		
-	// 	bool m_cancelled;
-	// };
-	
-	// template<typename Handler>
-	// struct open_handler : public basic_open_handler
-	// {
-	// 	// // typedef typename boost::asio::detail::async_result_init<Handler, void(boost::system::error_code)> async_result_type;
-	// 	// using async_result_type = boost::asio::async_result<Handler, void(boost::system::error_code)>;
-
-	// 	// open_handler(async_result_type& handler) : m_handler(handler) {}
-		
-	// 	// virtual void handle_open_result(const boost::system::error_code& ec)
-	// 	// {
-	// 	// 	if (not m_cancelled)
-	// 	// 		m_handler.handler(ec);
-	// 	// 	else
-	// 	// 		delete this;
-	// 	// }
-		
-	// 	// async_result_type m_handler;
-
-	// 	open_handler(Handler&& handler)
-	// 		: m_handler(std::forward<Handler>(handler)) {}
-
-	// 	virtual void handle_open_result(const boost::system::error_code& ec)
-	// 	{
-	// 		if (not m_cancelled)
-	// 			m_handler(ec);
-	// 		else
-	// 			delete this;
-	// 	}
-
-	// 	Handler m_handler;
-	// };
-
 	template<typename Handler>
-	auto async_open(Handler&& handler)
+	void async_open(Handler&& handler)
 	{
 		enum { start, open };
 
-		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-			[
-				state = start,
-				channel = this->shared_from_this(),
-				connection = m_connection,
-				this
-			]
-			(auto& self, boost::system::error_code ec = {}, size_t = 0) mutable
-			{
-				if (not ec)
+		using handler_type = detail::open_channel_handler<Handler, executor_type>;
+
+		assert(m_open_handler == nullptr);
+		m_open_handler.reset(new handler_type(std::move(handler), get_executor()));
+
+		if (m_connection->is_connected())
+			this->open();
+		else
+			static_cast<basic_connection<boost::asio::ip::tcp::socket>*>(m_connection.get())->async_connect([self = shared_from_this()]
+				(const boost::system::error_code& ec)
 				{
-					switch (state)
+					if (ec)
 					{
-						case start:
-							if (connection->is_connected())
-							{
-								m_my_window_size = kWindowSize;
-								m_my_channel_id = s_next_channel_id++;
-								connection->open_channel(shared_from_this(), m_my_channel_id);
-								state = open;
-								// connection->async_wait(connection_base::wait_read, std::move(self));
-							}
-							else
-								connection->async_connect(std::move(self));
-							return;
-
-						case open:
-							break;
+						self->m_open_handler->complete(ec, 0);
+						self->m_open_handler.reset();
 					}
+					else
+						self->open();
 				}
-
-				self.complete(ec);
-			}, handler, *m_connection
-		);
+			);
 	}
 
-	// // struct open_handler
-	// // {
-	// // 	open_handler() : m_cancelled(false) {}
-
-	// // 	template<typename Self>
-	// // 	void operator()(Self& self, const boost::system::error_code& ec = {}, size_t length = 0)
-	// // 	{
-	// // 		if (not m_cancelled)
-	// // 			self.complete(ec);
-	// // 	}
-
-	// // 	void cancel()
-	// // 	{
-	// // 		m_cancelled = true;
-	// // 	}
-
-	// // 	bool m_cancelled;
-	// // };
-
-	// // template <typename Handler>
-	// // auto async_open(Handler&& handler)
-	// // {
-	// // 	open();
-
-	// // 	return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-	// // 		open_handler{}, handler
-	// // 	);
-	// // }
-
-	// void open();
+	void open();
 	void close();
 	// void disconnect(bool disconnectProxy = false);
 
@@ -202,15 +155,15 @@ class channel : public std::enable_shared_from_this<channel>
 	// std::string get_connection_parameters(direction dir) const;
 	// std::string get_key_exchange_algoritm() const;
 
-	// void open_pty(uint32_t width, uint32_t height,
-	// 			  const std::string& terminal_type,
-	// 			  bool forward_agent, bool forward_x11,
-	// 			  const environment& env);
+	void open_pty(uint32_t width, uint32_t height,
+				  const std::string& terminal_type,
+				  bool forward_agent, bool forward_x11,
+				  const environment& env);
 
-	// void send_request_and_command(const std::string& request,
-	// 							  const std::string& command);
+	void send_request_and_command(const std::string& request,
+								  const std::string& command);
 
-	// void send_signal(const std::string& inSignal);
+	void send_signal(const std::string& inSignal);
 
 	uint32_t my_channel_id() const { return m_my_channel_id; }
 	bool is_open() const { return m_channel_open; }
@@ -531,7 +484,7 @@ class channel : public std::enable_shared_from_this<channel>
 
 //   protected:
 	
-	channel(std::shared_ptr<connection_type> connection)
+	channel(std::shared_ptr<connection_base> connection)
 		: m_connection(connection)
 		, m_max_send_packet_size(0)
 		, m_channel_open(false)
@@ -566,8 +519,8 @@ class channel : public std::enable_shared_from_this<channel>
 
   protected:
 
-	std::shared_ptr<connection_type> m_connection;
-	// basic_open_handler *m_open_handler;
+	std::shared_ptr<connection_base> m_connection;
+	std::unique_ptr<detail::open_channel_op> m_open_handler;
 
 	uint32_t m_max_send_packet_size;
 	bool m_channel_open = false, m_send_pending = false;
@@ -577,7 +530,7 @@ class channel : public std::enable_shared_from_this<channel>
 	uint32_t m_host_window_size;
 
 	// std::deque<basic_write_op *> m_pending;
-	// std::deque<char> m_received;
+	std::deque<char> m_received;
 	// std::deque<basic_read_op *> m_read_ops;
 	bool m_eof;
 
