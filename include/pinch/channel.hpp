@@ -140,6 +140,7 @@ class channel : public std::enable_shared_from_this<channel>
 								m_my_channel_id = s_next_channel_id++;
 								connection->open_channel(shared_from_this(), m_my_channel_id);
 								state = open;
+								// connection->async_wait(connection_base::wait_read, std::move(self));
 							}
 							else
 								connection->async_connect(std::move(self));

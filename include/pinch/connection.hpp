@@ -122,6 +122,19 @@ class connection_base
 
 	bool has_open_channels();
 
+	enum wait_type
+	{
+		wait_read, wait_write, wait_error
+	};
+
+	// template<typename Handler>
+	// auto async_wait(wait_type type, Handler&& handler)
+	// {
+	// 	boost::asio::async_initiate<Handler, void(boost::system::error_code)>(
+	// 		initiate_async_wait(type, this), handler
+	// 	);
+	// }
+
   protected:
 
 	connection_base(const std::string& user)
@@ -162,6 +175,10 @@ class connection_base
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;
 	port_forward_listener *m_port_forwarder;
+
+
+
+
 };
 
 
@@ -479,6 +496,158 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 	}
 }
 
+// --------------------------------------------------------------------
+
+class open_channel_op : public boost::asio::detail::operation
+{
+  public:
+	boost::system::error_code m_ec;
+	uint32_t m_channel_id;
+
+  protected:
+	open_channel_op(func_type func)
+		: boost::asio::detail::operation(func)
+		, m_channel_id(0)
+	{
+	}
+};
+
+template <typename Handler, typename IoExecutor>
+class open_channel_handler : public open_channel_op
+{
+  public:
+	BOOST_ASIO_DEFINE_HANDLER_PTR(open_channel_handler);
+
+	open_channel_handler(Handler& h, const IoExecutor& io_ex)
+		: open_channel_op(&open_channel_handler::do_complete)
+		, handler_(BOOST_ASIO_MOVE_CAST(Handler)(h))
+		, io_executor_(io_ex)
+	{
+		boost::asio::detail::handler_work<Handler, IoExecutor>::start(handler_, io_executor_);
+	}
+
+	static void do_complete(void* owner, boost::asio::detail::operation* base,
+		const boost::system::error_code& /*ec*/,
+		std::size_t /*bytes_transferred*/)
+	{
+		// Take ownership of the handler object.
+		open_channel_handler* h(static_cast<open_channel_handler*>(base));
+		ptr p = { boost::asio::detail::addressof(h->handler_), h, h };
+		boost::asio::detail::handler_work<Handler, IoExecutor> w(h->handler_, h->io_executor_);
+
+		// BOOST_ASIO_HANDLER_COMPLETION((*h));
+
+		// Make a copy of the handler so that the memory can be deallocated before
+		// the upcall is made. Even if we're not about to make an upcall, a
+		// sub-object of the handler may be the true owner of the memory associated
+		// with the handler. Consequently, a local copy of the handler is required
+		// to ensure that any owning sub-object remains valid until after we have
+		// deallocated the memory here.
+		boost::asio::detail::binder2<Handler, boost::system::error_code, int> handler(h->handler_, h->ec_, h->signal_number_);
+		p.h = boost::asio::detail::addressof(handler.handler_);
+		p.reset();
+
+		// Make the upcall if required.
+		if (owner)
+		{
+			boost::asio::detail::fenced_block b(boost::asio::detail::fenced_block::half);
+			w.complete(handler, handler.handler_);
+		}
+	}
+
+  private:
+	Handler handler_;
+	IoExecutor io_executor_;
+};
+
+
+class connection_service : public boost::asio::detail::execution_context_service_base<connection_service>
+{
+  public:
+
+
+	// The implementation type of the signal_set.
+	class implementation_type
+	{
+ 	  public:
+		// Default constructor.
+		implementation_type()
+			// : signals_(0)
+		{
+		}
+
+	private:
+		// Only this service will have access to the internal values.
+		friend class connection_service;
+
+		// The pending signal handlers.
+		boost::asio::detail::op_queue<open_channel_op> m_queue;
+
+		// // Linked list of registered signals.
+		// registration* signals_;
+	};
+
+	connection_service(boost::asio::execution_context& context)
+		: boost::asio::detail::execution_context_service_base<connection_service>(context)
+		, m_scheduler(boost::asio::use_service<scheduler_impl>(context))
+		// , m_reactor(boost::asio::use_service<reactor>(context))
+		, m_next(nullptr), m_prev(nullptr)
+	{
+	}
+
+
+  private:
+
+	// Start an asynchronous operation to wait for a channel open
+	template <typename Handler, typename IoExecutor>
+	void async_wait(implementation_type& impl, Handler& handler, const IoExecutor& io_ex)
+	{
+		// Allocate and construct an operation to wrap the handler.
+		typedef open_channel_handler<Handler, IoExecutor> op;
+		typename op::ptr p = { boost::asio::detail::addressof(handler),
+			op::ptr::allocate(handler), 0 };
+		p.p = new (p.v) op(handler, io_ex);
+
+		// BOOST_ASIO_HANDLER_CREATION((scheduler_.context(),
+		// 		*p.p, "signal_set", &impl, 0, "async_wait"));
+
+		start_wait_op(impl, p.p);
+		p.v = p.p = 0;
+	}
+
+	void start_wait_op(implementation_type& impl, open_channel_op* op)
+	{
+		m_scheduler.work_started();
+
+		// signal_state* state = get_signal_state();
+		// static_mutex::scoped_lock lock(state->mutex_);
+
+		// registration* reg = impl.signals_;
+		// while (reg)
+		// {
+		// 	if (reg->undelivered_ > 0)
+		// 	{
+		// 	--reg->undelivered_;
+		// 	op->signal_number_ = reg->signal_number_;
+		// 	scheduler_.post_deferred_completion(op);
+		// 	return;
+		// 	}
+
+		// 	reg = reg->next_in_set_;
+		// }
+
+		impl.m_queue.push(op);
+	}
+
+	typedef class boost::asio::detail::scheduler scheduler_impl;
+
+	scheduler_impl& m_scheduler;
+	// boost::asio::detail::reactor& m_reactor;
+
+	connection_service* m_next;
+	connection_service* m_prev;
+};
+
 }
 
 template<typename Stream>
@@ -508,7 +677,7 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 	/// The type of the executor associated with the object.
 	using executor_type = typename lowest_layer_type::executor_type;
 
-	executor_type get_executor() noexcept
+	virtual executor_type get_executor() noexcept
 	{
 		return m_next_layer.lowest_layer().get_executor();
 	}
@@ -629,6 +798,38 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 				self->received_data(ec);
 			});
 	}
+
+	// class initiate_async_wait
+	// {
+	//   public:
+	// 	explicit initiate_async_wait(basic_connection* self)
+	// 		: m_self(self)
+	// 	{
+	// 	}
+
+	// 	executor_type get_executor() const BOOST_ASIO_NOEXCEPT
+	// 	{
+	// 		return m_self->get_executor();
+	// 	}
+
+	// 	template <typename WaitHandler>
+	// 	void operator()(WaitHandler&& handler) const
+	// 	{
+	// 		// Allocate and construct an operation to wrap the handler.
+	// 		typedef boost::asio::detail::wait_handler<Handler, executor_type> op;
+	// 		typename op::ptr p = { boost::asio::detail::addressof(handler), op::ptr::allocate(handler), 0 };
+	// 		p.p = new (p.v) op(handler, get_executor());
+
+	// 		// BOOST_ASIO_HANDLER_CREATION((scheduler_.context(), *p.p, "object_handle",
+	// 		// 	&impl, reinterpret_cast<uintmax_t>(impl.wait_handle_), "async_wait"));
+
+	// 		start_wait_op(impl, p.p);
+	// 		p.v = p.p = 0;
+	// 	}
+
+	//   private:
+	// 	connection_base* m_self;
+	// };
 
 	Stream m_next_layer;
 };
