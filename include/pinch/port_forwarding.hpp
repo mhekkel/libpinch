@@ -5,14 +5,14 @@
 
 // #pragma once
 
-// #include <assh/config.hpp>
+// #include <pinch/pinch.hpp>
 
 // #include <boost/asio.hpp>
 
-// #include <assh/channel.hpp>
-// #include <assh/packet.hpp>
+// #include <pinch/channel.hpp>
+// #include <pinch/packet.hpp>
 
-// namespace assh
+// namespace pinch
 // {
 
 // class connection_base;

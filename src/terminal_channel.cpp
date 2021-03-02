@@ -3,15 +3,15 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
-#include <assh/packet.hpp>
-#include <assh/terminal_channel.hpp>
-#include <assh/connection.hpp>
+#include <pinch/packet.hpp>
+#include <pinch/terminal_channel.hpp>
+#include <pinch/connection.hpp>
 
 using namespace std;
 
-namespace assh
+namespace pinch
 {
 
 // terminal_channel::terminal_channel(std::shared_ptr<connection_base> connection)

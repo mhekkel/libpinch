@@ -3,17 +3,17 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <cassert>
 #include <regex>
 
 #include <iterator>
 
-#include <assh/ssh_agent.hpp>
-#include <assh/detail/ssh_agent_impl.hpp>
-#include <assh/packet.hpp>
-#include <assh/connection.hpp>
+#include <pinch/ssh_agent.hpp>
+#include <pinch/detail/ssh_agent_impl.hpp>
+#include <pinch/packet.hpp>
+#include <pinch/connection.hpp>
 
 #include <cryptopp/base64.h>
 #include <cryptopp/rsa.h>
@@ -35,7 +35,7 @@ using namespace std;
 using namespace CryptoPP;
 namespace ba = boost::algorithm;
 
-namespace assh
+namespace pinch
 {
 
 // --------------------------------------------------------------------
@@ -256,7 +256,7 @@ void ssh_agent::unregister_connection(std::shared_ptr<connection_base> connectio
 void ssh_agent::expose_pageant(bool expose)
 {
 #if defined(_MSC_VER)
-	assh::expose_pageant(expose);
+	pinch::expose_pageant(expose);
 #endif
 }
 

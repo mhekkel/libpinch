@@ -7,10 +7,10 @@
 
 #include <functional>
 
-#include <assh/config.hpp>
-#include <assh/packet.hpp>
+#include <pinch/pinch.hpp>
+#include <pinch/packet.hpp>
 
-namespace assh
+namespace pinch
 {
 
 using verify_host_key_func = std::function<bool(const std::string&, const std::vector<uint8_t>&)>;
@@ -57,4 +57,4 @@ class key_exchange
  	verify_host_key_func cb_verify_host_key;
  };
 
-} // namespace assh
+} // namespace pinch

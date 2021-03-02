@@ -3,11 +3,11 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
-#include <assh/ssh_agent.hpp>
-#include <assh/detail/ssh_agent_impl.hpp>
-#include <assh/packet.hpp>
+#include <pinch/ssh_agent.hpp>
+#include <pinch/detail/ssh_agent_impl.hpp>
+#include <pinch/packet.hpp>
 
 #include <winsdkver.h>
 #include <Aclapi.h>
@@ -20,7 +20,7 @@
 using namespace CryptoPP;
 using namespace std;
 
-namespace assh
+namespace pinch
 {
 
 // --------------------------------------------------------------------

@@ -1,4 +1,4 @@
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <iostream>
 
@@ -6,16 +6,16 @@
 #include <boost/iostreams/copy.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include <assh/connection.hpp>
-#include <assh/connection_pool.hpp>
-#include <assh/proxy_cmd.hpp>
-#include <assh/terminal_channel.hpp>
-#include <assh/sftp_channel.hpp>
-#include <assh/debug.hpp>
+#include <pinch/connection.hpp>
+#include <pinch/connection_pool.hpp>
+#include <pinch/proxy_cmd.hpp>
+#include <pinch/terminal_channel.hpp>
+#include <pinch/sftp_channel.hpp>
+#include <pinch/debug.hpp>
 
 #if defined(_MSC_VER)
 #pragma comment (lib, "libz")
-#pragma comment (lib, "libassh")
+#pragma comment (lib, "libpinch")
 #pragma comment (lib, "cryptlib")
 #endif
 
@@ -25,10 +25,10 @@ namespace io = boost::iostreams;
 class client
 {
   public:
-			client(assh::std::shared_ptr<connection_base> connection)
+			client(pinch::std::shared_ptr<connection_base> connection)
 				: m_first(true)
 			{
-				m_channel.reset(new assh::terminal_channel(connection));
+				m_channel.reset(new pinch::terminal_channel(connection));
 				m_channel->open_with_pty(80, 24, "xterm", true, true, [this](const boost::system::error_code& ec)
 				{
 					if (ec)
@@ -40,7 +40,7 @@ class client
 						this->received(ec, 0);
 				});
 				
-				m_sftp_channel.reset(new assh::sftp_channel(connection));
+				m_sftp_channel.reset(new pinch::sftp_channel(connection));
 				m_sftp_channel->async_open([this](const boost::system::error_code& ec)
 				{
 					if (ec)
@@ -54,7 +54,7 @@ class client
 
 						//m_sftp_channel.read_dir("/home/maarten", []
 						//		(const boost::system::error_code& ec, const string& name, const string& longname,
-						//			const assh::sftp_channel::file_attributes& attr) -> bool
+						//			const pinch::sftp_channel::file_attributes& attr) -> bool
 						//		{
 						//			if (ec)
 						//				cerr << "read dir error: " << ec.message() << endl;
@@ -67,7 +67,7 @@ class client
 			}
 
 	bool	read_dir(const boost::system::error_code& ec, const string& name, const string& longname,
-				const assh::sftp_channel::file_attributes& attr)
+				const pinch::sftp_channel::file_attributes& attr)
 			{
 				if (ec)
 					cerr << "read dir error: " << ec.message() << endl;
@@ -123,8 +123,8 @@ class client
 				}
 			}
 	
-	shared_ptr<assh::terminal_channel> m_channel;
-	shared_ptr<assh::sftp_channel> m_sftp_channel;
+	shared_ptr<pinch::terminal_channel> m_channel;
+	shared_ptr<pinch::sftp_channel> m_sftp_channel;
 	boost::asio::streambuf m_response;
 	bool m_first;
 };
@@ -144,12 +144,12 @@ int main(int argc, char* const argv[])
 		string user = argv[3];
 	
 		boost::asio::io_service io_service;
-		assh::connection_pool pool(io_service);
+		pinch::connection_pool pool(io_service);
 
 		//pool.register_proxy("newcmbi2", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
 		//pool.register_proxy("newcmbi2.cmbi.ru.nl", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
 	
-		assh::std::shared_ptr<connection_base> connection(pool.get(user, host, boost::lexical_cast<int16_t>(port)));
+		pinch::std::shared_ptr<connection_base> connection(pool.get(user, host, boost::lexical_cast<int16_t>(port)));
 
 		client* c = nullptr;
 		

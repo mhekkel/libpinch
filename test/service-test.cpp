@@ -10,12 +10,12 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 
-#include "assh/connection.hpp"
-#include "assh/connection_pool.hpp"
-#include "assh/channel.hpp"
-#include "assh/terminal_channel.hpp"
-#include "assh/ssh_agent.hpp"
-#include "assh/crypto-engine.hpp"
+#include "pinch/connection.hpp"
+#include "pinch/connection_pool.hpp"
+#include "pinch/channel.hpp"
+#include "pinch/terminal_channel.hpp"
+#include "pinch/ssh_agent.hpp"
+#include "pinch/crypto-engine.hpp"
 
 
 namespace ba = boost::algorithm;
@@ -26,10 +26,10 @@ int main() {
 
 	boost::asio::io_context io_context;
 
-	auto conn = std::make_shared<assh::connection>(io_context, "maarten");
+	auto conn = std::make_shared<pinch::connection>(io_context, "maarten");
 
 	tcp::resolver resolver(io_context);
-	tcp::resolver::results_type endpoints = resolver.resolve("s4", "2022");
+	tcp::resolver::results_type endpoints = resolver.resolve("localhost", "2022");
 
 	boost::asio::connect(conn->lowest_layer(), endpoints);
 
@@ -39,7 +39,7 @@ int main() {
 	// 	// t->close();
 	// });
 
-	auto channel = std::make_shared<assh::channel>(conn);
+	auto channel = std::make_shared<pinch::channel>(conn);
 
 	channel->async_open([](const boost::system::error_code& ec)
 	{

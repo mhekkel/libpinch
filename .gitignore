@@ -6,10 +6,10 @@ GNUmakefile
 aclocal.m4
 obj
 obj.dbg
-libassh.a
+libpinch.a
 test/core
 test/service-test
 .libs
-libassh.la
+libpinch.la
 libtool
 test/unit-test

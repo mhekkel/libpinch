@@ -3,19 +3,19 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <list>
 
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
 
-#include <assh/proxy_cmd.hpp>
-#include <assh/connection_pool.hpp>
+#include <pinch/proxy_cmd.hpp>
+#include <pinch/connection_pool.hpp>
 
 using namespace std;
 
-namespace assh
+namespace pinch
 {
 
 // // --------------------------------------------------------------------

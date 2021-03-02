@@ -3,20 +3,20 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <functional>
 #include <regex>
 
 #include <boost/lexical_cast.hpp>
 
-#include <assh/port_forwarding.hpp>
-#include <assh/connection.hpp>
+#include <pinch/port_forwarding.hpp>
+#include <pinch/connection.hpp>
 
 using namespace std;
 namespace ip = boost::asio::ip;
 
-namespace assh
+namespace pinch
 {
 
 forwarding_channel::forwarding_channel(std::shared_ptr<connection_base> inConnection, const string& remote_addr, int16_t remote_port)

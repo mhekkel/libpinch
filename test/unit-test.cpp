@@ -2,8 +2,8 @@
 
 #include <iostream>
 
-#include <assh/connection.hpp>
-#include <assh/terminal_channel.hpp>
+#include <pinch/connection.hpp>
+#include <pinch/terminal_channel.hpp>
 
 void SetStdinEcho(bool enable)
 {
@@ -23,7 +23,7 @@ void SetStdinEcho(bool enable)
 // {
 // 	boost::asio::io_service io_service;
 
-// 	// auto connection = std::make_shared<assh::connection>(io_service, "maarten", "localhost", 22);
+// 	// auto connection = std::make_shared<pinch::connection>(io_service, "maarten", "localhost", 22);
 
 // 	// connection->set_password_callback([connection]()
 // 	// {
@@ -39,7 +39,7 @@ void SetStdinEcho(bool enable)
 // 	// 		connection->response({ password });
 // 	// });
 
-// 	// auto ch = std::make_shared<assh::terminal_channel>(connection);
+// 	// auto ch = std::make_shared<pinch::terminal_channel>(connection);
 
 // 	// auto mcb = [](const std::string& msg, const std::string& lang)
 // 	// {
@@ -60,7 +60,7 @@ void SetStdinEcho(bool enable)
 // 		io_service.run();
 // 	});
 
-// 	auto connection = std::make_shared<assh::connection2>(io_service, "maarten", "localhost", 2022);
+// 	auto connection = std::make_shared<pinch::connection2>(io_service, "maarten", "localhost", 2022);
 	
 // 	auto f1 = connection->async_connect(boost::asio::use_future);
 

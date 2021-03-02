@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <cassert>
 
@@ -21,11 +21,11 @@
 #include <boost/asio/spawn.hpp>
 #include <boost/thread/condition.hpp>
 
-#include <assh/error.hpp>
-#include <assh/packet.hpp>
-#include <assh/connection.hpp>
+#include <pinch/error.hpp>
+#include <pinch/packet.hpp>
+#include <pinch/connection.hpp>
 
-namespace assh
+namespace pinch
 {
 
 class connection_base;
@@ -118,13 +118,14 @@ class channel : public std::enable_shared_from_this<channel>
 	template<typename Handler>
 	auto async_open(Handler&& handler)
 	{
-		enum { start, connected };
+		enum { start, open };
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
 			[
 				state = start,
 				channel = this->shared_from_this(),
-				connection = m_connection
+				connection = m_connection,
+				this
 			]
 			(auto& self, boost::system::error_code ec = {}, size_t = 0) mutable
 			{
@@ -135,17 +136,16 @@ class channel : public std::enable_shared_from_this<channel>
 						case start:
 							if (connection->is_connected())
 							{
-
-								// m_my_window_size = kWindowSize;
-								// m_my_channel_id = s_next_channel_id++;
-								// connection->open_channel(shared_from_this(), m_my_channel_id);
-								state = connected;
+								m_my_window_size = kWindowSize;
+								m_my_channel_id = s_next_channel_id++;
+								connection->open_channel(shared_from_this(), m_my_channel_id);
+								state = open;
 							}
 							else
 								connection->async_connect(std::move(self));
 							return;
 
-						case connected:
+						case open:
 							break;
 					}
 				}
@@ -185,18 +185,18 @@ class channel : public std::enable_shared_from_this<channel>
 	// // }
 
 	// void open();
-	// void close();
+	void close();
 	// void disconnect(bool disconnectProxy = false);
 
-	// virtual void fill_open_opacket(opacket& out);
+	virtual void fill_open_opacket(opacket& out);
 
-	// virtual void opened();
-	// virtual void closed();
-	// virtual void end_of_file();
+	virtual void opened();
+	virtual void closed();
+	virtual void end_of_file();
 
 	// void keep_alive();
 
-	// virtual void succeeded(); // the request succeeded
+	virtual void succeeded(); // the request succeeded
 
 	// std::string get_connection_parameters(direction dir) const;
 	// std::string get_key_exchange_algoritm() const;
@@ -212,7 +212,7 @@ class channel : public std::enable_shared_from_this<channel>
 	// void send_signal(const std::string& inSignal);
 
 	uint32_t my_channel_id() const { return m_my_channel_id; }
-	// bool is_open() const { return m_channel_open; }
+	bool is_open() const { return m_channel_open; }
 
 	typedef std::function<void(const std::string &, const std::string &)> message_callback_type;
 
@@ -535,7 +535,7 @@ class channel : public std::enable_shared_from_this<channel>
 		, m_max_send_packet_size(0)
 		, m_channel_open(false)
 		, m_send_pending(false)
-		, m_my_channel_id(s_next_channel_id++)
+		, m_my_channel_id(0)
 		, m_host_channel_id(0)
 		, m_my_window_size(kWindowSize)
 		, m_host_window_size(0)
@@ -552,23 +552,24 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual std::string
 	channel_type() const { return "session"; }
 
-	// virtual void setup(ipacket& in);
+	virtual void setup(ipacket& in);
 
-	// // low level
-	// void send_pending();
-	// void push_received();
+	// low level
+	void send_pending();
+	void push_received();
 
-	// virtual void receive_data(const char *data, std::size_t size);
-	// virtual void receive_extended_data(const char *data, std::size_t size, uint32_t type);
+	virtual void receive_data(const char *data, std::size_t size);
+	virtual void receive_extended_data(const char *data, std::size_t size, uint32_t type);
 
-	// virtual void handle_channel_request(const std::string& request, ipacket& in, opacket& out);
+	virtual void handle_channel_request(const std::string& request, ipacket& in, opacket& out);
 
   protected:
+
 	std::shared_ptr<connection_type> m_connection;
 	// basic_open_handler *m_open_handler;
 
 	uint32_t m_max_send_packet_size;
-	bool m_channel_open, m_send_pending;
+	bool m_channel_open = false, m_send_pending = false;
 	uint32_t m_my_channel_id;
 	uint32_t m_host_channel_id;
 	uint32_t m_my_window_size;
@@ -634,4 +635,4 @@ class channel : public std::enable_shared_from_this<channel>
 // 	basic_result_handler *m_handler;
 // };
 
-} // namespace assh
+} // namespace pinch

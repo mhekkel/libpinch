@@ -5,16 +5,16 @@
 
 #pragma once
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <boost/format.hpp>
 #include <boost/function.hpp>
 #include <boost/asio.hpp>
 
-#include <assh/channel.hpp>
-#include <assh/packet.hpp>
+#include <pinch/channel.hpp>
+#include <pinch/packet.hpp>
 
-namespace assh
+namespace pinch
 {
 
 namespace error
@@ -162,7 +162,7 @@ class sftp_channel : public channel
 namespace boost {
 namespace system {
 
-template<> struct is_error_code_enum<assh::error::sftp_error>
+template<> struct is_error_code_enum<pinch::error::sftp_error>
 {
   static const bool value = true;
 };

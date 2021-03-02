@@ -3,7 +3,7 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <random>
 
@@ -11,13 +11,13 @@
 
 #include <zlib.h>
 
-#include <assh/packet.hpp>
-#include <assh/channel.hpp>
+#include <pinch/packet.hpp>
+#include <pinch/channel.hpp>
 
 using namespace std;
 namespace ba = boost::algorithm;
 
-namespace assh
+namespace pinch
 {
 
 struct compression_helper_impl

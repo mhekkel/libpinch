@@ -5,14 +5,14 @@
 
 #pragma once
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <list>
 
 #include <boost/asio/io_service.hpp>
-#include <assh/connection.hpp>
+#include <pinch/connection.hpp>
 
-namespace assh
+namespace pinch
 {
 
 	// class connection_pool
@@ -81,4 +81,4 @@ namespace assh
 	// 		m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 	// };
 
-} // namespace assh
+} // namespace pinch

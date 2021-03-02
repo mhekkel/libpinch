@@ -7,7 +7,7 @@
 
 #include <vector>
 
-namespace assh
+namespace pinch
 {
 
 class ssh_private_key_impl

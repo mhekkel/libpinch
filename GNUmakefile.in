@@ -32,10 +32,10 @@ GNUmakefile: config.status GNUmakefile.in
 	$(SHELL) ./config.status
 
 LIB_NAME			= @PACKAGE_NAME@
-LIB_VERSION			= @LIBASSH_LT_VERSION@
-LIB_CURRENT			= @LIBASSH_LT_CURRENT@
+LIB_VERSION			= @LIBPINCH_LT_VERSION@
+LIB_CURRENT			= @LIBPINCH_LT_CURRENT@
 LIB_TARGET			= $(LIB_NAME).la
-VERSION             = @LIBASSH_SEMANTIC_VERSION@
+VERSION             = @LIBPINCH_SEMANTIC_VERSION@
 DIST_NAME           = @PACKAGE_NAME@-$(subst :,.,$(VERSION))
 
 # libtool stuff
@@ -135,7 +135,7 @@ $(1)_OBJECTS = $$(OBJDIR)/$(1)-test.o
 
 test/$(1)-test: $(LIB_TARGET) $$($(1)_OBJECTS)
 	@ echo ">>> building $(1)-test"
-	$(LIBTOOL) --mode=link $(CXX) $(CXXFLAGS) $(LDFLAGS) -o $$@ $$($(1)_OBJECTS) -lassh -lboost_program_options $(LIBS)
+	$(LIBTOOL) --mode=link $(CXX) $(CXXFLAGS) $(LDFLAGS) -o $$@ $$($(1)_OBJECTS) -lpinch -lboost_program_options $(LIBS)
 
 .PHONY: $(1)-test
 $(1)-test: test/$(1)-test
@@ -171,8 +171,8 @@ HEADERS = \
 install: lib
 	install -d $(libdir)
 	$(LIBTOOL) --mode=install install $(LIB_TARGET) $(libdir)
-	install -d $(includedir)/assh
-	for f in $(HEADERS); do install include/assh/$$f $(includedir)/assh/$$f; done
+	install -d $(includedir)/pinch
+	for f in $(HEADERS); do install include/pinch/$$f $(includedir)/pinch/$$f; done
 	install -d $(pkgconfigdir)
 	install -m 644 $(LIB_NAME).pc $(pkgconfigdir)/$(LIB_NAME).pc
 

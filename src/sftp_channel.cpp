@@ -3,15 +3,15 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
-#include <assh/sftp_channel.hpp>
-#include <assh/connection.hpp>
-#include <assh/packet.hpp>
+#include <pinch/sftp_channel.hpp>
+#include <pinch/connection.hpp>
+#include <pinch/packet.hpp>
 
 using namespace std;
 
-namespace assh
+namespace pinch
 {
 
 enum sftp_messages : uint8_t
@@ -252,7 +252,7 @@ void sftp_channel::receive_data(const char* data, size_t size)
 		{
 			try
 			{
-				if (static_cast<assh::sftp_messages>(m_packet.message()) == SSH_FXP_VERSION)
+				if (static_cast<pinch::sftp_messages>(m_packet.message()) == SSH_FXP_VERSION)
 					m_packet >> m_version;
 				else
 					process_packet();

@@ -3,20 +3,20 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <regex>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/regex.hpp>
 
-#include <assh/proxy_cmd.hpp>
-#include <assh/channel.hpp>
+#include <pinch/proxy_cmd.hpp>
+#include <pinch/channel.hpp>
 
 using namespace std;
 namespace ba = boost::algorithm;
 
-namespace assh
+namespace pinch
 {
 
 // --------------------------------------------------------------------

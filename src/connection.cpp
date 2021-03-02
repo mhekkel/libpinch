@@ -3,26 +3,23 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <iostream>
 
-#include <assh/connection.hpp>
-#include <assh/channel.hpp>
-#include <assh/ssh_agent.hpp>
-// #include <assh/x11_channel.hpp>
-#include <assh/key_exchange.hpp>
-#include <assh/error.hpp>
-// #include <assh/port_forwarding.hpp>
-#include <assh/crypto-engine.hpp>
-
-using namespace std;
-using namespace CryptoPP;
+#include <pinch/connection.hpp>
+#include <pinch/channel.hpp>
+#include <pinch/ssh_agent.hpp>
+// #include <pinch/x11_channel.hpp>
+#include <pinch/key_exchange.hpp>
+#include <pinch/error.hpp>
+// #include <pinch/port_forwarding.hpp>
+#include <pinch/crypto-engine.hpp>
 
 namespace io = boost::iostreams;
 namespace ba = boost::algorithm;
 
-namespace assh
+namespace pinch
 {
 
 // --------------------------------------------------------------------
@@ -31,8 +28,8 @@ const int64_t kKeepAliveInterval = 60; // 60 seconds, should be ok?
 
 // --------------------------------------------------------------------
 
-const string
-	kSSHVersionString("SSH-2.0-libassh");
+const std::string
+	kSSHVersionString("SSH-2.0-libpinch");
 
 // --------------------------------------------------------------------
 
@@ -45,18 +42,28 @@ void connection_base::handle_error(const boost::system::error_code &ec)
 
 		disconnect();
 
-		m_auth_state = auth_state_type::connected;
+		m_authenticated = false;
 		// handle_connect_result(ec);
 	}
 }
 
 void connection_base::reset()
 {
-	m_auth_state = auth_state_type::none;
+	m_authenticated = false;
 	m_private_key_hash.clear();
 	m_session_id.clear();
 	m_crypto_engine.reset();
 	m_last_io = 0;
+}
+
+void connection_base::disconnect()
+{
+	reset();
+
+	// copy the list since calling Close will change it
+	std::list<channel_ptr> channels(m_channels);
+	for (auto ch: channels)
+		ch->close();
 }
 
 // the read loop, this routine keeps calling itself until an error condition is met
@@ -70,17 +77,26 @@ void connection_base::received_data(boost::system::error_code ec)
 	}
 
 	// don't process data at all if we're no longer willing
-	if (m_auth_state == auth_state_type::none)
+	if (not m_authenticated)
 		return;
 
 	try
 	{
-		auto p = m_crypto_engine.get_next_packet(m_response, ec);
+		for (;;)
+		{
+			auto p = m_crypto_engine.get_next_packet(m_response, ec);
 
-		if (ec)
-			handle_error(ec);
-		else if (p)
+			if (ec)
+			{
+				handle_error(ec);
+				break;
+			}
+			
+			if (not p)
+				break;
+
 			process_packet(*p);
+		}
 
 		async_read();
 	}
@@ -121,9 +137,9 @@ void connection_base::process_packet(ipacket& in)
 
 		// channel
 		case msg_channel_open:
-			if (m_auth_state == auth_state_type::authenticated)
-				process_channel_open(in, out);
+			process_channel_open(in, out);
 			break;
+
 		case msg_channel_open_confirmation:
 		case msg_channel_open_failure:
 		case msg_channel_window_adjust:
@@ -134,8 +150,7 @@ void connection_base::process_packet(ipacket& in)
 		case msg_channel_request:
 		case msg_channel_success:
 		case msg_channel_failure:
-			if (m_auth_state == auth_state_type::authenticated)
-				process_channel(in, out, ec);
+			process_channel(in, out, ec);
 			break;
 
 		case msg_global_request:
@@ -258,6 +273,75 @@ void connection_base::process_channel(ipacket &in, opacket &out, boost::system::
 	catch (...)
 	{
 	}
+}
+
+void connection_base::open_channel(channel_ptr ch, uint32_t channel_id)
+{
+	if (std::find(m_channels.begin(), m_channels.end(), ch) == m_channels.end())
+	{
+		// some sanity check first
+		assert(find_if(m_channels.begin(), m_channels.end(),
+						[channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
+		assert(not ch->is_open());
+
+		m_channels.push_back(ch);
+	}
+
+	if (m_authenticated)
+	{
+		opacket out(msg_channel_open);
+		ch->fill_open_opacket(out);
+		async_write(std::move(out));
+	}
+}
+
+void connection_base::close_channel(channel_ptr ch, uint32_t channel_id)
+{
+	if (ch->is_open())
+	{
+		if (m_authenticated)
+		{
+			opacket out(msg_channel_close);
+			out << channel_id;
+			async_write(std::move(out));
+		}
+
+		ch->closed();
+	}
+
+	// auto self(shared_from_this());
+	// auto iter = remove_if(m_connect_handlers.begin(), m_connect_handlers.end(),
+	// 						[self, &ch](basic_connect_handler *h) -> bool {
+	// 							bool result = false;
+	// 							if (h->m_opening_channel == ch)
+	// 							{
+	// 								delete h;
+	// 								result = true;
+	// 							}
+	// 							return result;
+	// 						});
+
+	// m_connect_handlers.erase(iter, m_connect_handlers.end());
+
+	// m_channels.erase(
+	// 	remove(m_channels.begin(), m_channels.end(), ch),
+	// 	m_channels.end());
+}
+
+bool connection_base::has_open_channels()
+{
+	bool channel_open = false;
+
+	for (auto c : m_channels)
+	{
+		if (c->is_open())
+		{
+			channel_open = true;
+			break;
+		}
+	}
+
+	return channel_open;
 }
 
 
@@ -1026,74 +1110,7 @@ void connection_base::process_channel(ipacket &in, opacket &out, boost::system::
 // 	async_write_int(request, op);
 // }
 
-// void basic_connection::open_channel(channel_ptr ch, uint32_t channel_id)
-// {
-// 	if (find(m_channels.begin(), m_channels.end(), ch) == m_channels.end())
-// 	{
-// 		// some sanity check first
-// 		assert(find_if(m_channels.begin(), m_channels.end(),
-// 						[channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
-// 		assert(not ch->is_open());
 
-// 		m_channels.push_back(ch);
-// 	}
-
-// 	if (m_authenticated)
-// 	{
-// 		opacket out(msg_channel_open);
-// 		ch->fill_open_opacket(out);
-// 		async_write(move(out));
-// 	}
-// }
-
-// void basic_connection::close_channel(channel_ptr ch, uint32_t channel_id)
-// {
-// 	if (ch->is_open())
-// 	{
-// 		if (m_authenticated)
-// 		{
-// 			opacket out(msg_channel_close);
-// 			out << channel_id;
-// 			async_write(move(out));
-// 		}
-
-// 		ch->closed();
-// 	}
-
-// 	auto self(shared_from_this());
-// 	auto iter = remove_if(m_connect_handlers.begin(), m_connect_handlers.end(),
-// 							[self, &ch](basic_connect_handler *h) -> bool {
-// 								bool result = false;
-// 								if (h->m_opening_channel == ch)
-// 								{
-// 									delete h;
-// 									result = true;
-// 								}
-// 								return result;
-// 							});
-
-// 	m_connect_handlers.erase(iter, m_connect_handlers.end());
-
-// 	m_channels.erase(
-// 		remove(m_channels.begin(), m_channels.end(), ch),
-// 		m_channels.end());
-// }
-
-// bool basic_connection::has_open_channels()
-// {
-// 	bool channel_open = false;
-
-// 	for (auto c : m_channels)
-// 	{
-// 		if (c->is_open())
-// 		{
-// 			channel_open = true;
-// 			break;
-// 		}
-// 	}
-
-// 	return channel_open;
-// }
 
 // void basic_connection::process_channel_open(ipacket &in, opacket &out)
 // {
@@ -1258,4 +1275,4 @@ void connection_base::process_channel(ipacket &in, opacket &out, boost::system::
 // 							});
 // }
 
-} // namespace assh
+} // namespace pinch

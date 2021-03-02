@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <vector>
 #include <deque>
@@ -18,7 +18,7 @@
 
 struct z_stream_s;
 
-namespace assh
+namespace pinch
 {
 
 class ipacket;
@@ -273,4 +273,4 @@ ipacket& ipacket::operator>>(INT& v)
 bool operator==(const opacket &, const ipacket &);
 bool operator==(const ipacket &, const opacket &);
 
-} // namespace assh
+} // namespace pinch

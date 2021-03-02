@@ -3,15 +3,15 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
-#include <assh/channel.hpp>
-#include <assh/connection.hpp>
+#include <pinch/channel.hpp>
+#include <pinch/connection.hpp>
 
 using namespace std;
 using namespace CryptoPP;
 
-namespace assh
+namespace pinch
 {
 
 uint32_t channel::s_next_channel_id = 1;
@@ -53,15 +53,15 @@ uint32_t channel::s_next_channel_id = 1;
 // 	// delete m_open_handler;
 // }
 
-// void channel::fill_open_opacket(opacket& out)
-// {
-// 	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
-// }
+void channel::fill_open_opacket(opacket& out)
+{
+	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
+}
 
-// void channel::setup(ipacket& in)
-// {
-// 	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
-// }
+void channel::setup(ipacket& in)
+{
+	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
+}
 
 // void channel::open()
 // {
@@ -88,46 +88,46 @@ uint32_t channel::s_next_channel_id = 1;
 // 	}
 // }
 
-// void channel::opened()
-// {
-// 	if (m_open_handler)
-// 	{
-// 		m_open_handler->handle_open_result(boost::system::error_code());
-// 		delete m_open_handler;
-// 		m_open_handler = nullptr;
-// 	}
-// }
+void channel::opened()
+{
+	// if (m_open_handler)
+	// {
+	// 	m_open_handler->handle_open_result(boost::system::error_code());
+	// 	delete m_open_handler;
+	// 	m_open_handler = nullptr;
+	// }
+}
 
-// void channel::close()
-// {
-// 	if (m_open_handler)
-// 	{
-// 		auto handler = m_open_handler;
-// 		m_open_handler = nullptr;
-// 		handler->handle_open_result(make_error_code(error::by_application));
-// 		delete handler;
-// 	}
+void channel::close()
+{
+	// if (m_open_handler)
+	// {
+	// 	auto handler = m_open_handler;
+	// 	m_open_handler = nullptr;
+	// 	handler->handle_open_result(make_error_code(error::by_application));
+	// 	delete handler;
+	// }
 
-// 	m_connection->close_channel(shared_from_this(), m_host_channel_id);
-// }
+	m_connection->close_channel(shared_from_this(), m_host_channel_id);
+}
 
-// void channel::closed()
-// {
-// 	m_channel_open = false;
-// 	for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
-// 	{
-// 		op->error(error::make_error_code(error::channel_closed));
-// 		delete op;
-// 	});
-// 	m_pending.clear();
+void channel::closed()
+{
+	m_channel_open = false;
+	// for_each(m_pending.begin(), m_pending.end(), [](basic_write_op* op)
+	// {
+	// 	op->error(error::make_error_code(error::channel_closed));
+	// 	delete op;
+	// });
+	// m_pending.clear();
 	
-// 	for_each(m_read_ops.begin(), m_read_ops.end(), [](basic_read_op* op)
-// 	{
-// 		op->error(error::make_error_code(error::channel_closed));
-// 		delete op;
-// 	});
-// 	m_read_ops.clear();
-// }
+	// for_each(m_read_ops.begin(), m_read_ops.end(), [](basic_read_op* op)
+	// {
+	// 	op->error(error::make_error_code(error::channel_closed));
+	// 	delete op;
+	// });
+	// m_read_ops.clear();
+}
 
 // void channel::disconnect(bool disconnectProxy)
 // {
@@ -139,15 +139,15 @@ uint32_t channel::s_next_channel_id = 1;
 // 		proxy->disconnect();
 // }
 
-// void channel::succeeded()
-// {
-// }
+void channel::succeeded()
+{
+}
 
-// void channel::end_of_file()
-// {
-// 	m_eof = true;
-// 	push_received();
-// }
+void channel::end_of_file()
+{
+	m_eof = true;
+	// push_received();
+}
 
 // void channel::keep_alive()
 // {
@@ -245,110 +245,110 @@ void channel::process(ipacket& in)
 {
 	switch ((message_type)in)
 	{
-// 		case msg_channel_open_confirmation:
-// 			setup(in);
-// 			m_channel_open = true;
-// 			m_eof = false;
-// 			opened();
-// 			break;
+		case msg_channel_open_confirmation:
+			setup(in);
+			m_channel_open = true;
+			m_eof = false;
+			opened();
+			break;
 
-// 		case msg_channel_open_failure:
-// 		{
-// 			uint32_t reasonCode;
-// 			string reason;
+		case msg_channel_open_failure:
+		{
+			uint32_t reasonCode;
+			string reason;
 			
-// 			in >> reasonCode >> reason;
+			in >> reasonCode >> reason;
 			
-// 			error(reason, "en");
+			error(reason, "en");
 
-// 			m_connection->close_channel(shared_from_this(), 0);
+			m_connection->close_channel(shared_from_this(), 0);
 			
-// 			if (m_open_handler)
-// 			{
-// 				m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
-// 				delete m_open_handler;
-// 				m_open_handler = nullptr;
-// 			}
+			// if (m_open_handler)
+			// {
+			// 	m_open_handler->handle_open_result(error::make_error_code(error::connection_lost));
+			// 	delete m_open_handler;
+			// 	m_open_handler = nullptr;
+			// }
 
-// 			break;
-// 		}
+			break;
+		}
 
-// 		case msg_channel_close:
-// 			closed();
-// 			m_connection->close_channel(shared_from_this(), 0);
-// 			break;
+		case msg_channel_close:
+			closed();
+			m_connection->close_channel(shared_from_this(), 0);
+			break;
 
-// 		case msg_channel_success:
-// 			succeeded();
-// 			break;
+		case msg_channel_success:
+			succeeded();
+			break;
 
-// 		case msg_channel_window_adjust:
-// 		{
-// 			int32_t extra;
-// 			in >> extra;
-// 			m_host_window_size += extra;
-// 			send_pending();
-// 			break;
-// 		}
+		case msg_channel_window_adjust:
+		{
+			int32_t extra;
+			in >> extra;
+			m_host_window_size += extra;
+			send_pending();
+			break;
+		}
 		
-// 		case msg_channel_data:
-// 			if (m_channel_open)
-// 			{
-// 				pair<const char*,size_t> data;
-// 				in >> data;
-// 				m_my_window_size -= data.second;
-// 				receive_data(data.first, data.second);
-// 			}
-// 			break;
+		case msg_channel_data:
+			if (m_channel_open)
+			{
+				pair<const char*,size_t> data;
+				in >> data;
+				m_my_window_size -= data.second;
+				receive_data(data.first, data.second);
+			}
+			break;
 
-// 		case msg_channel_extended_data:
-// 			if (m_channel_open)
-// 			{
-// 				uint32_t type;
-// 				pair<const char*,size_t> data;
-// 				in >> type >> data;
-// 				m_my_window_size -= data.second;
-// 				receive_extended_data(data.first, data.second, type);
-// 			}
-// 			break;
+		case msg_channel_extended_data:
+			if (m_channel_open)
+			{
+				uint32_t type;
+				pair<const char*,size_t> data;
+				in >> type >> data;
+				m_my_window_size -= data.second;
+				receive_extended_data(data.first, data.second, type);
+			}
+			break;
 		
-// 		case msg_channel_eof:
-// 			end_of_file();
-// 			break;
+		case msg_channel_eof:
+			end_of_file();
+			break;
 
-// 		case msg_channel_request:
-// 		{
-// 			string request;
-// 			bool want_reply = false;
+		case msg_channel_request:
+		{
+			string request;
+			bool want_reply = false;
 			
-// 			in >> request >> want_reply;
+			in >> request >> want_reply;
 
-// 			opacket out;
-// 			handle_channel_request(request, in, out);
+			opacket out;
+			handle_channel_request(request, in, out);
 			
-// 			if (want_reply)
-// 			{
-// 				if (out.empty())
-// 					out = opacket(msg_channel_failure) << m_host_channel_id;
-// 				m_connection->async_write(move(out));
-// 			}
-// 			break;
-// 		}
+			if (want_reply)
+			{
+				if (out.empty())
+					out = opacket(msg_channel_failure) << m_host_channel_id;
+				m_connection->async_write(move(out));
+			}
+			break;
+		}
 		
-// 		default:
-// 			//PRINT(("Unhandled channel message %d", inMessage));
-// 			;
+		default:
+			//PRINT(("Unhandled channel message %d", inMessage));
+			;
 	}
 
-// 	if (m_channel_open and m_my_window_size < kWindowSize - 2 * kMaxPacketSize)
-// 	{
-// 		uint32_t adjust = kWindowSize - m_my_window_size;
-// 		m_my_window_size += adjust;
+	if (m_channel_open and m_my_window_size < kWindowSize - 2 * kMaxPacketSize)
+	{
+		uint32_t adjust = kWindowSize - m_my_window_size;
+		m_my_window_size += adjust;
 
-// 		opacket out(msg_channel_window_adjust);
-// 		out	<< m_host_channel_id << adjust;
-// 		m_connection->async_write(move(out));
-// 	}
+		opacket out(msg_channel_window_adjust);
+		out	<< m_host_channel_id << adjust;
+		m_connection->async_write(move(out));
+	}
 }
 
 void channel::banner(const string& msg, const string& lang)
@@ -369,89 +369,89 @@ void channel::error(const string& msg, const string& lang)
 		m_error_handler(msg, lang);
 }
 
-// void channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
-// {
-// }
+void channel::handle_channel_request(const string& request, ipacket& in, opacket& out)
+{
+}
 
-// void channel::receive_data(const char* data, size_t size)
-// {
-// 	m_received.insert(m_received.end(), data, data + size);
-// 	push_received();
-// }
+void channel::receive_data(const char* data, size_t size)
+{
+	// m_received.insert(m_received.end(), data, data + size);
+	// push_received();
+}
 
-// void channel::receive_extended_data(const char* data, size_t size, uint32_t type)
-// {
-// }
+void channel::receive_extended_data(const char* data, size_t size, uint32_t type)
+{
+}
 
-// void channel::send_pending()
-// {
-// 	while (not m_pending.empty() and not m_send_pending)
-// 	{
-// 		basic_write_op* op = m_pending.front();
+void channel::send_pending()
+{
+	// while (not m_pending.empty() and not m_send_pending)
+	// {
+	// 	basic_write_op* op = m_pending.front();
 		
-// 		if (op->m_packets.empty())
-// 		{
-// 			m_pending.pop_front();
-// 			op->written(boost::system::error_code(), 0, get_io_service());
-// 			delete op;
-// 			continue;
-// 		}
+	// 	if (op->m_packets.empty())
+	// 	{
+	// 		m_pending.pop_front();
+	// 		op->written(boost::system::error_code(), 0, get_io_service());
+	// 		delete op;
+	// 		continue;
+	// 	}
 		
-// 		size_t size = op->m_packets.front().size() - 9;
-// 		if (size > m_host_window_size)
-// 			break;
+	// 	size_t size = op->m_packets.front().size() - 9;
+	// 	if (size > m_host_window_size)
+	// 		break;
 		
-// 		m_host_window_size -= size;
-// 		m_send_pending = true;
+	// 	m_host_window_size -= size;
+	// 	m_send_pending = true;
 
-// 		opacket out(move(op->m_packets.front()));
-// 		op->m_packets.pop_front();
+	// 	opacket out(move(op->m_packets.front()));
+	// 	op->m_packets.pop_front();
 
-// 		m_connection->async_write(move(out),
-// 			[
-// 				this,
-// 				self = shared_from_this(),
-// 				op
-// 			]
-// 			(const boost::system::error_code& ec, size_t bytes_transferred)
-// 		{
-// 			m_send_pending = false;
+	// 	m_connection->async_write(move(out),
+	// 		[
+	// 			this,
+	// 			self = shared_from_this(),
+	// 			op
+	// 		]
+	// 		(const boost::system::error_code& ec, size_t bytes_transferred)
+	// 	{
+	// 		m_send_pending = false;
 
-// 			if (ec)
-// 			{
-// 				op->written(ec, bytes_transferred, get_io_service());
-// 				delete op;
-// 				m_pending.pop_front();
-// 			}
+	// 		if (ec)
+	// 		{
+	// 			op->written(ec, bytes_transferred, get_io_service());
+	// 			delete op;
+	// 			m_pending.pop_front();
+	// 		}
 
-// 			send_pending();
-// 		});
+	// 		send_pending();
+	// 	});
 		
-// 		break;
-// 	}
-// }
+	// 	break;
+	// }
+}
 
-// void channel::push_received()
-// {
-// 	boost::asio::io_service& io_service(get_io_service());
+void channel::push_received()
+{
+	// boost::asio::io_service& io_service(get_io_service());
 
-// 	deque<char>::iterator b = m_received.begin();
+	// deque<char>::iterator b = m_received.begin();
 
-// 	while (b != m_received.end() and not m_read_ops.empty())
-// 	{
-// 		basic_read_op* handler = m_read_ops.front();
-// 		m_read_ops.pop_front();
+	// while (b != m_received.end() and not m_read_ops.empty())
+	// {
+	// 	basic_read_op* handler = m_read_ops.front();
+	// 	m_read_ops.pop_front();
 
-// 		b = handler->receive_and_post(b, m_received.end(), io_service);
+	// 	b = handler->receive_and_post(b, m_received.end(), io_service);
 
-// 		delete handler;
-// 	}
+	// 	delete handler;
+	// }
 
-// 	m_received.erase(m_received.begin(), b);
+	// m_received.erase(m_received.begin(), b);
 	
-// 	if (m_received.empty() and m_eof)
-// 		close();
-// }
+	// if (m_received.empty() and m_eof)
+	// 	close();
+}
 
 // // --------------------------------------------------------------------
 

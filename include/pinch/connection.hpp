@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include <assh/config.hpp>
-#include <assh/error.hpp>
-#include <assh/key_exchange.hpp>
+#include <pinch/pinch.hpp>
+#include <pinch/error.hpp>
+#include <pinch/key_exchange.hpp>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
@@ -15,12 +15,12 @@
 #include <list>
 #include <functional>
 
-#include <assh/packet.hpp>
-#include "assh/crypto-engine.hpp"
-#include "assh/ssh_agent.hpp"
+#include <pinch/packet.hpp>
+#include "pinch/crypto-engine.hpp"
+#include "pinch/ssh_agent.hpp"
 
 
-namespace assh
+namespace pinch
 {
 
 // --------------------------------------------------------------------
@@ -59,20 +59,6 @@ using validate_callback_type = std::function<bool(const std::string&, const std:
 // void request_password()
 using password_callback_type = std::function<void()>;
 
-
-// --------------------------------------------------------------------
-
-enum class auth_state_type
-{
-	none,
-	connecting,
-	public_key,
-	keyboard_interactive,
-	password,
-	connected,
-	authenticated
-};
-
 // --------------------------------------------------------------------
 
 class connection_base
@@ -83,7 +69,7 @@ class connection_base
 
 	virtual ~connection_base() {}
 
-	virtual void disconnect() = 0;
+	virtual void disconnect();
 
 	virtual void async_write(opacket&& p) = 0;
 	virtual void async_read() = 0;
@@ -107,7 +93,7 @@ class connection_base
 
 	virtual bool is_connected() const
 	{
-		return m_auth_state == auth_state_type::authenticated;
+		return m_authenticated;
 	}
 
 	virtual void handle_error(const boost::system::error_code &ec);
@@ -115,12 +101,12 @@ class connection_base
 
 	void newkeys(key_exchange& kex, boost::system::error_code &ec)
 	{
-		m_crypto_engine.newkeys(kex, m_auth_state == auth_state_type::authenticated);
+		m_crypto_engine.newkeys(kex, m_authenticated);
 	}
 
 	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
 	{
-		m_auth_state = auth_state_type::authenticated;
+		m_authenticated = true;
 
 		m_crypto_engine.enable_compression();
 
@@ -130,6 +116,11 @@ class connection_base
 		// start the read loop
 		async_read();
 	}
+
+	void open_channel(channel_ptr ch, uint32_t id);
+	void close_channel(channel_ptr ch, uint32_t id);
+
+	bool has_open_channels();
 
   protected:
 
@@ -151,11 +142,12 @@ class connection_base
 
 	std::string m_user;
 
-	auth_state_type m_auth_state = auth_state_type::none;
 	std::string m_host_version;
 	std::vector<uint8_t> m_session_id;
 
 	crypto_engine m_crypto_engine;
+
+	bool m_authenticated = false;
 
 	// connect_handler_list m_connect_handlers;
 
@@ -176,6 +168,15 @@ class connection_base
 namespace detail
 {
 
+enum class state_type
+{
+	start, wrote_version, reading, rekeying, authenticating
+};
+
+enum class auth_state_type
+{
+	none, public_key, keyboard_interactive, password, error
+};
 
 template<typename Stream>
 struct async_connect_impl
@@ -186,8 +187,9 @@ struct async_connect_impl
 	boost::asio::streambuf& response;
 	std::shared_ptr<basic_connection<Stream>> conn;
 	std::string user;
+	password_callback_type request_password;
 
-	enum state_type { start, wrote_version, reading, rekeying, authenticating } state = start;
+	state_type state = state_type::start;
 	auth_state_type auth_state = auth_state_type::none;
 
 	std::string host_version;
@@ -197,7 +199,7 @@ struct async_connect_impl
 	std::deque<opacket> private_keys;
 	std::vector<uint8_t> private_key_hash;
 
-	keyboard_interactive_callback_type m_request_password_cb, m_keyboard_interactive_cb;
+	keyboard_interactive_callback_type m_keyboard_interactive_cb;
 	int m_password_attempts = 0;
 
 	template<typename Self>
@@ -218,21 +220,21 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 	{
 		switch (state)
 		{
-			case start:
+			case state_type::start:
 			{
 				std::ostream out(request.get());
 				out << kSSHVersionString << "\r\n";
-				state = wrote_version;
+				state = state_type::wrote_version;
 				boost::asio::async_write(socket, *request, std::move(self));
 				return;
 			}
 			
-			case wrote_version:
-				state = reading;
+			case state_type::wrote_version:
+				state = state_type::reading;
 				boost::asio::async_read_until(socket, response, "\n", std::move(self));
 				return;
 
-			case reading:
+			case state_type::reading:
 			{
 				std::istream response_stream(&response);
 				std::getline(response_stream, host_version);
@@ -245,7 +247,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 					return;
 				}
 
-				state = rekeying;
+				state = state_type::rekeying;
 				kex = std::make_unique<key_exchange>(host_version);
 
 				conn->async_write(kex->init());
@@ -254,7 +256,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 				return;
 			}
 
-			case rekeying:
+			case state_type::rekeying:
 			{
 				for (;;)
 				{
@@ -275,7 +277,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 							return;
 						}
 
-						state = authenticating;
+						state = state_type::authenticating;
 
 						out = msg_service_request;
 						out << "ssh-userauth";
@@ -310,7 +312,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 				}
 			}
 
-			case authenticating:
+			case state_type::authenticating:
 			{
 				if (not conn->receive_packet(*packet, ec) and not ec)
 				{
@@ -394,11 +396,16 @@ void async_connect_impl<Stream>::async_connect_impl::process_userauth_failure(ip
 				<< "";
 		auth_state = auth_state_type::keyboard_interactive;
 	}
-	else if (choose_protocol(s, "password") == "password" and m_request_password_cb and ++m_password_attempts <= 3)
-		assert(false);
-		// m_request_password_cb();
+	else if (choose_protocol(s, "password") == "password" and request_password and ++m_password_attempts <= 3)
+	{
+		auth_state = auth_state_type::password;
+		request_password();
+	}
 	else
+	{
+		auth_state = auth_state_type::error;
 		ec = error::make_error_code(error::no_more_auth_methods_available);
+	}
 }
 
 template<typename Stream>
@@ -467,7 +474,8 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 			}
 			break;
 		}
-		default:;
+		default:
+			ec = make_error_code(error::protocol_error);
 	}
 }
 
@@ -536,7 +544,7 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 	{
 		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
 			async_connect_impl{
-				m_next_layer, m_response, this->shared_from_this(), m_user
+				m_next_layer, m_response, this->shared_from_this(), m_user, m_request_password_cb
 			}, handler, m_next_layer
 		);
 	}
@@ -598,11 +606,7 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 
 	virtual void disconnect() override
 	{
-		reset();
-
-		// // copy the list since calling Close will change it
-		// std::list<channel_ptr> channels(m_channels);
-		// std::for_each(channels.begin(), channels.end(), [](channel_ptr c) { c->close(); });
+		connection_base::disconnect();
 
 		m_next_layer.close();
 	}
@@ -613,8 +617,6 @@ class basic_connection : public connection_base, public std::enable_shared_from_
 	auto async_read_packet(Handler&& handler);
 
   private:
-
-
 
 	virtual void async_read() override
 	{
@@ -658,7 +660,7 @@ auto basic_connection<Stream>::async_read_packet(Handler&& handler)
 
 }
 
-// namespace assh
+// namespace pinch
 // {
 
 // class basic_connection : public std::enable_shared_from_this<basic_connection>
@@ -711,10 +713,6 @@ auto basic_connection<Stream>::async_read_packet(Handler&& handler)
 // 	virtual void disconnect();
 // 	virtual void rekey();
 
-// 	void open_channel(channel_ptr ch, uint32_t id);
-// 	void close_channel(channel_ptr ch, uint32_t id);
-
-// 	bool has_open_channels();
 
 // 	void async_write(opacket &&p)
 // 	{
@@ -969,4 +967,4 @@ auto basic_connection<Stream>::async_read_packet(Handler&& handler)
 // 	int16_t m_port;
 // };
 
-// } // namespace assh
+// } // namespace pinch

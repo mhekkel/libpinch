@@ -1,12 +1,12 @@
 AC_PREREQ([2.69])
 
-m4_define([libassh_version_major],[1])
-m4_define([libassh_version_minor],[0])
-m4_define([libassh_version_micro],[0])
-m4_define([libassh_version_extra],[])
-m4_define([libassh_version],[libassh_version_major().libassh_version_minor().libassh_version_micro()libassh_version_extra])
+m4_define([libpinch_version_major],[1])
+m4_define([libpinch_version_minor],[0])
+m4_define([libpinch_version_micro],[0])
+m4_define([libpinch_version_extra],[])
+m4_define([libpinch_version],[libpinch_version_major().libpinch_version_minor().libpinch_version_micro()libpinch_version_extra])
 
-AC_INIT([libassh], [libassh_version], [maarten@hekkelman.com])
+AC_INIT([libpinch], [libpinch_version], [maarten@hekkelman.com])
 
 dnl Switch to a C++ compiler, and check if it works.
 AC_LANG(C++)
@@ -20,6 +20,7 @@ AX_CHECK_COMPILE_FLAG([-fstandalone-debug],
 AC_CONFIG_SRCDIR([src/channel.cpp])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR([config/m4])
+AC_CONFIG_HEADERS([include/pinch/config.hpp])
 
 AC_PROG_INSTALL
 PKG_PROG_PKG_CONFIG
@@ -28,19 +29,19 @@ dnl disable shared libraries, they break the build on MacOS... sigh
 LT_INIT([disable-shared pic-only])
 AC_SUBST(LIBTOOL_DEPS)
 
-LIBASSH_CURRENT=1
-LIBASSH_REVISION=1
-LIBASSH_AGE=1
+LIBPINCH_CURRENT=1
+LIBPINCH_REVISION=1
+LIBPINCH_AGE=1
 
-LIBASSH_LT_CURRENT="${LIBASSH_CURRENT}"
-LIBASSH_LT_VERSION="${LIBASSH_CURRENT}:${LIBASSH_REVISION}:${LIBASSH_AGE}"
+LIBPINCH_LT_CURRENT="${LIBPINCH_CURRENT}"
+LIBPINCH_LT_VERSION="${LIBPINCH_CURRENT}:${LIBPINCH_REVISION}:${LIBPINCH_AGE}"
 
-AC_SUBST(LIBASSH_LT_CURRENT)
-AC_SUBST(LIBASSH_LT_VERSION)
+AC_SUBST(LIBPINCH_LT_CURRENT)
+AC_SUBST(LIBPINCH_LT_VERSION)
 
 dnl and now for the semantic version
-LIBASSH_SEMANTIC_VERSION=libassh_version
-AC_SUBST(LIBASSH_SEMANTIC_VERSION)
+LIBPINCH_SEMANTIC_VERSION=libpinch_version
+AC_SUBST(LIBPINCH_SEMANTIC_VERSION)
 
 AX_PTHREAD
 

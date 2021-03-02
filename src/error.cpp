@@ -3,12 +3,12 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
-#include <assh/error.hpp>
+#include <pinch/pinch.hpp>
+#include <pinch/error.hpp>
 
 using namespace std;
 
-namespace assh {
+namespace pinch {
 namespace error {
 namespace detail {
 

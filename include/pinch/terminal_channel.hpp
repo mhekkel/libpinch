@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include <assh/config.hpp>
-#include <assh/channel.hpp>
+#include <pinch/pinch.hpp>
+#include <pinch/channel.hpp>
 
-namespace assh
+namespace pinch
 {
 
 class terminal_channel : public channel

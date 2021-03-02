@@ -3,10 +3,10 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
-#include <assh/packet.hpp>
-#include <assh/debug.hpp>
+#include <pinch/packet.hpp>
+#include <pinch/debug.hpp>
 
 using namespace std;
 
@@ -62,13 +62,13 @@ void print(ostream& os, const vector<uint8_t>& b)
 	}
 }
 
-ostream& operator<<(ostream& os, assh::opacket& b)
+ostream& operator<<(ostream& os, pinch::opacket& b)
 {
 	print(os, b);
 	return os;
 }
 
-ostream& operator<<(ostream& os, assh::ipacket& b)
+ostream& operator<<(ostream& os, pinch::ipacket& b)
 {
 	print(os, b);
 	return os;

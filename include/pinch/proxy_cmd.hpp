@@ -5,10 +5,10 @@
 
 // #pragma once
 
-// #include <assh/config.hpp>
-// #include <assh/connection.hpp>
+// #include <pinch/pinch.hpp>
+// #include <pinch/connection.hpp>
 
-// namespace assh
+// namespace pinch
 // {
 
 // 	class proxy_channel;
@@ -51,4 +51,4 @@
 // 		std::string m_host;
 // 	};
 
-// } // namespace assh
+// } // namespace pinch

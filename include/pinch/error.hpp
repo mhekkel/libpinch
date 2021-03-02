@@ -7,10 +7,10 @@
 
 #include <exception>
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 #include <boost/system/error_code.hpp>
 
-namespace assh
+namespace pinch
 {
 
 class exception : public std::runtime_error
@@ -109,26 +109,26 @@ namespace error
 	boost::system::error_category &disconnect_category();
 
 } // namespace error
-} // namespace assh
+} // namespace pinch
 
 namespace boost::system
 {
 
 template <>
-struct is_error_code_enum<assh::error::ssh_errors>
+struct is_error_code_enum<pinch::error::ssh_errors>
 {
 	static const bool value = true;
 };
 
 template <>
-struct is_error_code_enum<assh::error::disconnect_errors>
+struct is_error_code_enum<pinch::error::disconnect_errors>
 {
 	static const bool value = true;
 };
 
 } // namespace boost::system
 
-namespace assh::error
+namespace pinch::error
 {
 
 inline boost::system::error_code make_error_code(ssh_errors e)
@@ -141,4 +141,4 @@ inline boost::system::error_code make_error_code(disconnect_errors e)
 	return boost::system::error_code(static_cast<int>(e), disconnect_category());
 }
 
-} // namespace assh::error
+} // namespace pinch::error

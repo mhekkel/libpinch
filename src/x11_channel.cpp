@@ -3,17 +3,17 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/asio/local/stream_protocol.hpp>
 
-#include <assh/x11_channel.hpp>
-#include <assh/connection.hpp>
+#include <pinch/x11_channel.hpp>
+#include <pinch/connection.hpp>
 
 using namespace std;
 
-namespace assh
+namespace pinch
 {
 
 struct x11_socket_impl_base

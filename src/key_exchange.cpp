@@ -3,7 +3,7 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <iostream>
 
@@ -23,15 +23,15 @@
 #include <cryptopp/oids.h>
 #include <cryptopp/dsa.h>
 
-#include <assh/key_exchange.hpp>
-#include <assh/error.hpp>
-#include <assh/connection.hpp>
-#include <assh/crypto-engine.hpp>
+#include <pinch/key_exchange.hpp>
+#include <pinch/error.hpp>
+#include <pinch/connection.hpp>
+#include <pinch/crypto-engine.hpp>
 
 using namespace CryptoPP;
 namespace ba = boost::algorithm;
 
-namespace assh
+namespace pinch
 {
 
 static AutoSeededRandomPool	rng;

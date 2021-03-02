@@ -1,6 +1,6 @@
-#include <assh/config.hpp>
-#include <assh/crypto-engine.hpp>
-#include <assh/error.hpp>
+#include <pinch/pinch.hpp>
+#include <pinch/crypto-engine.hpp>
+#include <pinch/error.hpp>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
@@ -21,7 +21,7 @@ namespace io = boost::iostreams;
 
 // --------------------------------------------------------------------
 
-namespace assh
+namespace pinch
 {
 
 const std::string

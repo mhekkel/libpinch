@@ -1,9 +1,9 @@
 #pragma once
 
-#include <assh/packet.hpp>
-#include <assh/key_exchange.hpp>
+#include <pinch/packet.hpp>
+#include <pinch/key_exchange.hpp>
 
-namespace assh
+namespace pinch
 {
 
 extern const std::string

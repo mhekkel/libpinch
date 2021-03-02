@@ -5,16 +5,16 @@
 
 // #pragma once
 
-// #include <assh/config.hpp>
+// #include <pinch/pinch.hpp>
 
 // #include <boost/format.hpp>
 // #include <boost/function.hpp>
 // #include <boost/asio.hpp>
 
-// #include <assh/channel.hpp>
-// #include <assh/packet.hpp>
+// #include <pinch/channel.hpp>
+// #include <pinch/packet.hpp>
 
-// namespace assh
+// namespace pinch
 // {
 
 // 	// --------------------------------------------------------------------
@@ -44,4 +44,4 @@
 // 		boost::asio::streambuf m_response;
 // 	};
 
-// } // namespace assh
+// } // namespace pinch

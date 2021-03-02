@@ -5,14 +5,14 @@
 
 #pragma once
 
-#include <assh/config.hpp>
+#include <pinch/pinch.hpp>
 
 #include <vector>
 #include <deque>
 
 #include <cryptopp/integer.h>
 
-namespace assh
+namespace pinch
 {
 
 class connection_base;
