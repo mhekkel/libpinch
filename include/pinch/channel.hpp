@@ -198,7 +198,8 @@ class channel : public std::enable_shared_from_this<channel>
   public:
 
 	/// The type of the lowest layer.
-	using lowest_layer_type = typename boost::asio::ip::tcp::socket;
+	// using lowest_layer_type = typename boost::asio::ip::tcp::socket;
+	using lowest_layer_type = typename boost::asio::basic_socket<boost::asio::ip::tcp, boost::asio::executor>::lowest_layer_type;
 
 	/// The type of the executor associated with the object.
 	using executor_type = typename lowest_layer_type::executor_type;
@@ -208,9 +209,15 @@ class channel : public std::enable_shared_from_this<channel>
 		return m_connection->get_executor();
 	}
 
-	const lowest_layer_type& lowest_layer() const;
+	const lowest_layer_type& lowest_layer() const
+	{
+		return m_connection->lowest_layer();
+	}
 
-	lowest_layer_type& lowest_layer();
+	lowest_layer_type& lowest_layer()
+	{
+		return m_connection->lowest_layer();
+	}
 
 	struct environment_variable
 	{
@@ -249,7 +256,7 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual void closed();
 	virtual void end_of_file();
 
-	// void keep_alive();
+	void keep_alive();
 
 	virtual void succeeded(); // the request succeeded
 
@@ -295,7 +302,7 @@ class channel : public std::enable_shared_from_this<channel>
 	}
 
 	template <typename Handler, typename ConstBufferSequece>
-	auto async_write_some(ConstBufferSequece& buffer, Handler&& handler)
+	auto async_write_some(const ConstBufferSequece& buffer, Handler&& handler)
 	{
 		return boost::asio::async_initiate<Handler, void(boost::system::error_code, std::size_t)>(
 			async_write_impl{}, handler, this, buffer
@@ -482,51 +489,51 @@ class channel : public std::enable_shared_from_this<channel>
 
 };
 
-// // --------------------------------------------------------------------
+// --------------------------------------------------------------------
 
-// class exec_channel : public channel
-// {
-// public:
-// 	struct basic_result_handler
-// 	{
-// 		virtual ~basic_result_handler() {}
-// 		virtual void post_result(const std::string& message, int32_t result_code) = 0;
-// 	};
+class exec_channel : public channel
+{
+  public:
+	struct basic_result_handler
+	{
+		virtual ~basic_result_handler() {}
+		virtual void post_result(const std::string& message, int32_t result_code) = 0;
+	};
 
-// 	template <typename Handler>
-// 	struct result_handler : public basic_result_handler
-// 	{
-// 		result_handler(Handler&& handler)
-// 			: m_handler(std::move(handler)) {}
+	template <typename Handler>
+	struct result_handler : public basic_result_handler
+	{
+		result_handler(Handler&& handler)
+			: m_handler(std::move(handler)) {}
 
-// 		virtual void post_result(const std::string& message, int32_t result_code)
-// 		{
-// 			m_handler(message, result_code);
-// 		}
+		virtual void post_result(const std::string& message, int32_t result_code)
+		{
+			m_handler(message, result_code);
+		}
 
-// 		Handler m_handler;
-// 	};
+		Handler m_handler;
+	};
 
-// 	template <typename Handler>
-// 	exec_channel(std::shared_ptr<basic_connection> connection,
-// 				 const std::string& cmd, Handler&& handler)
-// 		: channel(connection), m_command(cmd), m_handler(new result_handler<Handler>(std::move(handler)))
-// 	{
-// 	}
+	template <typename Handler>
+	exec_channel(std::shared_ptr<basic_connection> connection,
+				 const std::string& cmd, Handler&& handler)
+		: channel(connection), m_command(cmd), m_handler(new result_handler<Handler>(std::move(handler)))
+	{
+	}
 
-// 	~exec_channel()
-// 	{
-// 		delete m_handler;
-// 	}
+	~exec_channel()
+	{
+		delete m_handler;
+	}
 
-// 	virtual void opened();
+	virtual void opened();
 
-// protected:
-// 	virtual void handle_channel_request(const std::string& request, ipacket& in, opacket& out);
+  protected:
+	virtual void handle_channel_request(const std::string& request, ipacket& in, opacket& out);
 
-// private:
-// 	std::string m_command;
-// 	basic_result_handler *m_handler;
-// };
+  private:
+	std::string m_command;
+	basic_result_handler *m_handler;
+};
 
 } // namespace pinch

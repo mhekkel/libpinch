@@ -87,12 +87,12 @@ OBJECTS = \
 	$(OBJDIR)/key_exchange.lo \
 	$(OBJDIR)/packet.lo \
 	$(OBJDIR)/posix_ssh_agent_impl.lo \
+	$(OBJDIR)/proxy_cmd.lo \
 	$(OBJDIR)/terminal_channel.lo \
 	$(OBJDIR)/ssh_agent.lo \
 	$(OBJDIR)/x11_channel.lo
 
 	# $(OBJDIR)/port_forwarding.lo \
-	# $(OBJDIR)/proxy_cmd.lo \
 	# $(OBJDIR)/sftp_channel.lo \
 
 $(LIB_TARGET): $(OBJECTS)

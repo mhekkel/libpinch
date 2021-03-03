@@ -122,6 +122,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	using executor_type = typename lowest_layer_type::executor_type;
 
 	virtual executor_type get_executor() noexcept = 0;
+	virtual lowest_layer_type& lowest_layer() = 0;
+	virtual const lowest_layer_type& lowest_layer() const = 0;
 
 	virtual ~basic_connection() {}
 
@@ -171,6 +173,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	{
 		m_forward_agent = forward;
 	}
+
+	void keep_alive();
 
   private:
 
@@ -343,11 +347,6 @@ class connection : public basic_connection
 		reset();
 	}
 
-	virtual ~connection()
-	{
-
-	}
-
 	/// The type of the next layer.
 	using next_layer_type = boost::asio::ip::tcp::socket;
 
@@ -366,12 +365,12 @@ class connection : public basic_connection
 		return m_next_layer;
 	}
 
-	const lowest_layer_type& lowest_layer() const
+	const lowest_layer_type& lowest_layer() const override
 	{
 		return m_next_layer.lowest_layer();
 	}
 
-	lowest_layer_type& lowest_layer()
+	lowest_layer_type& lowest_layer() override
 	{
 		return m_next_layer.lowest_layer();
 	}
@@ -389,6 +388,61 @@ class connection : public basic_connection
 
 // --------------------------------------------------------------------
 
+class proxied_connection : public basic_connection
+{
+  public:
+	proxied_connection(std::shared_ptr<basic_connection> proxy,
+						const std::string &nc_cmd,
+						const std::string &user,
+						const std::string &host, int16_t port = 22);
+
+	~proxied_connection();
+
+	/// The type of the next layer.
+	using next_layer_type = channel;
+
+	virtual executor_type get_executor() noexcept override;
+
+	const next_layer_type& next_layer() const
+	{
+		return *m_channel;
+	}
+
+	next_layer_type& next_layer()
+	{
+		return *m_channel;
+	}
+
+	const lowest_layer_type& lowest_layer() const override;
+
+	lowest_layer_type& lowest_layer() override;
+
+	virtual void disconnect() override;
+
+	virtual void set_validate_callback(const validate_callback_type &cb);
+
+	// virtual std::shared_ptr<basic_connection> get_proxy() const
+	// {
+	// 	return m_proxy;
+	// }
+
+  protected:
+	// virtual void start_handshake();
+
+	virtual bool validate_host_key(const std::string &pk_alg, const blob &host_key);
+
+	// virtual void async_write_int(boost::asio::streambuf *request, basic_write_op *op);
+	// virtual void async_read_version_string();
+	// virtual void async_read(uint32_t at_least);
+
+  private:
+	std::shared_ptr<basic_connection> m_proxy;
+	std::shared_ptr<channel> m_channel;
+	std::string m_host;
+};
+
+// --------------------------------------------------------------------
+
 template<typename Handler, typename MutableBufferSequence>
 void basic_connection::async_read_impl::operator()(Handler&& handler, basic_connection* conn, const MutableBufferSequence& buffers)
 {
@@ -396,7 +450,11 @@ void basic_connection::async_read_impl::operator()(Handler&& handler, basic_conn
 	if (c)
 		boost::asio::async_read(c->next_layer(), buffers, boost::asio::transfer_at_least(1), std::move(handler));
 	else
-		assert(false);
+	{
+		auto pc = dynamic_cast<proxied_connection*>(conn);
+		if (pc)
+			boost::asio::async_read(pc->next_layer(), buffers, boost::asio::transfer_at_least(1), std::move(handler));
+	}
 }
 
 template<typename Handler, typename ConstBufferSequence>
@@ -406,7 +464,11 @@ void basic_connection::async_write_impl::operator()(Handler&& handler, basic_con
 	if (c)
 		boost::asio::async_write(c->next_layer(), buffers, std::move(handler));
 	else
-		assert(false);
+	{
+		auto pc = dynamic_cast<proxied_connection*>(conn);
+		if (pc)
+			boost::asio::async_write(pc->next_layer(), buffers, std::move(handler));
+	}
 }
 
 // --------------------------------------------------------------------

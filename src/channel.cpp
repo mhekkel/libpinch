@@ -142,14 +142,14 @@ void channel::succeeded()
 void channel::end_of_file()
 {
 	m_eof = true;
-	// push_received();
+	push_received();
 }
 
-// void channel::keep_alive()
-// {
-// 	if (is_open())
-// 		m_connection->keep_alive();
-// }
+void channel::keep_alive()
+{
+	if (is_open())
+		m_connection->keep_alive();
+}
 
 // std::string channel::get_connection_parameters(direction dir) const
 // {
@@ -438,23 +438,23 @@ void channel::push_received()
 		close();
 }
 
-// // --------------------------------------------------------------------
+// --------------------------------------------------------------------
 
-// void exec_channel::opened()
-// {
-// 	channel::opened();
+void exec_channel::opened()
+{
+	channel::opened();
 
-// 	send_request_and_command("exec", m_command);
-// }
+	send_request_and_command("exec", m_command);
+}
 
-// void exec_channel::handle_channel_request(const std::string& request, ipacket& in, opacket& out)
-// {
-// 	int32_t status = 1;
+void exec_channel::handle_channel_request(const std::string& request, ipacket& in, opacket& out)
+{
+	int32_t status = 1;
 	
-// 	if (request == "exit-status")
-// 		in >> status;
+	if (request == "exit-status")
+		in >> status;
 	
-// 	m_handler->post_result(request, status);
-// }
+	m_handler->post_result(request, status);
+}
 
 }

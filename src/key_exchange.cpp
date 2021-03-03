@@ -23,9 +23,9 @@
 #include <cryptopp/oids.h>
 #include <cryptopp/dsa.h>
 
+#include <pinch/channel.hpp>
 #include <pinch/key_exchange.hpp>
 #include <pinch/error.hpp>
-#include <pinch/connection.hpp>
 #include <pinch/crypto-engine.hpp>
 
 using namespace CryptoPP;

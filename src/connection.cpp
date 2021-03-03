@@ -430,20 +430,6 @@ void basic_connection::close_channel(channel_ptr ch, uint32_t channel_id)
 		ch->closed();
 	}
 
-	// auto self(shared_from_this());
-	// auto iter = remove_if(m_connect_handlers.begin(), m_connect_handlers.end(),
-	// 						[self, &ch](basic_connect_handler *h) -> bool {
-	// 							bool result = false;
-	// 							if (h->m_opening_channel == ch)
-	// 							{
-	// 								delete h;
-	// 								result = true;
-	// 							}
-	// 							return result;
-	// 						});
-
-	// m_connect_handlers.erase(iter, m_connect_handlers.end());
-
 	m_channels.erase(
 		std::remove(m_channels.begin(), m_channels.end(), ch),
 		m_channels.end());
@@ -469,6 +455,23 @@ void basic_connection::handle_banner(const std::string& message, const std::stri
 {
 	for (auto c: m_channels)
 		c->banner(message, lang);
+}
+
+void basic_connection::keep_alive()
+{
+	struct timeval tv;
+	gettimeofday(&tv, nullptr);
+
+	if (m_auth_state == authenticated and m_last_io + kKeepAliveInterval < static_cast<int64_t>(tv.tv_sec))
+	{
+		opacket out(msg_ignore);
+		out << "Hello, world!";
+
+		async_write(std::move(out), [self = shared_from_this(), tv](const boost::system::error_code &ec, size_t) {
+			if (not ec)
+				self->m_last_io = tv.tv_sec;
+		});
+	}
 }
 
 // --------------------------------------------------------------------
