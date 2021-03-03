@@ -210,8 +210,7 @@ void channel::open_pty(uint32_t width, uint32_t height,
 	m_connection->async_write(std::move(out));
 }
 
-void channel::send_request_and_command(
-	const std::string& request, const std::string& command)
+void channel::send_request_and_command(const std::string& request, const std::string& command)
 {
 	opacket out(msg_channel_request);
 	out	<< m_host_channel_id

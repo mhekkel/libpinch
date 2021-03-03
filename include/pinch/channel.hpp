@@ -189,7 +189,6 @@ class write_channel_handler : public write_channel_op
 };
 
 
-
 }
 
 // --------------------------------------------------------------------
@@ -290,111 +289,6 @@ class channel : public std::enable_shared_from_this<channel>
 		);
 	}
 
-	struct async_read_impl
-	{
-		template<typename Handler, typename MutableBufferSequence>
-		void operator()(Handler&& handler, channel* ch, const MutableBufferSequence& buffers)
-		{
-			if (not ch->is_open())
-				handler(error::make_error_code(error::connection_lost), 0);
-			else if (boost::asio::buffer_size(buffers) == 0)
-				handler(boost::system::error_code(), 0);
-			else
-				ch->m_read_ops.emplace_back(new detail::read_channel_handler{std::move(handler), ch->get_executor(), buffers});
-		}
-	};
-
-
-	// // boost::asio AsyncWriteStream interface
-	// boost::asio::io_service& get_io_service();
-
-	// template <class Handler>
-	// struct bound_handler
-	// {
-	// 	bound_handler(const bound_handler &) = default;
-
-	// 	bound_handler(bound_handler&& rhs)
-	// 		: m_handler(std::move(rhs.m_handler)), m_ec(rhs.m_ec), m_transferred(rhs.m_transferred)
-	// 	{
-	// 	}
-
-	// 	bound_handler(Handler&& handler, const boost::system::error_code& ec, std::size_t s)
-	// 		: m_handler(std::move(handler)), m_ec(ec), m_transferred(s)
-	// 	{
-	// 	}
-
-	// 	virtual void operator()()
-	// 	{
-	// 		m_handler(m_ec, m_transferred);
-	// 	}
-
-	// 	Handler m_handler;
-	// 	boost::system::error_code m_ec;
-	// 	std::size_t m_transferred;
-	// };
-
-	// struct basic_io_op
-	// {
-	// 	virtual ~basic_io_op() {}
-	// 	virtual void error(const boost::system::error_code& ec) = 0;
-	// };
-
-	// struct basic_write_op : public basic_io_op
-	// {
-	// 	basic_write_op(std::list<opacket>&& p)
-	// 		: m_packets(std::move(p))
-	// 	{
-	// 	}
-
-	// 	basic_write_op(opacket&& p)
-	// 	{
-	// 		m_packets.push_back(std::move(p));
-	// 	}
-
-	// 	virtual void written(const boost::system::error_code& ec, std::size_t bytes_transferred,
-	// 						 boost::asio::io_service& io_service) = 0;
-
-	// 	std::list<opacket> m_packets;
-	// };
-
-	// template <typename Handler>
-	// struct write_op : public basic_write_op
-	// {
-	// 	write_op(std::list<opacket>&& p, Handler&& h)
-	// 		: basic_write_op(std::move(p)), m_handler(std::move(h))
-	// 	{
-	// 	}
-
-	// 	write_op(opacket&& p, Handler&& h)
-	// 		: basic_write_op(std::move(p)), m_handler(std::move(h))
-	// 	{
-	// 	}
-
-	// 	virtual void written(const boost::system::error_code& ec, std::size_t bytes_transferred,
-	// 						 boost::asio::io_service& io_service)
-	// 	{
-	// 		std::size_t n = 0;
-	// 		n = std::accumulate(m_packets.begin(), m_packets.end(), n,
-	// 							[](std::size_t c, opacket& p) -> uint32_t { return c + p.size(); });
-
-	// 		io_service.post(bound_handler<Handler>(std::move(m_handler), ec, n));
-	// 	}
-
-	// 	virtual void error(const boost::system::error_code& ec)
-	// 	{
-	// 		m_handler(ec, 0);
-	// 	}
-
-	// 	Handler m_handler;
-	// };
-
-	// template <typename Handler>
-	// void make_write_op(std::list<opacket>&& p, Handler&& h)
-	// {
-	// 	m_pending.push_back(new write_op<Handler>(std::move(p), std::move(h)));
-	// 	send_pending();
-	// }
-
 	template <typename Handler, typename ConstBufferSequece>
 	auto async_write_some(ConstBufferSequece& buffer, Handler&& handler)
 	{
@@ -411,148 +305,13 @@ class channel : public std::enable_shared_from_this<channel>
 		);
 	}
 
-	struct async_write_impl
-	{
-		template<typename Handler, typename ConstBufferSequence>
-		void operator()(Handler&& handler, channel* ch, const ConstBufferSequence& buffers)
-		{
-			std::size_t n = boost::asio::buffer_size(buffers);
-
-			if (not ch->is_open())
-				handler(error::make_error_code(error::connection_lost), 0);
-			else if (n == 0)
-				handler(boost::system::error_code(), 0);
-			else
-			{
-				std::list<opacket> packets;
-
-				for (auto& buffer: buffers)
-				{
-					const char *b = boost::asio::buffer_cast<const char *>(buffer);
-					const char *e = b + n;
-
-					while (b != e)
-					{
-						std::size_t k = e - b;
-						if (k > ch->m_max_send_packet_size)
-							k = ch->m_max_send_packet_size;
-
-						packets.push_back(opacket(msg_channel_data) << ch->m_host_channel_id << std::make_pair(b, k));
-
-						b += k;
-					}
-				}
-
-				ch->m_write_ops.push_back(new detail::write_channel_handler(std::move(handler), ch->get_executor(), std::move(packets)));
-				ch->send_pending();
-			}
-		}
-
-		template<typename Handler>
-		void operator()(Handler&& handler, channel* ch, opacket&& packet)
-		{
-			if (not ch->is_open())
-				handler(error::make_error_code(error::connection_lost), 0);
-			else
-			{
-				std::list out{ std::move(packet) };
-				ch->m_write_ops.push_back(new detail::write_channel_handler(std::move(handler), ch->get_executor(), std::move(out)));
-				ch->send_pending();
-			}
-		}
-	};
-
-
-
-		// m_pending.push_back(new write_op<Handler>(std::move(p), std::move(h)));
-		// send_pending();
-
-
-
-	// template <typename ConstBufferSequence, typename Handler>
-	// void async_write_some(const ConstBufferSequence& buffers, Handler&& handler)
-	// {
-	// 	typedef ConstBufferSequence buffer_type;
-	// 	boost::asio::io_service& io_service(get_io_service());
-
-	// 	size_t n = boost::asio::buffer_size(buffers);
-
-	// 	if (not is_open())
-	// 		io_service.post(bound_handler<Handler>(std::move(handler),
-	// 											   error::make_error_code(error::connection_lost), 0));
-	// 	else if (n == 0)
-	// 		io_service.post(bound_handler<Handler>(std::move(handler), boost::system::error_code(), 0));
-	// 	else
-	// 	{
-	// 		std::list<opacket> packets;
-
-	// 		for (typename buffer_type::const_iterator buffer = buffers.begin(); buffer != buffers.end(); ++buffer)
-	// 		{
-	// 			const char *b = boost::asio::buffer_cast<const char *>(*buffer);
-	// 			const char *e = b + n;
-
-	// 			while (b != e)
-	// 			{
-	// 				std::size_t k = e - b;
-	// 				if (k > m_max_send_packet_size)
-	// 					k = m_max_send_packet_size;
-
-	// 				packets.push_back(opacket(msg_channel_data) << m_host_channel_id << std::make_pair(b, k));
-
-	// 				b += k;
-	// 			}
-	// 		}
-
-	// 		make_write_op(std::move(packets), std::move(handler));
-	// 	}
-	// }
-
-	// template <typename MutableBufferSequence>
-	// std::size_t write_some(const MutableBufferSequence& buffers)
-	// {
-	// 	boost::system::error_code ec;
-	// 	std::size_t s = write_some(buffers, ec);
-	// 	if (ec)
-	// 		throw std::system_error(ec);
-	// 	return s;
-	// }
-
-	// template <typename MutableBufferSequence>
-	// std::size_t write_some(const MutableBufferSequence& buffers, boost::system::error_code& ec)
-	// {
-	// 	std::size_t s = 0;
-	// 	// boost::asio::io_service& io_service(get_io_service());
-
-	// 	size_t n = boost::asio::buffer_size(buffers);
-
-	// 	if (not is_open())
-	// 		ec = error::make_error_code(error::connection_lost);
-	// 	else if (n == 0)
-	// 		ec = boost::system::error_code();
-	// 	else
-	// 	{
-	// 		boost::mutex mtx;
-	// 		boost::mutex::scoped_lock lock(mtx);
-	// 		boost::condition c;
-
-	// 		async_write_some(buffers, [&](const boost::system::error_code& ec_, std::size_t bytes_transferred) {
-	// 			ec = ec_;
-	// 			s = bytes_transferred;
-	// 			c.notify_one();
-	// 		});
-
-	// 		c.wait(lock);
-	// 	}
-
-	// 	return s;
-	// }
-
+	// --------------------------------------------------------------------
+	
 	// To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	void send_data(const std::string& data)
 	{
 		send_data(data, [](const boost::system::error_code&, std::size_t){});
 	}
-
 
 	template <typename Handler>
 	void send_data(const std::string& data, Handler&& handler)
@@ -561,38 +320,32 @@ class channel : public std::enable_shared_from_this<channel>
 		async_write_packet(std::move(out), std::move(handler));
 	}
 
-	// void send_data(const opacket& data)
-	// {
-	// 	opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
-	// 	make_write_op(std::move(out),
-	// 				  [](const boost::system::error_code& ec, std::size_t bytes_transferred) {});
-	// }
+	void send_data(const opacket& data)
+	{
+		opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
+		async_write_packet(std::move(out), [](const boost::system::error_code&, std::size_t) {});
+	}
 
-	// template <typename Handler>
-	// void send_data(const char *data, size_t size, Handler&& handler)
-	// {
-	// 	opacket out = opacket(msg_channel_data) << m_host_channel_id << std::make_pair(data, size);
-	// 	make_write_op(std::move(out), std::move(handler));
-	// }
+	template <typename Handler>
+	void send_data(const char *data, size_t size, Handler&& handler)
+	{
+		opacket out = opacket(msg_channel_data) << m_host_channel_id << std::make_pair(data, size);
+		async_write_packet(std::move(out), std::move(handler));
+	}
 
-	// template <typename Handler>
-	// void send_data(opacket& data, Handler&& handler)
-	// {
-	// 	make_write_op(
-	// 		opacket(msg_channel_data) << m_host_channel_id << data,
-	// 		std::move(handler));
-	// }
+	template <typename Handler>
+	void send_data(opacket& data, Handler&& handler)
+	{
+		async_write_packet(opacket(msg_channel_data) << m_host_channel_id << data, std::move(handler));
+	}
 
-	// template <typename Handler>
-	// void send_extended_data(opacket& data, uint32_t type, Handler&& handler)
-	// {
-	// 	make_write_op(
-	// 		m_connection,
-	// 		opacket(msg_channel_extended_data) << m_host_channel_id << type << data,
-	// 		std::move(handler));
-	// }
+	template <typename Handler>
+	void send_extended_data(opacket& data, uint32_t type, Handler&& handler)
+	{
+		async_write_packet(opacket(msg_channel_extended_data) << m_host_channel_id << type << data, std::move(handler));
+	}
 
-//   protected:
+  protected:
 	
 	channel(std::shared_ptr<basic_connection> connection)
 		: m_connection(connection)
@@ -650,7 +403,78 @@ class channel : public std::enable_shared_from_this<channel>
 	message_callback_type m_error_handler;
 
   private:
+
 	static uint32_t s_next_channel_id;
+
+	// --------------------------------------------------------------------
+	
+	struct async_read_impl
+	{
+		template<typename Handler, typename MutableBufferSequence>
+		void operator()(Handler&& handler, channel* ch, const MutableBufferSequence& buffers)
+		{
+			if (not ch->is_open())
+				handler(error::make_error_code(error::connection_lost), 0);
+			else if (boost::asio::buffer_size(buffers) == 0)
+				handler(boost::system::error_code(), 0);
+			else
+				ch->m_read_ops.emplace_back(new detail::read_channel_handler{std::move(handler), ch->get_executor(), buffers});
+		}
+	};
+
+	// --------------------------------------------------------------------
+	
+	struct async_write_impl
+	{
+		template<typename Handler, typename ConstBufferSequence>
+		void operator()(Handler&& handler, channel* ch, const ConstBufferSequence& buffers)
+		{
+			std::size_t n = boost::asio::buffer_size(buffers);
+
+			if (not ch->is_open())
+				handler(error::make_error_code(error::connection_lost), 0);
+			else if (n == 0)
+				handler(boost::system::error_code(), 0);
+			else
+			{
+				std::list<opacket> packets;
+
+				for (auto& buffer: buffers)
+				{
+					const char *b = boost::asio::buffer_cast<const char *>(buffer);
+					const char *e = b + n;
+
+					while (b != e)
+					{
+						std::size_t k = e - b;
+						if (k > ch->m_max_send_packet_size)
+							k = ch->m_max_send_packet_size;
+
+						packets.push_back(opacket(msg_channel_data) << ch->m_host_channel_id << std::make_pair(b, k));
+
+						b += k;
+					}
+				}
+
+				ch->m_write_ops.push_back(new detail::write_channel_handler(std::move(handler), ch->get_executor(), std::move(packets)));
+				ch->send_pending();
+			}
+		}
+
+		template<typename Handler>
+		void operator()(Handler&& handler, channel* ch, opacket&& packet)
+		{
+			if (not ch->is_open())
+				handler(error::make_error_code(error::connection_lost), 0);
+			else
+			{
+				std::list out{ std::move(packet) };
+				ch->m_write_ops.push_back(new detail::write_channel_handler(std::move(handler), ch->get_executor(), std::move(out)));
+				ch->send_pending();
+			}
+		}
+	};
+
 };
 
 // // --------------------------------------------------------------------

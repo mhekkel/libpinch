@@ -294,8 +294,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	enum { none, connecting, authenticated } m_auth_state = none;
 
-	// connect_handler_list m_connect_handlers;
-
 	int64_t m_last_io;
 	blob m_private_key_hash;
 	boost::asio::streambuf m_response;
@@ -483,7 +481,7 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 					out << "ssh-userauth";
 
 					// we might not be known yet
-					// ssh_agent::instance().register_connection(conn);
+					ssh_agent::instance().register_connection(conn);
 
 					// fetch the private keys
 					for (auto& pk: ssh_agent::instance())

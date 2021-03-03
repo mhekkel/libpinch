@@ -177,7 +177,7 @@ class opacket
 		return *this;
 	}
 
-protected:
+  protected:
 	blob m_data;
 };
 

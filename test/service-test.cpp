@@ -81,7 +81,8 @@ int main() {
 	);
 
 
-	channel->async_open([t = channel](const boost::system::error_code& ec)
+	channel->open_with_pty(80, 24, "vt220", false, false, "",
+		[t = channel](const boost::system::error_code& ec)
 	{
 		std::cout << "handler, ec = " << ec.message() << std::endl;
 		
