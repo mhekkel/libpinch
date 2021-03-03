@@ -108,6 +108,309 @@ struct async_connect_impl
 	void process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec);
 };
 
+}
+
+// --------------------------------------------------------------------
+
+class connection_base : public std::enable_shared_from_this<connection_base>
+{
+  public:
+	connection_base(const connection_base&) = delete;
+	connection_base& operator=(const connection_base& ) = delete;
+
+
+	/// The type of the lowest layer.
+	// using lowest_layer_type = typename next_layer_type::lowest_layer_type;
+	using lowest_layer_type = typename boost::asio::basic_socket<boost::asio::ip::tcp, boost::asio::executor>::lowest_layer_type;
+
+	/// The type of the executor associated with the object.
+	using executor_type = typename lowest_layer_type::executor_type;
+
+	virtual executor_type get_executor() noexcept = 0;
+
+	virtual ~connection_base() {}
+
+	virtual void disconnect();
+
+	virtual void async_write(opacket&& p) = 0;
+
+  protected:
+
+	template<typename Handler>
+	auto async_read_packet(Handler&& handler);
+
+  private:
+
+	void async_read()
+	{
+		boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1),
+			[
+				self = this->shared_from_this()
+			]
+			(const boost::system::error_code &ec, size_t bytes_transferred)
+			{
+				self->received_data(ec);
+			});
+	}
+
+  public:
+
+	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) = 0;
+
+	void set_validate_callback(const validate_callback_type &cb)
+	{
+		m_validate_host_key_cb = cb;
+	}
+
+	void set_password_callback(const password_callback_type &cb)
+	{
+		m_request_password_cb = cb;
+	}
+
+	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
+	{
+		m_keyboard_interactive_cb = cb;
+	}
+
+	virtual bool is_connected() const
+	{
+		return m_authenticated;
+	}
+
+	// callbacks to be installed by owning object
+	using async_connect_impl = detail::async_connect_impl<connection_base>;
+	friend async_connect_impl;
+
+	template<typename Handler>
+	auto async_connect(Handler&& handler)
+	{
+		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+			async_connect_impl{
+				*this, m_response, this->shared_from_this(), m_user, m_request_password_cb
+			}, handler, *this
+		);
+	}
+
+
+
+	virtual void handle_error(const boost::system::error_code &ec);
+	void reset();
+
+	void newkeys(key_exchange& kex, boost::system::error_code &ec)
+	{
+		m_crypto_engine.newkeys(kex, m_authenticated);
+	}
+
+	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
+	{
+		m_authenticated = true;
+
+		m_crypto_engine.enable_compression();
+
+		m_host_version = host_version;
+		m_session_id = session_id;
+
+		// start the read loop
+		async_read();
+	}
+
+	void open_channel(channel_ptr ch, uint32_t id);
+	void close_channel(channel_ptr ch, uint32_t id);
+
+	bool has_open_channels();
+
+	template<typename MutableBufferSequence, typename ReadHandler>
+	void async_read_some(const MutableBufferSequence & buffers, ReadHandler && handler);
+
+	template<typename ConstBufferSequence, typename WriteHandler>
+	void async_write_some(const ConstBufferSequence & buffers, WriteHandler && handler);
+
+  protected:
+
+	connection_base(const std::string& user)
+		: m_user(user)
+	{
+		
+	}
+
+	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
+
+	void received_data(boost::system::error_code ec);
+
+	void process_packet(ipacket &in);
+	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	void process_channel_open(ipacket &in, opacket &out);
+	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
+
+	std::string m_user;
+
+	std::string m_host_version;
+	std::vector<uint8_t> m_session_id;
+
+	crypto_engine m_crypto_engine;
+
+	bool m_authenticated = false;
+
+	// connect_handler_list m_connect_handlers;
+
+	int64_t m_last_io;
+	std::vector<uint8_t> m_private_key_hash;
+	boost::asio::streambuf m_response;
+
+	validate_callback_type m_validate_host_key_cb;
+	password_callback_type m_request_password_cb;
+	keyboard_interactive_callback_type m_keyboard_interactive_cb;
+
+	std::list<channel_ptr> m_channels;
+	bool m_forward_agent;
+	port_forward_listener *m_port_forwarder;
+};
+
+// --------------------------------------------------------------------
+
+template<typename Stream>
+class basic_connection : public connection_base
+{
+  public:
+
+	template<typename Arg>
+	basic_connection(Arg&& arg, const std::string& user)
+		: connection_base(user)
+		, m_next_layer(std::forward<Arg>(arg))
+	{
+		reset();
+	}
+
+	virtual ~basic_connection()
+	{
+
+	}
+
+	/// The type of the next layer.
+	using next_layer_type = std::remove_reference_t<Stream>;
+
+	virtual executor_type get_executor() noexcept override
+	{
+		return m_next_layer.lowest_layer().get_executor();
+	}
+
+	const next_layer_type& next_layer() const
+	{
+		return m_next_layer;
+	}
+
+	next_layer_type& next_layer()
+	{
+		return m_next_layer;
+	}
+
+	const lowest_layer_type& lowest_layer() const
+	{
+		return m_next_layer.lowest_layer();
+	}
+
+	lowest_layer_type& lowest_layer()
+	{
+		return m_next_layer.lowest_layer();
+	}
+
+	void rekey()
+	{
+
+		assert(false);
+		// m_key_exchange.reset(new key_exchange(m_host_version, m_session_id));
+		// async_write(m_key_exchange->init());
+	}
+
+	virtual void async_write(opacket&& out) override
+	{
+		async_write(std::move(out), [this](const boost::system::error_code& ec, std::size_t)
+		{
+			if (ec)
+				this->handle_error(ec);
+		});
+	}
+
+	template<typename Handler>
+	auto async_write(opacket&& p, Handler&& handler)
+	{
+		return async_write(m_crypto_engine.get_next_request(std::move(p)), std::move(handler));
+	}
+
+	template<typename Handler>
+	auto async_write(std::unique_ptr<boost::asio::streambuf> buffer, Handler&& handler)
+	{
+		enum { start, writing };
+
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
+			[
+				&socket = m_next_layer,
+				buffer = std::move(buffer),
+				conn = this->shared_from_this(),
+				state = start
+			]
+			(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_received = 0) mutable
+			{
+				if (not ec and state == start)
+				{
+					state = writing;
+					boost::asio::async_write(socket, *buffer, std::move(self));
+					return;
+				}
+
+				self.complete(ec, 0);
+			}, handler, m_next_layer
+		);
+	}
+
+	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) override
+	{
+		assert(false);
+		return false;
+	}
+
+	virtual void disconnect() override
+	{
+		connection_base::disconnect();
+
+		m_next_layer.close();
+	}
+
+  private:
+
+	Stream m_next_layer;
+};
+
+using connection = basic_connection<boost::asio::ip::tcp::socket>;
+
+template<typename Handler>
+auto connection_base::async_read_packet(Handler&& handler)
+{
+	auto packet = std::make_unique<ipacket>();
+
+	return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+		[
+			conn = this->shared_from_this(),
+			packet = std::move(packet),
+			this
+		]
+		(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) mutable
+		{
+			if (ec)
+				self.complete(ec, {});
+			else
+				boost::asio::async_read(*conn, m_response, boost::asio::transfer_at_least(1), std::move(self));
+		}
+	);
+}
+
+// --------------------------------------------------------------------
+
+namespace detail
+{
+
+
 template<typename Stream>
 template<typename Self>
 void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transferred)
@@ -380,293 +683,7 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 	}
 }
 
-}
-
-// --------------------------------------------------------------------
-
-class connection_base : public std::enable_shared_from_this<connection_base>
-{
-  public:
-	connection_base(const connection_base&) = delete;
-	connection_base& operator=(const connection_base& ) = delete;
-
-
-	/// The type of the lowest layer.
-	// using lowest_layer_type = typename next_layer_type::lowest_layer_type;
-	using lowest_layer_type = boost::asio::ip::tcp::socket;
-
-	/// The type of the executor associated with the object.
-	using executor_type = typename lowest_layer_type::executor_type;
-
-	virtual executor_type get_executor() noexcept = 0;
-
-	virtual ~connection_base() {}
-
-	virtual void disconnect();
-
-	virtual void async_write(opacket&& p) = 0;
-	virtual void async_read() = 0;
-
-	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) = 0;
-
-	void set_validate_callback(const validate_callback_type &cb)
-	{
-		m_validate_host_key_cb = cb;
-	}
-
-	void set_password_callback(const password_callback_type &cb)
-	{
-		m_request_password_cb = cb;
-	}
-
-	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
-	{
-		m_keyboard_interactive_cb = cb;
-	}
-
-	virtual bool is_connected() const
-	{
-		return m_authenticated;
-	}
-
-	virtual void handle_error(const boost::system::error_code &ec);
-	void reset();
-
-	void newkeys(key_exchange& kex, boost::system::error_code &ec)
-	{
-		m_crypto_engine.newkeys(kex, m_authenticated);
-	}
-
-	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
-	{
-		m_authenticated = true;
-
-		m_crypto_engine.enable_compression();
-
-		m_host_version = host_version;
-		m_session_id = session_id;
-
-		// start the read loop
-		async_read();
-	}
-
-	void open_channel(channel_ptr ch, uint32_t id);
-	void close_channel(channel_ptr ch, uint32_t id);
-
-	bool has_open_channels();
-
-  protected:
-
-	connection_base(const std::string& user)
-		: m_user(user)
-	{
-		
-	}
-
-	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
-
-	void received_data(boost::system::error_code ec);
-
-	void process_packet(ipacket &in);
-	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
-
-	void process_channel_open(ipacket &in, opacket &out);
-	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
-
-	std::string m_user;
-
-	std::string m_host_version;
-	std::vector<uint8_t> m_session_id;
-
-	crypto_engine m_crypto_engine;
-
-	bool m_authenticated = false;
-
-	// connect_handler_list m_connect_handlers;
-
-	int64_t m_last_io;
-	std::vector<uint8_t> m_private_key_hash;
-	boost::asio::streambuf m_response;
-
-	validate_callback_type m_validate_host_key_cb;
-	password_callback_type m_request_password_cb;
-	keyboard_interactive_callback_type m_keyboard_interactive_cb;
-
-	std::list<channel_ptr> m_channels;
-	bool m_forward_agent;
-	port_forward_listener *m_port_forwarder;
-};
-
-// --------------------------------------------------------------------
-
-template<typename Stream>
-class basic_connection : public connection_base
-{
-  public:
-
-	template<typename Arg>
-	basic_connection(Arg&& arg, const std::string& user)
-		: connection_base(user)
-		, m_next_layer(std::forward<Arg>(arg))
-	{
-		reset();
-	}
-
-	virtual ~basic_connection()
-	{
-
-	}
-
-	/// The type of the next layer.
-	using next_layer_type = std::remove_reference_t<Stream>;
-
-	virtual executor_type get_executor() noexcept override
-	{
-		return m_next_layer.lowest_layer().get_executor();
-	}
-
-	const next_layer_type& next_layer() const
-	{
-		return m_next_layer;
-	}
-
-	next_layer_type& next_layer()
-	{
-		return m_next_layer;
-	}
-
-	const lowest_layer_type& lowest_layer() const
-	{
-		return m_next_layer.lowest_layer();
-	}
-
-	lowest_layer_type& lowest_layer()
-	{
-		return m_next_layer.lowest_layer();
-	}
-
-	// callbacks to be installed by owning object
-	using async_connect_impl = detail::async_connect_impl<next_layer_type>;
-	friend async_connect_impl;
-
-	template<typename Handler>
-	auto async_connect(Handler&& handler)
-	{
-		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-			async_connect_impl{
-				m_next_layer, m_response, this->shared_from_this(), m_user, m_request_password_cb
-			}, handler, m_next_layer
-		);
-	}
-
-	void rekey()
-	{
-
-		assert(false);
-		// m_key_exchange.reset(new key_exchange(m_host_version, m_session_id));
-		// async_write(m_key_exchange->init());
-	}
-
-	virtual void async_write(opacket&& out) override
-	{
-		async_write(std::move(out), [this](const boost::system::error_code& ec, std::size_t)
-		{
-			if (ec)
-				this->handle_error(ec);
-		});
-	}
-
-	template<typename Handler>
-	auto async_write(opacket&& p, Handler&& handler)
-	{
-		return async_write(m_crypto_engine.get_next_request(std::move(p)), std::move(handler));
-	}
-
-	template<typename Handler>
-	auto async_write(std::unique_ptr<boost::asio::streambuf> buffer, Handler&& handler)
-	{
-		enum { start, writing };
-
-		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
-			[
-				&socket = m_next_layer,
-				buffer = std::move(buffer),
-				conn = this->shared_from_this(),
-				state = start
-			]
-			(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_received = 0) mutable
-			{
-				if (not ec and state == start)
-				{
-					state = writing;
-					boost::asio::async_write(socket, *buffer, std::move(self));
-					return;
-				}
-
-				self.complete(ec, 0);
-			}, handler, m_next_layer
-		);
-	}
-
-	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) override
-	{
-		assert(false);
-		return false;
-	}
-
-	virtual void disconnect() override
-	{
-		connection_base::disconnect();
-
-		m_next_layer.close();
-	}
-
-  protected:
-
-	template<typename Handler>
-	auto async_read_packet(Handler&& handler);
-
-  private:
-
-	virtual void async_read() override
-	{
-		boost::asio::async_read(m_next_layer, m_response, boost::asio::transfer_at_least(1),
-			[
-				self = this->shared_from_this()
-			]
-			(const boost::system::error_code &ec, size_t bytes_transferred)
-			{
-				self->received_data(ec);
-			});
-	}
-
-	Stream m_next_layer;
-};
-
-using connection = basic_connection<boost::asio::ip::tcp::socket>;
-
-template<typename Stream>
-template<typename Handler>
-auto basic_connection<Stream>::async_read_packet(Handler&& handler)
-{
-	auto packet = std::make_unique<ipacket>();
-
-	return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-		[
-			&socket = this->m_next_layer,
-			conn = this->shared_from_this(),
-			packet = std::move(packet),
-			this
-		]
-		(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) mutable
-		{
-			if (ec)
-				self.complete(ec, {});
-			else
-				boost::asio::async_read(socket, m_response, boost::asio::transfer_at_least(1), std::move(self));
-		}
-	);
-}
+} // namespace detail
 
 }
 
