@@ -231,7 +231,12 @@ class channel : public std::enable_shared_from_this<channel>
 		if (m_connection->is_connected())
 			this->open();
 		else
-			m_connection->async_connect([] (const boost::system::error_code& ec) {}, shared_from_this());
+			m_connection->async_connect(
+				[self = shared_from_this()](const boost::system::error_code& ec)
+				{
+					if (ec)
+						self->error(ec.message(), "");
+				}, shared_from_this());
 	}
 
 	void open();

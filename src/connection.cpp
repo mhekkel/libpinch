@@ -10,11 +10,12 @@
 #include <pinch/connection.hpp>
 #include <pinch/channel.hpp>
 #include <pinch/ssh_agent.hpp>
-// #include <pinch/x11_channel.hpp>
+#include <pinch/x11_channel.hpp>
 #include <pinch/key_exchange.hpp>
 #include <pinch/error.hpp>
-// #include <pinch/port_forwarding.hpp>
+#include <pinch/port_forwarding.hpp>
 #include <pinch/crypto-engine.hpp>
+#include "pinch/ssh_agent_channel.hpp"
 
 namespace io = boost::iostreams;
 namespace ba = boost::algorithm;
@@ -294,7 +295,6 @@ void basic_connection::process_packet(ipacket& in)
 	}
 
 	if (ec)
-		// handle_connect_result(ec);
 		handle_error(ec);
 
 	if (not out.empty())
@@ -348,10 +348,10 @@ void basic_connection::process_channel_open(ipacket &in, opacket &out)
 
 	try
 	{
-		// if (type == "x11")
-		// 	c.reset(new x11_channel(shared_from_this()));
-		// else if (type == "auth-agent@openssh.com" and m_forward_agent)
-		// 	c.reset(new ssh_agent_channel(this->shared_from_this()));
+		if (type == "x11")
+			c.reset(new x11_channel(shared_from_this()));
+		else if (type == "auth-agent@openssh.com" and m_forward_agent)
+			c.reset(new ssh_agent_channel(this->shared_from_this()));
 	}
 	catch (...)
 	{

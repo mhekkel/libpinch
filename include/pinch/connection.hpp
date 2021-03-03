@@ -20,7 +20,6 @@
 #include "pinch/crypto-engine.hpp"
 #include "pinch/ssh_agent.hpp"
 
-
 namespace pinch
 {
 
@@ -95,6 +94,9 @@ struct async_connect_impl
 	template<typename Self>
 	void operator()(Self& self, boost::system::error_code ec = {}, std::size_t bytes_transferred = 0);
 
+	template<typename Self>
+	void failed(Self& self, boost::system::error_code ec);
+
 	void process_userauth_success(ipacket &in, opacket &out, boost::system::error_code &ec);
 	void process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec);
 	void process_userauth_banner(ipacket &in);
@@ -163,6 +165,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			if (ec)
 				this->handle_error(ec);
 		});
+	}
+
+	void forward_agent(bool forward)
+	{
+		m_forward_agent = forward;
 	}
 
   private:
@@ -412,7 +419,7 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 {
 	if (ec)
 	{
-		self.complete(ec);
+		failed(self, ec);
 		return;
 	}
 
@@ -441,7 +448,7 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 
 			if (host_version.substr(0, 7) != "SSH-2.0")
 			{
-				self.complete(error::make_error_code(error::protocol_version_not_supported));
+				failed(self, error::make_error_code(error::protocol_version_not_supported));
 				return;
 			}
 
@@ -471,7 +478,7 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 
 					if (ec)
 					{
-						self.complete(ec);
+						failed(self, ec);
 						return;
 					}
 
@@ -493,13 +500,13 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 				}
 				else if (not kex->process(*packet, out, ec))
 				{
-					self.complete(error::make_error_code(error::key_exchange_failed));
-					return;
+					if (not ec)
+						ec = error::make_error_code(error::key_exchange_failed);
 				}
 
 				if (ec)
 				{
-					self.complete(ec);
+					failed(self, ec);
 					return;
 				}
 
@@ -561,7 +568,7 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 
 				if (ec)
 				{
-					self.complete(ec);
+					failed(self, ec);
 					return;
 				}
 				
@@ -573,6 +580,14 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 		}
 	}
 }
+
+template<typename Self>
+void async_connect_impl::failed(Self& self, boost::system::error_code ec)
+{
+	conn->disconnect();
+	self.complete(ec);
+}
+
 
 } // namespace detail
 

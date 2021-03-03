@@ -43,7 +43,7 @@ void read_from_channel(pinch::channel_ptr ch, int start = 1)
 
 			if (start)
 			{
-				ch->send_data("ls\n");
+				ch->send_data("xterm\n");
 			}
 		}
 	});
@@ -58,7 +58,7 @@ int main() {
 	auto conn = std::make_shared<pinch::connection>(io_context, "maarten");
 
 	tcp::resolver resolver(io_context);
-	tcp::resolver::results_type endpoints = resolver.resolve("localhost", "2022");
+	tcp::resolver::results_type endpoints = resolver.resolve("s4", "22");
 
 	boost::asio::connect(conn->lowest_layer(), endpoints);
 
@@ -81,7 +81,7 @@ int main() {
 	);
 
 
-	channel->open_with_pty(80, 24, "vt220", false, false, "",
+	channel->open_with_pty(80, 24, "vt220", true, true, "",
 		[t = channel](const boost::system::error_code& ec)
 	{
 		std::cout << "handler, ec = " << ec.message() << std::endl;

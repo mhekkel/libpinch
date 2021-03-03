@@ -17,6 +17,8 @@ class operation
 	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) = 0;
 };
 
+// --------------------------------------------------------------------
+
 template <typename Handler, typename IoExecutor,
 	typename HandlerExecutor = typename boost::asio::associated_executor_t<Handler, IoExecutor>>
 class handler_work

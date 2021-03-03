@@ -165,28 +165,28 @@ void channel::open_pty(uint32_t width, uint32_t height,
 	const std::string& terminal_type, bool forward_agent, bool forward_x11,
 	const environment& env)
 {
-	// if (forward_x11)
-	// {
-	// 	opacket out(msg_channel_request);
-	// 	out	<< m_host_channel_id
-	// 		<< "x11-req"
-	// 		<< false << false
-	// 		<< "MIT-MAGIC-COOKIE-1"
-	// 		<< "0000000000000000"
-	// 		<< uint32_t(0);
-	// 	m_connection->async_write(std::move(out));
-	// }
+	if (forward_x11)
+	{
+		opacket out(msg_channel_request);
+		out	<< m_host_channel_id
+			<< "x11-req"
+			<< false << false
+			<< "MIT-MAGIC-COOKIE-1"
+			<< "0000000000000000"
+			<< uint32_t(0);
+		m_connection->async_write(std::move(out));
+	}
 
-	// if (forward_agent)
-	// {
-	// 	m_connection->forward_agent(true);
+	if (forward_agent)
+	{
+		m_connection->forward_agent(true);
 		
-	// 	opacket out(msg_channel_request);
-	// 	out	<< m_host_channel_id
-	// 		<< "auth-agent-req@openssh.com"
-	// 		<< false;
-	// 	m_connection->async_write(std::move(out));
-	// }
+		opacket out(msg_channel_request);
+		out	<< m_host_channel_id
+			<< "auth-agent-req@openssh.com"
+			<< false;
+		m_connection->async_write(std::move(out));
+	}
 	
 	for (const auto& [name, value]: env)
 	{

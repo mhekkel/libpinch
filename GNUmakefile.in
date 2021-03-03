@@ -89,11 +89,11 @@ OBJECTS = \
 	$(OBJDIR)/posix_ssh_agent_impl.lo \
 	$(OBJDIR)/terminal_channel.lo \
 	$(OBJDIR)/ssh_agent.lo \
+	$(OBJDIR)/x11_channel.lo
 
 	# $(OBJDIR)/port_forwarding.lo \
 	# $(OBJDIR)/proxy_cmd.lo \
 	# $(OBJDIR)/sftp_channel.lo \
-	# $(OBJDIR)/x11_channel.lo
 
 $(LIB_TARGET): $(OBJECTS)
 	$(CXXLINK) -rpath $(libdir) $(OBJECTS) $(LIBS)

@@ -92,20 +92,4 @@ class ssh_agent
 	connection_list m_registered_connections;
 };
 
-// // --------------------------------------------------------------------
-// // ssh_agent_channel is used for forwarding the ssh-agent over a connection
-
-// class ssh_agent_channel : public channel
-// {
-// public:
-// 	ssh_agent_channel(std::shared_ptr<basic_connection> connection);
-// 	virtual ~ssh_agent_channel();
-
-// 	virtual void opened();
-// 	virtual void receive_data(const char *data, std::size_t size);
-
-// private:
-// 	ipacket m_packet;
-// };
-
 }
