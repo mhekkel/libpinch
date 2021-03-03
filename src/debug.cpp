@@ -12,7 +12,7 @@ namespace pinch
 {
 
 // hex dump the packet
-void print(std::ostream& os, const std::vector<uint8_t>& b)
+void print(std::ostream& os, const blob& b)
 {
 	os << "dumping buffer of " << b.size() << " bytes" << std::endl;
 

@@ -13,14 +13,14 @@
 namespace pinch
 {
 
-using verify_host_key_func = std::function<bool(const std::string&, const std::vector<uint8_t>&)>;
+using verify_host_key_func = std::function<bool(const std::string&, const blob&)>;
 struct key_exchange_impl;
 
 class key_exchange
 {
   public:
 	key_exchange(const std::string& host_version);
-	key_exchange(const std::string& host_version, const std::vector<uint8_t>& session_id);
+	key_exchange(const std::string& host_version, const blob& session_id);
 	~key_exchange();
 
 	key_exchange(const key_exchange&) = delete;
@@ -34,7 +34,7 @@ class key_exchange
 	const uint8_t *key(key_enum k) const;
 	// const uint8_t *key(key_enum k) const { return m_keys[k].data(); }
 
-	const std::vector<uint8_t>& session_id() const { return m_session_id; }
+	const blob& session_id() const { return m_session_id; }
 
 	std::string get_encryption_protocol(direction dir) const;
 	std::string get_verification_protocol(direction dir) const;
@@ -51,8 +51,8 @@ class key_exchange
 	key_exchange_impl* m_impl = nullptr;
 
 	std::string m_host_version;
-	std::vector<uint8_t> m_session_id;
-	std::vector<uint8_t> m_host_payload, m_my_payload;
+	blob m_session_id;
+	blob m_host_payload, m_my_payload;
 	bool m_first_kex_packet_follows;
  	verify_host_key_func cb_verify_host_key;
  };

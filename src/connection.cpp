@@ -33,6 +33,123 @@ const std::string
 
 // --------------------------------------------------------------------
 
+// --------------------------------------------------------------------
+
+namespace detail
+{
+
+void async_connect_impl::async_connect_impl::process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	std::string s;
+	bool partial;
+
+	in >> s >> partial;
+
+	private_key_hash.clear();
+
+	if (choose_protocol(s, "publickey") == "publickey" and not private_keys.empty())
+	{
+		out = opacket(msg_userauth_request)
+				<< user << "ssh-connection"
+				<< "publickey" << false
+				<< "ssh-rsa" << private_keys.front();
+		private_keys.pop_front();
+		auth_state = auth_state_type::public_key;
+	}
+	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and m_keyboard_interactive_cb and ++m_password_attempts <= 3)
+	{
+		out = opacket(msg_userauth_request)
+				<< user << "ssh-connection"
+				<< "keyboard-interactive"
+				<< "en"
+				<< "";
+		auth_state = auth_state_type::keyboard_interactive;
+	}
+	else if (choose_protocol(s, "password") == "password" and request_password and ++m_password_attempts <= 3)
+	{
+		auth_state = auth_state_type::password;
+		request_password();
+	}
+	else
+	{
+		auth_state = auth_state_type::error;
+		ec = error::make_error_code(error::no_more_auth_methods_available);
+	}
+}
+
+void async_connect_impl::process_userauth_banner(ipacket &in)
+{
+	std::string msg, lang;
+	in >> msg >> lang;
+
+std::cerr << msg << '\t' << lang << std::endl;
+
+	// for (auto h : m_connect_handlers)
+	// 	h->handle_banner(msg, lang);
+}
+
+void async_connect_impl::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
+{
+	switch (auth_state)
+	{
+		case auth_state_type::public_key:
+		{
+			out = msg_userauth_request;
+
+			std::string alg;
+			ipacket blob;
+
+			in >> alg >> blob;
+
+			out << user << "ssh-connection"
+				<< "publickey" << true << "ssh-rsa" << blob;
+
+			opacket session_id;
+			session_id << kex->session_id();
+
+			ssh_private_key pk(ssh_agent::instance().get_key(blob));
+
+			out << pk.sign(session_id, out);
+
+			// store the hash for this private key
+			private_key_hash = pk.get_hash();
+			break;
+		}
+		case auth_state_type::keyboard_interactive:
+		{
+			std::string name, instruction, language;
+			int32_t numPrompts = 0;
+
+			in >> name >> instruction >> language >> numPrompts;
+
+			if (numPrompts == 0)
+			{
+				out = msg_userauth_info_response;
+				out << numPrompts;
+			}
+			else
+			{
+				std::vector<prompt> prompts(numPrompts);
+
+				for (auto& p : prompts)
+					in >> p.str >> p.echo;
+
+				if (prompts.empty())
+					prompts.push_back({ "iets", true });
+
+				m_keyboard_interactive_cb(name, language, prompts);
+			}
+			break;
+		}
+		default:
+			ec = make_error_code(error::protocol_error);
+	}
+}
+
+} // namespace detail
+
+// --------------------------------------------------------------------
+
 void basic_connection::handle_error(const boost::system::error_code &ec)
 {
 	if (ec)
@@ -41,9 +158,6 @@ void basic_connection::handle_error(const boost::system::error_code &ec)
 			ch->error(ec.message(), "");
 
 		disconnect();
-
-		m_authenticated = false;
-		// handle_connect_result(ec);
 	}
 }
 
@@ -1211,7 +1325,7 @@ bool basic_connection::has_open_channels()
 // 		basic_connection::start_handshake();
 // }
 
-// bool connection::validate_host_key(const std::string &pk_alg, const std::vector<uint8_t> &host_key)
+// bool connection::validate_host_key(const std::string &pk_alg, const blob &host_key)
 // {
 // 	return not m_validate_host_key_cb or m_validate_host_key_cb(m_host, pk_alg, host_key);
 // }

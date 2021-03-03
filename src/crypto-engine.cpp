@@ -100,7 +100,7 @@ struct packet_encryptor
 
 			if (m_block.size() == m_blocksize)
 			{
-				std::vector<uint8_t> block(m_blocksize);
+				blob block(m_blocksize);
 				m_cipher.ProcessData(block.data(), m_block.data(), m_blocksize);
 
 				for (uint32_t i = 0; i < m_blocksize; ++i)
@@ -120,7 +120,7 @@ struct packet_encryptor
 		{
 			assert(m_block.size() == 0);
 
-			std::vector<uint8_t> digest(m_signer.DigestSize());
+			blob digest(m_signer.DigestSize());
 			m_signer.Final(digest.data());
 			for (size_t i = 0; i < digest.size(); ++i)
 				io::put(sink, digest[i]);
@@ -133,7 +133,7 @@ struct packet_encryptor
 
 	CryptoPP::StreamTransformation &m_cipher;
 	CryptoPP::MessageAuthenticationCode &m_signer;
-	std::vector<uint8_t> m_block;
+	blob m_block;
 	uint32_t m_blocksize;
 	bool m_flushed;
 };
@@ -258,14 +258,14 @@ void crypto_engine::reset()
 	m_iblocksize = m_oblocksize = 8;
 }
 
-std::vector<uint8_t> crypto_engine::get_next_block(boost::asio::streambuf& buffer, bool empty)
+blob crypto_engine::get_next_block(boost::asio::streambuf& buffer, bool empty)
 {
-	std::vector<uint8_t> block(m_iblocksize);
+	blob block(m_iblocksize);
 	buffer.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
 
 	if (m_decryptor)
 	{
-		std::vector<uint8_t> data(m_iblocksize);
+		blob data(m_iblocksize);
 		m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
 		std::swap(data, block);
 	}
@@ -306,7 +306,7 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf& 
 				if (buffer.size() < m_verifier->DigestSize())
 					break;
 
-				std::vector<uint8_t> digest(m_verifier->DigestSize());
+				blob digest(m_verifier->DigestSize());
 				buffer.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
 
 				if (not m_verifier->Verify(digest.data()))

@@ -90,7 +90,7 @@ void proxied_connection::start_handshake()
 		basic_connection::start_handshake();
 }
 
-bool proxied_connection::validate_host_key(const std::string& pk_alg, const std::vector<uint8_t>& host_key)
+bool proxied_connection::validate_host_key(const std::string& pk_alg, const blob& host_key)
 {
 	return m_validate_host_key_cb and m_validate_host_key_cb(m_host, pk_alg, host_key);
 }

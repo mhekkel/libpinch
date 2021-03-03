@@ -33,9 +33,9 @@ class ssh_private_key
 	ssh_private_key(const ssh_private_key &key);
 	ssh_private_key &operator=(const ssh_private_key &key);
 
-	std::vector<uint8_t> sign(const std::vector<uint8_t> &session_id, const opacket &data);
+	blob sign(const blob &session_id, const opacket &data);
 
-	std::vector<uint8_t> get_hash() const;
+	blob get_hash() const;
 	std::string get_comment() const;
 
 	operator bool() const { return m_impl != nullptr; }

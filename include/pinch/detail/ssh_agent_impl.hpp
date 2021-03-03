@@ -17,9 +17,9 @@ class ssh_private_key_impl
 	void							reference();
 	void							release();
 
-	virtual std::vector<uint8_t>	sign(const std::vector<uint8_t>& session_id, const opacket& data) = 0;
+	virtual blob	sign(const blob& session_id, const opacket& data) = 0;
 
-	virtual std::vector<uint8_t>	get_hash() const = 0;
+	virtual blob	get_hash() const = 0;
 	virtual std::string				get_comment() const = 0;
 
 //	static ssh_private_key_impl*	create_for_hash(const std::string& hash);

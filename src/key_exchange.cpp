@@ -49,10 +49,10 @@ public:
 	{
 		opacket p;
 		p << v;
-		return update(static_cast<std::vector<uint8_t>>(p));
+		return update(static_cast<blob>(p));
 	}
 
-	hash& update(const std::vector<uint8_t>& v)
+	hash& update(const blob& v)
 	{
 		m_hash.Update(v.data(), v.size());
 		return *this;
@@ -76,9 +76,9 @@ public:
 		return *this;
 	}
 
-	std::vector<uint8_t> final()
+	blob final()
 	{
-		std::vector<uint8_t> result(m_hash.DigestSize());
+		blob result(m_hash.DigestSize());
 		m_hash.Final(result.data());
 		return result;
 	}
@@ -133,11 +133,11 @@ struct key_exchange_impl
 		for (int i = 0; i < 6; ++i)
 		{
 			hash<HashAlgorithm> ha;
-			std::vector<uint8_t> key = (ha | m_K | m_H | ('A' + i) | m_kx.m_session_id).final();
+			blob key = (ha | m_K | m_H | ('A' + i) | m_kx.m_session_id).final();
 			
 			for (int k = 20; k < keylen; k += 20)
 			{
-				std::vector<uint8_t> k2 = (ha | m_K | m_H | key).final();
+				blob k2 = (ha | m_K | m_H | key).final();
 				key.insert(key.end(), k2.begin(), k2.end());
 			}
 			
@@ -150,8 +150,8 @@ struct key_exchange_impl
 	virtual void derive_keys() = 0;
 
 	key_exchange& m_kx;
-	std::vector<uint8_t> m_H, m_keys[6];
-	std::vector<uint8_t> &m_host_payload, &m_my_payload;
+	blob m_H, m_keys[6];
+	blob &m_host_payload, &m_my_payload;
 	CryptoPP::Integer m_x, m_e, m_K, m_p, m_q, m_g;
 };
 
@@ -182,7 +182,7 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 		std::string h_pk_type;
 		hostkey >> h_pk_type;
 
-		std::vector<uint8_t> pk_rs_d;
+		blob pk_rs_d;
 
 		if (h_pk_type == "ssh-dss")
 		{
@@ -218,7 +218,7 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 		else if (h_pk_type == "ecdsa-sha2-nistp256")
 		{
 			std::string identifier;
-			std::vector<uint8_t> Q;
+			blob Q;
 			hostkey >> identifier >> Q;
 
 			ECP::Point point;
@@ -231,7 +231,7 @@ void key_exchange_impl::process_kex_dh_reply(ipacket& in, opacket& out, boost::s
 
 			h_key.reset(new ECDSA<ECP, SHA256>::Verifier(pubKey));
 
-			std::vector<uint8_t> r, s;
+			blob r, s;
 
 			ipacket sig_rs;
 			signature >> sig_rs;
@@ -393,7 +393,7 @@ key_exchange::key_exchange(const std::string& host_version)
 {
 }
 
-key_exchange::key_exchange(const std::string& host_version, const std::vector<uint8_t>& session_id)
+key_exchange::key_exchange(const std::string& host_version, const blob& session_id)
 	: m_host_version(host_version), m_session_id(session_id)
 {
 }

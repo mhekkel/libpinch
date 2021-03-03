@@ -150,7 +150,7 @@ class opacket
 
 	void write(std::ostream& os, int blocksize) const;
 
-	operator std::vector<uint8_t>() const { return m_data; }
+	operator blob() const { return m_data; }
 
 	bool empty() const { return m_data.empty() or static_cast<message_type>(m_data[0]) == msg_undefined; }
 	std::size_t size() const { return m_data.size(); }
@@ -163,7 +163,7 @@ class opacket
 	opacket& operator<<(const std::string& v);
 	opacket& operator<<(const std::vector<std::string> &v);
 	opacket& operator<<(const char *v[]);
-	opacket& operator<<(const std::vector<uint8_t> &v);
+	opacket& operator<<(const blob &v);
 	opacket& operator<<(const CryptoPP::Integer& v);
 	opacket& operator<<(const opacket& v);
 	opacket& operator<<(const ipacket& v);
@@ -178,7 +178,7 @@ class opacket
 	}
 
 protected:
-	std::vector<uint8_t> m_data;
+	blob m_data;
 };
 
 class ipacket
@@ -206,7 +206,7 @@ class ipacket
 
 	uint32_t size() const { return m_length; }
 
-	void append(const std::vector<uint8_t> &block);
+	void append(const blob &block);
 	std::size_t read(const char *data, std::size_t size);
 
 	void message(message_type msg) { m_message = msg; }
@@ -223,7 +223,7 @@ class ipacket
 		return m_message == msg;
 	}
 
-	operator std::vector<uint8_t>() const { return std::vector<uint8_t>(m_data, m_data + m_length); }
+	operator blob() const { return blob(m_data, m_data + m_length); }
 
 	void skip(uint32_t bytes) { m_offset += bytes; }
 
@@ -231,7 +231,7 @@ class ipacket
 	ipacket& operator>>(INT& v);
 	ipacket& operator>>(std::string& v);
 	ipacket& operator>>(std::vector<std::string> &v);
-	ipacket& operator>>(std::vector<uint8_t> &v);
+	ipacket& operator>>(blob &v);
 	ipacket& operator>>(CryptoPP::Integer& v);
 	ipacket& operator>>(ipacket& v);
 	ipacket& operator>>(std::pair<const char *, std::size_t> &v);

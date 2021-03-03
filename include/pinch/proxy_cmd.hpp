@@ -39,7 +39,7 @@
 // 	protected:
 // 		virtual void start_handshake();
 
-// 		virtual bool validate_host_key(const std::string &pk_alg, const std::vector<uint8_t> &host_key);
+// 		virtual bool validate_host_key(const std::string &pk_alg, const blob &host_key);
 
 // 		virtual void async_write_int(boost::asio::streambuf *request, basic_write_op *op);
 // 		virtual void async_read_version_string();

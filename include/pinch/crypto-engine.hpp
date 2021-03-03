@@ -43,7 +43,7 @@ class crypto_engine
 
   private:
 
-	std::vector<uint8_t> get_next_block(boost::asio::streambuf& buffer, bool empty);
+	blob get_next_block(boost::asio::streambuf& buffer, bool empty);
 
 	std::size_t m_iblocksize = 8, m_oblocksize = 8;
 	uint32_t m_in_seq_nr = 0, m_out_seq_nr = 0;

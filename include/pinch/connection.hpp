@@ -52,7 +52,7 @@ struct prompt
 using keyboard_interactive_callback_type = std::function<void(const std::string &, const std::string &, const std::vector<prompt> &)>;
 
 // bool validate_host_key(host, alg, key)
-using validate_callback_type = std::function<bool(const std::string&, const std::string&, const std::vector<uint8_t>&)>;
+using validate_callback_type = std::function<bool(const std::string&, const std::string&, const blob&)>;
 
 // void request_password()
 using password_callback_type = std::function<void()>;
@@ -72,12 +72,8 @@ enum class auth_state_type
 	none, public_key, keyboard_interactive, password, error
 };
 
-template<typename Stream>
 struct async_connect_impl
 {
-	using socket_type = Stream;
-
-	socket_type& socket;
 	boost::asio::streambuf& response;
 	std::shared_ptr<basic_connection> conn;
 	std::string user;
@@ -91,7 +87,7 @@ struct async_connect_impl
 	std::unique_ptr<ipacket> packet = std::make_unique<ipacket>();
 	std::unique_ptr<key_exchange> kex;
 	std::deque<opacket> private_keys;
-	std::vector<uint8_t> private_key_hash;
+	blob private_key_hash;
 
 	keyboard_interactive_callback_type m_keyboard_interactive_cb;
 	int m_password_attempts = 0;
@@ -185,9 +181,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
   public:
 
-	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash)
+	bool uses_private_key(const blob& pk_hash)
 	{
-		return false;
+		return m_private_key_hash == pk_hash;
 	}
 
 	void set_validate_callback(const validate_callback_type &cb)
@@ -211,15 +207,14 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	}
 
 	// callbacks to be installed by owning object
-	using async_connect_impl = detail::async_connect_impl<basic_connection>;
-	friend async_connect_impl;
+	friend struct detail::async_connect_impl;
 
 	template<typename Handler>
 	auto async_connect(Handler&& handler)
 	{
 		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-			async_connect_impl{
-				*this, m_response, this->shared_from_this(), m_user, m_request_password_cb
+			detail::async_connect_impl{
+				m_response, this->shared_from_this(), m_user, m_request_password_cb
 			}, handler, *this
 		);
 	}
@@ -232,7 +227,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		m_crypto_engine.newkeys(kex, m_authenticated);
 	}
 
-	void userauth_success(const std::string& host_version, const std::vector<uint8_t>& session_id)
+	void userauth_success(const std::string& host_version, const blob& session_id,
+		const blob& pk_hash)
 	{
 		m_authenticated = true;
 
@@ -240,6 +236,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 		m_host_version = host_version;
 		m_session_id = session_id;
+		m_private_key_hash = pk_hash;
 
 		// start the read loop
 		async_read();
@@ -287,7 +284,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	std::string m_user;
 
 	std::string m_host_version;
-	std::vector<uint8_t> m_session_id;
+	blob m_session_id;
 
 	crypto_engine m_crypto_engine;
 
@@ -296,7 +293,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	// connect_handler_list m_connect_handlers;
 
 	int64_t m_last_io;
-	std::vector<uint8_t> m_private_key_hash;
+	blob m_private_key_hash;
 	boost::asio::streambuf m_response;
 
 	validate_callback_type m_validate_host_key_cb;
@@ -408,10 +405,8 @@ void basic_connection::async_write_impl::operator()(Handler&& handler, basic_con
 namespace detail
 {
 
-
-template<typename Stream>
 template<typename Self>
-void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transferred)
+void async_connect_impl::operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transferred)
 {
 	if (ec)
 	{
@@ -426,13 +421,13 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 			std::ostream out(request.get());
 			out << kSSHVersionString << "\r\n";
 			state = state_type::wrote_version;
-			boost::asio::async_write(socket, *request, std::move(self));
+			boost::asio::async_write(*conn, *request, std::move(self));
 			return;
 		}
 		
 		case state_type::wrote_version:
 			state = state_type::reading;
-			boost::asio::async_read_until(socket, response, "\n", std::move(self));
+			boost::asio::async_read_until(*conn, response, "\n", std::move(self));
 			return;
 
 		case state_type::reading:
@@ -453,7 +448,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 
 			conn->async_write(kex->init());
 			
-			boost::asio::async_read(socket, response, boost::asio::transfer_at_least(8), std::move(self));
+			boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(8), std::move(self));
 			return;
 		}
 
@@ -463,7 +458,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 			{
 				if (not conn->receive_packet(*packet, ec) and not ec)
 				{
-					boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+					boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
 					return;
 				}
 
@@ -517,7 +512,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 		{
 			if (not conn->receive_packet(*packet, ec) and not ec)
 			{
-				boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+				boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
 				return;
 			}
 
@@ -545,7 +540,7 @@ void async_connect_impl<Stream>::operator()(Self& self, boost::system::error_cod
 					break;
 
 				case msg_userauth_success:
-					conn->userauth_success(host_version, kex->session_id());
+					conn->userauth_success(host_version, kex->session_id(), private_key_hash);
 					self.complete({});
 					return;
 				
@@ -562,122 +557,11 @@ std::cerr << "Unexpected packet: " << in << std::endl;
 			else
 			{
 				packet->clear();
-				boost::asio::async_read(socket, response, boost::asio::transfer_at_least(1), std::move(self));
+				boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
 			}
 
 			return;
 		}
-	}
-}
-
-template<typename Stream>
-void async_connect_impl<Stream>::async_connect_impl::process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec)
-{
-	std::string s;
-	bool partial;
-
-	in >> s >> partial;
-
-	private_key_hash.clear();
-
-	if (choose_protocol(s, "publickey") == "publickey" and not private_keys.empty())
-	{
-		out = opacket(msg_userauth_request)
-				<< user << "ssh-connection"
-				<< "publickey" << false
-				<< "ssh-rsa" << private_keys.front();
-		private_keys.pop_front();
-		auth_state = auth_state_type::public_key;
-	}
-	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and m_keyboard_interactive_cb and ++m_password_attempts <= 3)
-	{
-		out = opacket(msg_userauth_request)
-				<< user << "ssh-connection"
-				<< "keyboard-interactive"
-				<< "en"
-				<< "";
-		auth_state = auth_state_type::keyboard_interactive;
-	}
-	else if (choose_protocol(s, "password") == "password" and request_password and ++m_password_attempts <= 3)
-	{
-		auth_state = auth_state_type::password;
-		request_password();
-	}
-	else
-	{
-		auth_state = auth_state_type::error;
-		ec = error::make_error_code(error::no_more_auth_methods_available);
-	}
-}
-
-template<typename Stream>
-void async_connect_impl<Stream>::process_userauth_banner(ipacket &in)
-{
-	std::string msg, lang;
-	in >> msg >> lang;
-
-std::cerr << msg << '\t' << lang << std::endl;
-
-	// for (auto h : m_connect_handlers)
-	// 	h->handle_banner(msg, lang);
-}
-
-template<typename Stream>
-void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
-{
-	switch (auth_state)
-	{
-		case auth_state_type::public_key:
-		{
-			out = msg_userauth_request;
-
-			std::string alg;
-			ipacket blob;
-
-			in >> alg >> blob;
-
-			out << user << "ssh-connection"
-				<< "publickey" << true << "ssh-rsa" << blob;
-
-			opacket session_id;
-			session_id << kex->session_id();
-
-			ssh_private_key pk(ssh_agent::instance().get_key(blob));
-
-			out << pk.sign(session_id, out);
-
-			// store the hash for this private key
-			private_key_hash = pk.get_hash();
-			break;
-		}
-		case auth_state_type::keyboard_interactive:
-		{
-			std::string name, instruction, language;
-			int32_t numPrompts = 0;
-
-			in >> name >> instruction >> language >> numPrompts;
-
-			if (numPrompts == 0)
-			{
-				out = msg_userauth_info_response;
-				out << numPrompts;
-			}
-			else
-			{
-				std::vector<prompt> prompts(numPrompts);
-
-				for (auto& p : prompts)
-					in >> p.str >> p.echo;
-
-				if (prompts.empty())
-					prompts.push_back({ "iets", true });
-
-				m_keyboard_interactive_cb(name, language, prompts);
-			}
-			break;
-		}
-		default:
-			ec = make_error_code(error::protocol_error);
 	}
 }
 
@@ -705,7 +589,7 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 // 	// callbacks to be installed by owning object
 
 // 	// bool validate_host_key(host, alg, key)
-// 	typedef std::function<bool(const std::string &, const std::string &, const std::vector<uint8_t> &)>
+// 	typedef std::function<bool(const std::string &, const std::string &, const blob &)>
 // 		validate_callback_type;
 
 // 	// void request_password()
@@ -770,7 +654,7 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 
 // 	std::string get_connection_parameters(direction d) const;
 // 	std::string get_key_exchange_algoritm() const;
-// 	std::vector<uint8_t>
+// 	blob
 // 	get_used_private_key() const { return m_private_key_hash; }
 
 // 	virtual std::shared_ptr<basic_connection> get_proxy() const { return {}; }
@@ -818,7 +702,7 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 // 		boost::system::error_code m_ec;
 // 	};
 
-// 	virtual bool validate_host_key(const std::string &pk_alg, const std::vector<uint8_t> &host_key) = 0;
+// 	virtual bool validate_host_key(const std::string &pk_alg, const blob &host_key) = 0;
 
 // 	virtual void start_handshake();
 // 	void handle_protocol_version_request(const boost::system::error_code &ec, std::size_t);
@@ -916,11 +800,11 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 
 // 	std::unique_ptr<key_exchange> m_key_exchange;
 
-// 	std::vector<uint8_t> /*m_my_payload, m_host_payload, */m_session_id;
+// 	blob /*m_my_payload, m_host_payload, */m_session_id;
 // 	auth_state m_auth_state;
 // 	int64_t m_last_io;
 // 	uint32_t m_password_attempts;
-// 	std::vector<uint8_t> m_private_key_hash;
+// 	blob m_private_key_hash;
 // 	uint32_t m_in_seq_nr, m_out_seq_nr;
 // 	ipacket m_packet;
 // 	uint32_t m_iblocksize, m_oblocksize;
@@ -975,7 +859,7 @@ void async_connect_impl<Stream>::process_userauth_info_request(ipacket &in, opac
 //   protected:
 // 	virtual void start_handshake();
 
-// 	virtual bool validate_host_key(const std::string &pk_alg, const std::vector<uint8_t> &host_key);
+// 	virtual bool validate_host_key(const std::string &pk_alg, const blob &host_key);
 
 // 	void handle_resolve(const boost::system::error_code &err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);
 // 	void handle_connect(const boost::system::error_code &err, boost::asio::ip::tcp::resolver::iterator endpoint_iterator);
