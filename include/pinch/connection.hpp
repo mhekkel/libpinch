@@ -43,8 +43,6 @@ class port_forward_listener;
 
 extern const std::string kSSHVersionString;
 
-template<typename> class basic_connection;
-
 // keyboard interactive support
 struct prompt
 {
@@ -132,7 +130,45 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 
 	virtual void disconnect();
 
-	virtual void async_write(opacket&& p) = 0;
+	template<typename Handler>
+	auto async_write(opacket&& p, Handler&& handler)
+	{
+		return async_write(m_crypto_engine.get_next_request(std::move(p)), std::move(handler));
+	}
+
+	template<typename Handler>
+	auto async_write(std::unique_ptr<boost::asio::streambuf> buffer, Handler&& handler)
+	{
+		enum { start, writing };
+
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
+			[
+				buffer = std::move(buffer),
+				conn = this->shared_from_this(),
+				state = start
+			]
+			(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_received = 0) mutable
+			{
+				if (not ec and state == start)
+				{
+					state = writing;
+					boost::asio::async_write(*conn, *buffer, std::move(self));
+					return;
+				}
+
+				self.complete(ec, 0);
+			}, handler, *this
+		);
+	}
+
+	void async_write(opacket&& out)
+	{
+		async_write(std::move(out), [this](const boost::system::error_code& ec, std::size_t)
+		{
+			if (ec)
+				this->handle_error(ec);
+		});
+	}
 
   private:
 
@@ -150,7 +186,10 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 
   public:
 
-	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) = 0;
+	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash)
+	{
+		return false;
+	}
 
 	void set_validate_callback(const validate_callback_type &cb)
 	{
@@ -287,26 +326,25 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 
 // --------------------------------------------------------------------
 
-template<typename Stream>
-class basic_connection : public connection_base
+class connection : public connection_base
 {
   public:
 
 	template<typename Arg>
-	basic_connection(Arg&& arg, const std::string& user)
+	connection(Arg&& arg, const std::string& user)
 		: connection_base(user)
 		, m_next_layer(std::forward<Arg>(arg))
 	{
 		reset();
 	}
 
-	virtual ~basic_connection()
+	virtual ~connection()
 	{
 
 	}
 
 	/// The type of the next layer.
-	using next_layer_type = std::remove_reference_t<Stream>;
+	using next_layer_type = boost::asio::ip::tcp::socket;
 
 	virtual executor_type get_executor() noexcept override
 	{
@@ -333,61 +371,6 @@ class basic_connection : public connection_base
 		return m_next_layer.lowest_layer();
 	}
 
-	void rekey()
-	{
-
-		assert(false);
-		// m_key_exchange.reset(new key_exchange(m_host_version, m_session_id));
-		// async_write(m_key_exchange->init());
-	}
-
-	virtual void async_write(opacket&& out) override
-	{
-		async_write(std::move(out), [this](const boost::system::error_code& ec, std::size_t)
-		{
-			if (ec)
-				this->handle_error(ec);
-		});
-	}
-
-	template<typename Handler>
-	auto async_write(opacket&& p, Handler&& handler)
-	{
-		return async_write(m_crypto_engine.get_next_request(std::move(p)), std::move(handler));
-	}
-
-	template<typename Handler>
-	auto async_write(std::unique_ptr<boost::asio::streambuf> buffer, Handler&& handler)
-	{
-		enum { start, writing };
-
-		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
-			[
-				&socket = m_next_layer,
-				buffer = std::move(buffer),
-				conn = this->shared_from_this(),
-				state = start
-			]
-			(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_received = 0) mutable
-			{
-				if (not ec and state == start)
-				{
-					state = writing;
-					boost::asio::async_write(socket, *buffer, std::move(self));
-					return;
-				}
-
-				self.complete(ec, 0);
-			}, handler, m_next_layer
-		);
-	}
-
-	virtual bool uses_private_key(const std::vector<uint8_t>& pk_hash) override
-	{
-		assert(false);
-		return false;
-	}
-
 	virtual void disconnect() override
 	{
 		connection_base::disconnect();
@@ -396,11 +379,8 @@ class basic_connection : public connection_base
 	}
 
   private:
-
-	Stream m_next_layer;
+	boost::asio::ip::tcp::socket m_next_layer;
 };
-
-using connection = basic_connection<boost::asio::ip::tcp::socket>;
 
 // --------------------------------------------------------------------
 

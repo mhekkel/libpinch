@@ -79,11 +79,6 @@ class channel : public std::enable_shared_from_this<channel>
 {
 	public:
 
-	using connection_type = basic_connection<boost::asio::ip::tcp::socket>;
-
-	/// The type of the next layer.
-	using next_layer_type = connection_type;
-
 	/// The type of the lowest layer.
 	using lowest_layer_type = typename boost::asio::ip::tcp::socket;
 
@@ -94,10 +89,6 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 		return m_connection->get_executor();
 	}
-
-	const next_layer_type& next_layer() const;
-
-	next_layer_type& next_layer();
 
 	const lowest_layer_type& lowest_layer() const;
 
@@ -124,7 +115,7 @@ class channel : public std::enable_shared_from_this<channel>
 		if (m_connection->is_connected())
 			this->open();
 		else
-			static_cast<basic_connection<boost::asio::ip::tcp::socket>*>(m_connection.get())->async_connect([self = shared_from_this()]
+			m_connection->async_connect([self = shared_from_this()]
 				(const boost::system::error_code& ec)
 				{
 					if (ec)
