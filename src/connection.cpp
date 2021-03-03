@@ -77,17 +77,6 @@ void async_connect_impl::async_connect_impl::process_userauth_failure(ipacket &i
 	}
 }
 
-void async_connect_impl::process_userauth_banner(ipacket &in)
-{
-	std::string msg, lang;
-	in >> msg >> lang;
-
-std::cerr << msg << '\t' << lang << std::endl;
-
-	// for (auto h : m_connect_handlers)
-	// 	h->handle_banner(msg, lang);
-}
-
 void async_connect_impl::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
 {
 	switch (auth_state)
@@ -150,6 +139,24 @@ void async_connect_impl::process_userauth_info_request(ipacket &in, opacket &out
 
 // --------------------------------------------------------------------
 
+void basic_connection::userauth_success(const std::string& host_version, const blob& session_id, const blob& pk_hash)
+{
+	m_auth_state = authenticated;
+
+	m_crypto_engine.enable_compression();
+
+	m_host_version = host_version;
+	m_session_id = session_id;
+	m_private_key_hash = pk_hash;
+
+	// start the read loop
+	async_read();
+
+	// tell all opening channels to open
+	for (auto ch: m_channels)
+		ch->open();
+}
+
 void basic_connection::handle_error(const boost::system::error_code &ec)
 {
 	if (ec)
@@ -163,7 +170,7 @@ void basic_connection::handle_error(const boost::system::error_code &ec)
 
 void basic_connection::reset()
 {
-	m_authenticated = false;
+	m_auth_state = none;
 	m_private_key_hash.clear();
 	m_session_id.clear();
 	m_crypto_engine.reset();
@@ -191,7 +198,7 @@ void basic_connection::received_data(boost::system::error_code ec)
 	}
 
 	// don't process data at all if we're no longer willing
-	if (not m_authenticated)
+	if (m_auth_state != authenticated)
 		return;
 
 	try
@@ -401,7 +408,7 @@ void basic_connection::open_channel(channel_ptr ch, uint32_t channel_id)
 		m_channels.push_back(ch);
 	}
 
-	if (m_authenticated)
+	if (m_auth_state == authenticated)
 	{
 		opacket out(msg_channel_open);
 		ch->fill_open_opacket(out);
@@ -413,7 +420,7 @@ void basic_connection::close_channel(channel_ptr ch, uint32_t channel_id)
 {
 	if (ch->is_open())
 	{
-		if (m_authenticated)
+		if (m_auth_state == authenticated)
 		{
 			opacket out(msg_channel_close);
 			out << channel_id;
@@ -437,9 +444,9 @@ void basic_connection::close_channel(channel_ptr ch, uint32_t channel_id)
 
 	// m_connect_handlers.erase(iter, m_connect_handlers.end());
 
-	// m_channels.erase(
-	// 	remove(m_channels.begin(), m_channels.end(), ch),
-	// 	m_channels.end());
+	m_channels.erase(
+		std::remove(m_channels.begin(), m_channels.end(), ch),
+		m_channels.end());
 }
 
 bool basic_connection::has_open_channels()
@@ -458,6 +465,11 @@ bool basic_connection::has_open_channels()
 	return channel_open;
 }
 
+void basic_connection::handle_banner(const std::string& message, const std::string& lang)
+{
+	for (auto c: m_channels)
+		c->banner(message, lang);
+}
 
 // --------------------------------------------------------------------
 

@@ -203,20 +203,35 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	virtual bool is_connected() const
 	{
-		return m_authenticated;
+		return m_auth_state == authenticated;
 	}
 
 	// callbacks to be installed by owning object
 	friend struct detail::async_connect_impl;
 
 	template<typename Handler>
-	auto async_connect(Handler&& handler)
+	void async_connect(Handler&& handler, channel_ptr channel)
 	{
-		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-			detail::async_connect_impl{
-				m_response, this->shared_from_this(), m_user, m_request_password_cb
-			}, handler, *this
-		);
+		switch (m_auth_state)
+		{
+			case authenticated:
+				assert(false);
+				handler(error::make_error_code(error::protocol_error));
+				// handler()
+				break;
+
+			case connecting:
+				m_channels.push_back(channel);
+				break;
+
+			case none:
+				m_channels.push_back(channel);
+				boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+					detail::async_connect_impl{
+						m_response, this->shared_from_this(), m_user, m_request_password_cb
+					}, handler, *this
+				);
+		}
 	}
 
 	virtual void handle_error(const boost::system::error_code &ec);
@@ -224,23 +239,10 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	void newkeys(key_exchange& kex, boost::system::error_code &ec)
 	{
-		m_crypto_engine.newkeys(kex, m_authenticated);
+		m_crypto_engine.newkeys(kex, m_auth_state == authenticated);
 	}
 
-	void userauth_success(const std::string& host_version, const blob& session_id,
-		const blob& pk_hash)
-	{
-		m_authenticated = true;
-
-		m_crypto_engine.enable_compression();
-
-		m_host_version = host_version;
-		m_session_id = session_id;
-		m_private_key_hash = pk_hash;
-
-		// start the read loop
-		async_read();
-	}
+	void userauth_success(const std::string& host_version, const blob& session_id, const blob& pk_hash);
 
 	void open_channel(channel_ptr ch, uint32_t id);
 	void close_channel(channel_ptr ch, uint32_t id);
@@ -281,6 +283,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void process_channel_open(ipacket &in, opacket &out);
 	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
 
+	void handle_banner(const std::string &message, const std::string &lang);
+
 	std::string m_user;
 
 	std::string m_host_version;
@@ -288,7 +292,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	crypto_engine m_crypto_engine;
 
-	bool m_authenticated = false;
+	enum { none, connecting, authenticated } m_auth_state = none;
 
 	// connect_handler_list m_connect_handlers;
 
@@ -510,57 +514,64 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 
 		case state_type::authenticating:
 		{
-			if (not conn->receive_packet(*packet, ec) and not ec)
+			for (;;)
 			{
-				boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
-				return;
-			}
-
-			auto& in = *packet;
-			opacket out;
-
-			switch ((message_type)in)
-			{
-				case msg_service_accept:
-					out = msg_userauth_request;
-					out << user << "ssh-connection"
-						<< "none";
-					break;
-
-				case msg_userauth_failure:
-					process_userauth_failure(in, out, ec);
-					break;
-
-				case msg_userauth_banner:
-					process_userauth_banner(in);
-					break;
-
-				case msg_userauth_info_request:
-					process_userauth_info_request(in, out, ec);
-					break;
-
-				case msg_userauth_success:
-					conn->userauth_success(host_version, kex->session_id(), private_key_hash);
-					self.complete({});
+				if (not conn->receive_packet(*packet, ec) and not ec)
+				{
+					boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
 					return;
+				}
+
+				auto& in = *packet;
+				opacket out;
+
+				switch ((message_type)in)
+				{
+					case msg_service_accept:
+						out = msg_userauth_request;
+						out << user << "ssh-connection"
+							<< "none";
+						break;
+
+					case msg_userauth_failure:
+						process_userauth_failure(in, out, ec);
+						break;
+
+					case msg_userauth_banner:
+					{
+						std::string msg, lang;
+						in >> msg >> lang;
+						conn->handle_banner(msg, lang);
+						break;
+					}
+
+					case msg_userauth_info_request:
+						process_userauth_info_request(in, out, ec);
+						break;
+
+					case msg_userauth_success:
+						conn->userauth_success(host_version, kex->session_id(), private_key_hash);
+						self.complete({});
+						return;
+					
+					default:
+#if DEBUG
+						std::cerr << "Unexpected packet: " << in << std::endl;
+#endif
+						break;
+				}
+
+				if (ec)
+				{
+					self.complete(ec);
+					return;
+				}
 				
-				default:
-std::cerr << "Unexpected packet: " << in << std::endl;
-					break;
-			}
+				if (out)
+					conn->async_write(std::move(out));
 
-			if (out)
-				conn->async_write(std::move(out));
-			
-			if (ec)
-				self.complete(ec);
-			else
-			{
 				packet->clear();
-				boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
 			}
-
-			return;
 		}
 	}
 }

@@ -14,7 +14,7 @@ class operation
   public:
 	virtual ~operation() {}
 
-	virtual void complete(const boost::system::error_code& ec, std::size_t bytes_transferred = 0) = 0;
+	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) = 0;
 };
 
 template <typename Handler, typename IoExecutor,
@@ -111,6 +111,56 @@ struct binder1
 
 	Handler m_handler;
 	Arg1 m_arg_1;
+};
+
+// --------------------------------------------------------------------
+
+
+template <typename Handler, typename Arg1, typename Arg2>
+struct binder2
+{
+	template<typename T>
+	binder2(int, T&& handler, const Arg1& arg1, const Arg2& arg2)
+		: m_handler(std::forward<T>(handler))
+		, m_arg_1(arg1)
+		, m_arg_2(arg2)
+	{
+	}
+
+	binder2(Handler& handler, const Arg1& arg1, const Arg2& arg2)
+		: m_handler(BOOST_ASIO_MOVE_CAST(Handler)(handler))
+		, m_arg_1(arg1)
+		, m_arg_2(arg2)
+	{
+	}
+
+	binder2(const binder2& other)
+		: m_handler(other.m_handler)
+		, m_arg_1(other.m_arg_1)
+		, m_arg_2(other.m_arg_2)
+	{
+	}
+
+	binder2(binder2&& other)
+		: m_handler(std::move(other.m_handler))
+		, m_arg_1(std::move(other.m_arg_1))
+		, m_arg_2(std::move(other.m_arg_2))
+	{
+	}
+
+	void operator()()
+	{
+		m_handler(static_cast<const Arg1&>(m_arg_1), static_cast<const Arg2&>(m_arg_2));
+	}
+
+	void operator()() const
+	{
+		m_handler(m_arg_1, m_arg_2);
+	}
+
+	Handler m_handler;
+	Arg1 m_arg_1;
+	Arg2 m_arg_2;
 };
 
 }
