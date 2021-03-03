@@ -29,7 +29,7 @@
 namespace pinch
 {
 
-class connection_base;
+class basic_connection;
 
 const uint32_t
 	kMaxPacketSize = 0x8000,
@@ -475,7 +475,7 @@ class channel : public std::enable_shared_from_this<channel>
 
 //   protected:
 	
-	channel(std::shared_ptr<connection_base> connection)
+	channel(std::shared_ptr<basic_connection> connection)
 		: m_connection(connection)
 		, m_max_send_packet_size(0)
 		, m_channel_open(false)
@@ -510,7 +510,7 @@ class channel : public std::enable_shared_from_this<channel>
 
   protected:
 
-	std::shared_ptr<connection_base> m_connection;
+	std::shared_ptr<basic_connection> m_connection;
 	std::unique_ptr<detail::open_channel_op> m_open_handler;
 
 	uint32_t m_max_send_packet_size;
@@ -559,7 +559,7 @@ class channel : public std::enable_shared_from_this<channel>
 // 	};
 
 // 	template <typename Handler>
-// 	exec_channel(std::shared_ptr<connection_base> connection,
+// 	exec_channel(std::shared_ptr<basic_connection> connection,
 // 				 const std::string& cmd, Handler&& handler)
 // 		: channel(connection), m_command(cmd), m_handler(new result_handler<Handler>(std::move(handler)))
 // 	{

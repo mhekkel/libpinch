@@ -24,7 +24,7 @@
 // 	class x11_channel : public channel
 // 	{
 // 	public:
-// 		x11_channel(std::shared_ptr<connection_base> inConnection);
+// 		x11_channel(std::shared_ptr<basic_connection> inConnection);
 // 		~x11_channel();
 
 // 		void receive_raw(const boost::system::error_code &ec, std::size_t bytes_received);

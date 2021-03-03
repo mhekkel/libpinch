@@ -14,7 +14,7 @@ using namespace std;
 namespace pinch
 {
 
-terminal_channel::terminal_channel(std::shared_ptr<connection_base> connection)
+terminal_channel::terminal_channel(std::shared_ptr<basic_connection> connection)
 	: channel(connection)
 	, m_width(80)
 	, m_height(24)

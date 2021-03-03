@@ -232,7 +232,7 @@ void ssh_agent::update()
 	
 	for (vector<uint8_t>& hash: deleted)
 	{
-		for (std::shared_ptr<connection_base> connection: connections)
+		for (std::shared_ptr<basic_connection> connection: connections)
 		{
 			if (connection->uses_private_key(hash))
 				connection->disconnect();
@@ -240,13 +240,13 @@ void ssh_agent::update()
 	}
 }
 
-void ssh_agent::register_connection(std::shared_ptr<connection_base> connection)
+void ssh_agent::register_connection(std::shared_ptr<basic_connection> connection)
 {
 	if (find(m_registered_connections.begin(), m_registered_connections.end(), connection) == m_registered_connections.end())
 		m_registered_connections.push_back(connection);
 }
 
-void ssh_agent::unregister_connection(std::shared_ptr<connection_base> connection)
+void ssh_agent::unregister_connection(std::shared_ptr<basic_connection> connection)
 {
 	m_registered_connections.erase(
 		remove(m_registered_connections.begin(), m_registered_connections.end(), connection),
@@ -491,7 +491,7 @@ ssh_private_key ssh_agent::get_key(ipacket& blob) const
 
 // // --------------------------------------------------------------------
 
-// ssh_agent_channel::ssh_agent_channel(std::shared_ptr<connection_base> connection)
+// ssh_agent_channel::ssh_agent_channel(std::shared_ptr<basic_connection> connection)
 // 	: channel(connection)
 // {
 // }

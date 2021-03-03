@@ -19,7 +19,7 @@ namespace ip = boost::asio::ip;
 namespace pinch
 {
 
-forwarding_channel::forwarding_channel(std::shared_ptr<connection_base> inConnection, const string& remote_addr, int16_t remote_port)
+forwarding_channel::forwarding_channel(std::shared_ptr<basic_connection> inConnection, const string& remote_addr, int16_t remote_port)
 	: channel(inConnection), m_remote_address(remote_addr), m_remote_port(remote_port)
 {
 }
@@ -43,7 +43,7 @@ void forwarding_channel::fill_open_opacket(opacket& out)
 class forwarding_connection : public enable_shared_from_this<forwarding_connection>
 {
   public:
-	forwarding_connection(std::shared_ptr<connection_base> ssh_connection)
+	forwarding_connection(std::shared_ptr<basic_connection> ssh_connection)
 		: m_socket(ssh_connection->get_io_service())
 	{
 	}
@@ -116,21 +116,21 @@ typedef function<shared_ptr<forwarding_connection>()> forwarding_connection_fact
 class bound_port : public enable_shared_from_this<bound_port>
 {
   public:
-	bound_port(std::shared_ptr<connection_base> connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory);
+	bound_port(std::shared_ptr<basic_connection> connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory);
 
 	void listen(const string& local_address, int16_t local_port);
 
   private:
 	virtual void handle_accept(const boost::system::error_code& ec);
 	
-	std::shared_ptr<connection_base> m_connection;
+	std::shared_ptr<basic_connection> m_connection;
 	ip::tcp::acceptor m_acceptor;
 	ip::tcp::resolver m_resolver;
 	shared_ptr<forwarding_connection> m_new_connection;
 	forwarding_connection_factory m_connection_factory;
 };
 
-bound_port::bound_port(std::shared_ptr<connection_base> connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory)
+bound_port::bound_port(std::shared_ptr<basic_connection> connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory)
 	: m_connection(connection)
 	, m_acceptor(connection->get_io_service()), m_resolver(connection->get_io_service())
 	, m_connection_factory(move(connection_factory))
@@ -180,7 +180,7 @@ class port_forwarding_connection : public forwarding_connection
 {
   public:	
 
-	port_forwarding_connection(std::shared_ptr<connection_base> ssh_connection, const string& remote_addr, int16_t remote_port)
+	port_forwarding_connection(std::shared_ptr<basic_connection> ssh_connection, const string& remote_addr, int16_t remote_port)
 		: forwarding_connection(ssh_connection)
 	{
 		m_channel.reset(new forwarding_channel(ssh_connection, remote_addr, remote_port));
@@ -203,7 +203,7 @@ class socks5_forwarding_connection : public forwarding_connection
 {
   public:
 
-	socks5_forwarding_connection(std::shared_ptr<connection_base> inConnection)
+	socks5_forwarding_connection(std::shared_ptr<basic_connection> inConnection)
 		: forwarding_connection(inConnection), m_connection(inConnection) {}
 
 	virtual void start();
@@ -217,7 +217,7 @@ class socks5_forwarding_connection : public forwarding_connection
 	shared_ptr<socks5_forwarding_connection> self() { return dynamic_pointer_cast<socks5_forwarding_connection>(shared_from_this()); }
 
   private:
-	std::shared_ptr<connection_base> m_connection;
+	std::shared_ptr<basic_connection> m_connection;
 	vector<uint8_t> m_buffer;
 	uint8_t m_mini_buffer[1];
 
@@ -659,7 +659,7 @@ void socks5_forwarding_connection::wrote_error()
 
 // --------------------------------------------------------------------
 
-port_forward_listener::port_forward_listener(std::shared_ptr<connection_base> connection)
+port_forward_listener::port_forward_listener(std::shared_ptr<basic_connection> connection)
 	: m_connection(connection)
 {
 }

@@ -33,7 +33,7 @@ const std::string
 
 // --------------------------------------------------------------------
 
-void connection_base::handle_error(const boost::system::error_code &ec)
+void basic_connection::handle_error(const boost::system::error_code &ec)
 {
 	if (ec)
 	{
@@ -47,7 +47,7 @@ void connection_base::handle_error(const boost::system::error_code &ec)
 	}
 }
 
-void connection_base::reset()
+void basic_connection::reset()
 {
 	m_authenticated = false;
 	m_private_key_hash.clear();
@@ -56,7 +56,7 @@ void connection_base::reset()
 	m_last_io = 0;
 }
 
-void connection_base::disconnect()
+void basic_connection::disconnect()
 {
 	reset();
 
@@ -68,7 +68,7 @@ void connection_base::disconnect()
 
 // the read loop, this routine keeps calling itself until an error condition is met
 
-void connection_base::received_data(boost::system::error_code ec)
+void basic_connection::received_data(boost::system::error_code ec)
 {
 	if (ec)
 	{
@@ -106,7 +106,7 @@ void connection_base::received_data(boost::system::error_code ec)
 	}
 }
 
-void connection_base::process_packet(ipacket& in)
+void basic_connection::process_packet(ipacket& in)
 {
 	// update time for keep alive
 	struct timeval tv;
@@ -180,7 +180,7 @@ void connection_base::process_packet(ipacket& in)
 		async_write(std::move(out));
 }
 
-bool connection_base::receive_packet(ipacket& packet, boost::system::error_code& ec)
+bool basic_connection::receive_packet(ipacket& packet, boost::system::error_code& ec)
 {
 	bool result = false;
 	ec = {};
@@ -217,7 +217,7 @@ bool connection_base::receive_packet(ipacket& packet, boost::system::error_code&
 	return result;
 }
 
-void connection_base::process_channel_open(ipacket &in, opacket &out)
+void basic_connection::process_channel_open(ipacket &in, opacket &out)
 {
 	channel_ptr c;
 
@@ -254,7 +254,7 @@ void connection_base::process_channel_open(ipacket &in, opacket &out)
 	}
 }
 
-void connection_base::process_channel(ipacket &in, opacket &out, boost::system::error_code &ec)
+void basic_connection::process_channel(ipacket &in, opacket &out, boost::system::error_code &ec)
 {
 	try
 	{
@@ -275,7 +275,7 @@ void connection_base::process_channel(ipacket &in, opacket &out, boost::system::
 	}
 }
 
-void connection_base::open_channel(channel_ptr ch, uint32_t channel_id)
+void basic_connection::open_channel(channel_ptr ch, uint32_t channel_id)
 {
 	if (std::find(m_channels.begin(), m_channels.end(), ch) == m_channels.end())
 	{
@@ -295,7 +295,7 @@ void connection_base::open_channel(channel_ptr ch, uint32_t channel_id)
 	}
 }
 
-void connection_base::close_channel(channel_ptr ch, uint32_t channel_id)
+void basic_connection::close_channel(channel_ptr ch, uint32_t channel_id)
 {
 	if (ch->is_open())
 	{
@@ -328,7 +328,7 @@ void connection_base::close_channel(channel_ptr ch, uint32_t channel_id)
 	// 	m_channels.end());
 }
 
-bool connection_base::has_open_channels()
+bool basic_connection::has_open_channels()
 {
 	bool channel_open = false;
 

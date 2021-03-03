@@ -82,9 +82,9 @@ namespace pinch
 // 		*pi = p;
 // }
 
-// std::shared_ptr<connection_base> connection_pool::get(const string& user, const string& host, int16_t port)
+// std::shared_ptr<basic_connection> connection_pool::get(const string& user, const string& host, int16_t port)
 // {
-// 	std::shared_ptr<connection_base> result;
+// 	std::shared_ptr<basic_connection> result;
 	
 // 	for (auto& e: m_entries)
 // 	{
@@ -124,10 +124,10 @@ namespace pinch
 // 	return result;
 // }
 	
-// // std::shared_ptr<connection_base> connection_pool::get(const string& user, const string& host, int16_t port,
+// // std::shared_ptr<basic_connection> connection_pool::get(const string& user, const string& host, int16_t port,
 // // 	const string& proxy_user, const string& proxy_host, int16_t proxy_port, const string& proxy_cmd)
 // // {
-// // 	std::shared_ptr<connection_base> result;
+// // 	std::shared_ptr<basic_connection> result;
 	
 // // 	for (auto& e: m_entries)
 // // 	{
@@ -141,7 +141,7 @@ namespace pinch
 	
 // // 	if (result == nullptr)
 // // 	{
-// // 		std::shared_ptr<connection_base> proxy = get(proxy_user, proxy_host, proxy_port);
+// // 		std::shared_ptr<basic_connection> proxy = get(proxy_user, proxy_host, proxy_port);
 // // 		result.reset(new proxied_connection(proxy, proxy_cmd, user, host, port));
 
 // // 		entry e = { user, host, port, result };

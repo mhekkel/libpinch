@@ -14,7 +14,7 @@ namespace pinch
 class terminal_channel : public channel
 {
   public:
-	terminal_channel(std::shared_ptr<connection_base> connection);
+	terminal_channel(std::shared_ptr<basic_connection> connection);
 
 	void set_environment_variable(const std::string &name, const std::string &value);
 

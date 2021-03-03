@@ -15,7 +15,7 @@
 namespace pinch
 {
 
-class connection_base;
+class basic_connection;
 
 class opacket;
 class ipacket;
@@ -58,8 +58,8 @@ class ssh_agent
 	void process_agent_request(ipacket &in, opacket &out);
 
 	void update();
-	void register_connection(std::shared_ptr<connection_base> c);
-	void unregister_connection(std::shared_ptr<connection_base> c);
+	void register_connection(std::shared_ptr<basic_connection> c);
+	void unregister_connection(std::shared_ptr<basic_connection> c);
 
 	typedef std::vector<ssh_private_key> ssh_private_key_list;
 	typedef ssh_private_key_list::iterator iterator;
@@ -86,7 +86,7 @@ class ssh_agent
 	~ssh_agent();
 	ssh_agent &operator=(const ssh_agent &);
 
-	typedef std::list<std::shared_ptr<connection_base>> connection_list;
+	typedef std::list<std::shared_ptr<basic_connection>> connection_list;
 
 	ssh_private_key_list m_private_keys;
 	connection_list m_registered_connections;
@@ -98,7 +98,7 @@ class ssh_agent
 // class ssh_agent_channel : public channel
 // {
 // public:
-// 	ssh_agent_channel(std::shared_ptr<connection_base> connection);
+// 	ssh_agent_channel(std::shared_ptr<basic_connection> connection);
 // 	virtual ~ssh_agent_channel();
 
 // 	virtual void opened();

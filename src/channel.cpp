@@ -16,7 +16,7 @@ namespace pinch
 
 uint32_t channel::s_next_channel_id = 1;
 
-// channel::channel(std::shared_ptr<connection_base> inConnection)
+// channel::channel(std::shared_ptr<basic_connection> inConnection)
 // 	: m_connection(inConnection)
 // 	, m_open_handler(nullptr)
 // 	, m_max_send_packet_size(0)

@@ -32,11 +32,10 @@ class socket_closed_exception : public exception
 	socket_closed_exception() : exception("socket is closed") {}
 };
 
+class basic_connection;
 class key_exchange;
-
 class channel;
 using channel_ptr = std::shared_ptr<channel>;
-
 class port_forward_listener;
 
 // --------------------------------------------------------------------
@@ -80,7 +79,7 @@ struct async_connect_impl
 
 	socket_type& socket;
 	boost::asio::streambuf& response;
-	std::shared_ptr<connection_base> conn;
+	std::shared_ptr<basic_connection> conn;
 	std::string user;
 	password_callback_type request_password;
 
@@ -110,11 +109,11 @@ struct async_connect_impl
 
 // --------------------------------------------------------------------
 
-class connection_base : public std::enable_shared_from_this<connection_base>
+class basic_connection : public std::enable_shared_from_this<basic_connection>
 {
   public:
-	connection_base(const connection_base&) = delete;
-	connection_base& operator=(const connection_base& ) = delete;
+	basic_connection(const basic_connection&) = delete;
+	basic_connection& operator=(const basic_connection& ) = delete;
 
 
 	/// The type of the lowest layer.
@@ -126,7 +125,7 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 
 	virtual executor_type get_executor() noexcept = 0;
 
-	virtual ~connection_base() {}
+	virtual ~basic_connection() {}
 
 	virtual void disconnect();
 
@@ -212,7 +211,7 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 	}
 
 	// callbacks to be installed by owning object
-	using async_connect_impl = detail::async_connect_impl<connection_base>;
+	using async_connect_impl = detail::async_connect_impl<basic_connection>;
 	friend async_connect_impl;
 
 	template<typename Handler>
@@ -254,7 +253,7 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 	template<typename MutableBufferSequence, typename ReadHandler>
 	auto async_read_some(const MutableBufferSequence& buffers, ReadHandler&& handler)
 	{
-		return boost::asio::async_initiate<ReadHandler,void(boost::system::error_code)>(
+		return boost::asio::async_initiate<ReadHandler,void(boost::system::error_code,std::size_t)>(
 			async_read_impl{}, handler, this, buffers
 		);
 	}
@@ -262,14 +261,14 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 	template<typename ConstBufferSequence, typename WriteHandler>
 	auto async_write_some(const ConstBufferSequence & buffers, WriteHandler && handler)
 	{
-		return boost::asio::async_initiate<WriteHandler, void(boost::system::error_code)>(
+		return boost::asio::async_initiate<WriteHandler, void(boost::system::error_code,std::size_t)>(
 			async_write_impl{}, handler, this, buffers
 		);
 	}
 
   protected:
 
-	connection_base(const std::string& user)
+	basic_connection(const std::string& user)
 		: m_user(user)
 	{
 		
@@ -313,26 +312,26 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 	struct async_read_impl
 	{
 		template<typename Handler, typename MutableBufferSequence>
-		void operator()(Handler&& handler, connection_base* connection, const MutableBufferSequence& buffers);
+		void operator()(Handler&& handler, basic_connection* connection, const MutableBufferSequence& buffers);
 	};
 
 	struct async_write_impl
 	{
 		template<typename Handler, typename ConstBufferSequence>
-		void operator()(Handler&& handler, connection_base* connection, const ConstBufferSequence& buffers);
+		void operator()(Handler&& handler, basic_connection* connection, const ConstBufferSequence& buffers);
 	};
 
 };
 
 // --------------------------------------------------------------------
 
-class connection : public connection_base
+class connection : public basic_connection
 {
   public:
 
 	template<typename Arg>
 	connection(Arg&& arg, const std::string& user)
-		: connection_base(user)
+		: basic_connection(user)
 		, m_next_layer(std::forward<Arg>(arg))
 	{
 		reset();
@@ -373,7 +372,7 @@ class connection : public connection_base
 
 	virtual void disconnect() override
 	{
-		connection_base::disconnect();
+		basic_connection::disconnect();
 
 		m_next_layer.close();
 	}
@@ -385,7 +384,7 @@ class connection : public connection_base
 // --------------------------------------------------------------------
 
 template<typename Handler, typename MutableBufferSequence>
-void connection_base::async_read_impl::operator()(Handler&& handler, connection_base* conn, const MutableBufferSequence& buffers)
+void basic_connection::async_read_impl::operator()(Handler&& handler, basic_connection* conn, const MutableBufferSequence& buffers)
 {
 	auto c = dynamic_cast<connection*>(conn);
 	if (c)
@@ -395,7 +394,7 @@ void connection_base::async_read_impl::operator()(Handler&& handler, connection_
 }
 
 template<typename Handler, typename ConstBufferSequence>
-void connection_base::async_write_impl::operator()(Handler&& handler, connection_base* conn, const ConstBufferSequence& buffers)
+void basic_connection::async_write_impl::operator()(Handler&& handler, basic_connection* conn, const ConstBufferSequence& buffers)
 {
 	auto c = dynamic_cast<connection*>(conn);
 	if (c)
