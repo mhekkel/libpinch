@@ -8,12 +8,13 @@
 #include <pinch/packet.hpp>
 #include <pinch/debug.hpp>
 
-using namespace std;
+namespace pinch
+{
 
 // hex dump the packet
-void print(ostream& os, const vector<uint8_t>& b)
+void print(std::ostream& os, const std::vector<uint8_t>& b)
 {
-	os << "dumping buffer of " << b.size() << " bytes" << endl;
+	os << "dumping buffer of " << b.size() << " bytes" << std::endl;
 
 	const char kHex[] = "0123456789abcdef";
 	char s[] = "xxxxxxxx  cccc cccc cccc cccc  cccc cccc cccc cccc  |................|";
@@ -56,21 +57,23 @@ void print(ostream& os, const vector<uint8_t>& b)
 			s[kAsciiOffset + i] = ' ';
 		}
 		
-		os << s << endl;
+		os << s << std::endl;
 		
 		offset += rr;
 	}
 }
 
-ostream& operator<<(ostream& os, pinch::opacket& b)
+std::ostream& operator<<(std::ostream& os, pinch::opacket& b)
 {
 	print(os, b);
 	return os;
 }
 
-ostream& operator<<(ostream& os, pinch::ipacket& b)
+std::ostream& operator<<(std::ostream& os, pinch::ipacket& b)
 {
 	print(os, b);
 	return os;
+}
+
 }
 

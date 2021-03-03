@@ -134,11 +134,6 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 
 	virtual void async_write(opacket&& p) = 0;
 
-  protected:
-
-	template<typename Handler>
-	auto async_read_packet(Handler&& handler);
-
   private:
 
 	void async_read()
@@ -191,8 +186,6 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 		);
 	}
 
-
-
 	virtual void handle_error(const boost::system::error_code &ec);
 	void reset();
 
@@ -220,10 +213,20 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 	bool has_open_channels();
 
 	template<typename MutableBufferSequence, typename ReadHandler>
-	void async_read_some(const MutableBufferSequence & buffers, ReadHandler && handler);
+	auto async_read_some(const MutableBufferSequence& buffers, ReadHandler&& handler)
+	{
+		return boost::asio::async_initiate<ReadHandler,void(boost::system::error_code)>(
+			async_read_impl{}, handler, this, buffers
+		);
+	}
 
 	template<typename ConstBufferSequence, typename WriteHandler>
-	void async_write_some(const ConstBufferSequence & buffers, WriteHandler && handler);
+	auto async_write_some(const ConstBufferSequence & buffers, WriteHandler && handler)
+	{
+		return boost::asio::async_initiate<WriteHandler, void(boost::system::error_code)>(
+			async_write_impl{}, handler, this, buffers
+		);
+	}
 
   protected:
 
@@ -265,6 +268,21 @@ class connection_base : public std::enable_shared_from_this<connection_base>
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;
 	port_forward_listener *m_port_forwarder;
+
+	// --------------------------------------------------------------------
+
+	struct async_read_impl
+	{
+		template<typename Handler, typename MutableBufferSequence>
+		void operator()(Handler&& handler, connection_base* connection, const MutableBufferSequence& buffers);
+	};
+
+	struct async_write_impl
+	{
+		template<typename Handler, typename ConstBufferSequence>
+		void operator()(Handler&& handler, connection_base* connection, const ConstBufferSequence& buffers);
+	};
+
 };
 
 // --------------------------------------------------------------------
@@ -384,25 +402,26 @@ class basic_connection : public connection_base
 
 using connection = basic_connection<boost::asio::ip::tcp::socket>;
 
-template<typename Handler>
-auto connection_base::async_read_packet(Handler&& handler)
-{
-	auto packet = std::make_unique<ipacket>();
+// --------------------------------------------------------------------
 
-	return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-		[
-			conn = this->shared_from_this(),
-			packet = std::move(packet),
-			this
-		]
-		(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) mutable
-		{
-			if (ec)
-				self.complete(ec, {});
-			else
-				boost::asio::async_read(*conn, m_response, boost::asio::transfer_at_least(1), std::move(self));
-		}
-	);
+template<typename Handler, typename MutableBufferSequence>
+void connection_base::async_read_impl::operator()(Handler&& handler, connection_base* conn, const MutableBufferSequence& buffers)
+{
+	auto c = dynamic_cast<connection*>(conn);
+	if (c)
+		boost::asio::async_read(c->next_layer(), buffers, boost::asio::transfer_at_least(1), std::move(handler));
+	else
+		assert(false);
+}
+
+template<typename Handler, typename ConstBufferSequence>
+void connection_base::async_write_impl::operator()(Handler&& handler, connection_base* conn, const ConstBufferSequence& buffers)
+{
+	auto c = dynamic_cast<connection*>(conn);
+	if (c)
+		boost::asio::async_write(c->next_layer(), buffers, std::move(handler));
+	else
+		assert(false);
 }
 
 // --------------------------------------------------------------------
