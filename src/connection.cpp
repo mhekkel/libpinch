@@ -593,12 +593,39 @@ bool proxied_connection::validate_host_key(const std::string &pk_alg, const blob
 
 void proxied_connection::open()
 {
-	m_channel->open();
+	m_proxy->async_connect([](const boost::system::error_code&){}, m_channel);
 }
 
 bool proxied_connection::is_open() const
 {
 	return m_channel->is_open();
+}
+
+void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
+{
+	assert(m_channel);
+
+	switch (op->m_type)
+	{
+		case wait_type::read:
+			m_channel->async_wait(channel::wait_type::read,
+				[ wait_op = std::move(op) ]
+				(const boost::system::error_code ec)
+				{
+					wait_op->complete(ec);
+				});
+			break;
+
+		case wait_type::write:
+			m_channel->async_wait(channel::wait_type::write,
+				[ wait_op = std::move(op) ]
+				(const boost::system::error_code ec)
+				{
+					wait_op->complete(ec);
+				});
+			break;
+
+	}
 }
 
 // basic_connection::basic_connection(boost::asio::io_service &io_service, const string &user)

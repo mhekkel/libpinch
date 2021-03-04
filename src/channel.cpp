@@ -93,6 +93,8 @@ void channel::opened()
 		std::swap(m_open_handler, handler);
 		handler->complete(boost::system::error_code(), 0);
 	}
+
+	check_wait();
 }
 
 void channel::close()
@@ -110,6 +112,7 @@ void channel::close()
 void channel::closed()
 {
 	m_channel_open = false;
+
 	for (auto op: m_read_ops)
 	{
 		op->complete(error::make_error_code(error::channel_closed));
@@ -123,6 +126,13 @@ void channel::closed()
 		delete op;
 	}
 	m_write_ops.clear();
+
+	for (auto op: m_wait_ops)
+	{
+		op->complete(error::make_error_code(error::channel_closed));
+		delete op;
+	}
+	m_wait_ops.clear();
 }
 
 // void channel::disconnect(bool disconnectProxy)
@@ -415,6 +425,8 @@ void channel::send_pending()
 		
 		break;
 	}
+
+	check_wait();
 }
 
 void channel::push_received()
@@ -436,6 +448,39 @@ void channel::push_received()
 	
 	if (m_received.empty() and m_eof)
 		close();
+
+	check_wait();
+}
+
+void channel::check_wait()
+{
+	auto wait_ops = m_wait_ops;
+
+	for (auto& op: wait_ops)
+	{
+		switch (op->m_type)
+		{
+			case wait_type::read:
+				if (is_open() and m_my_window_size > 0)
+				{
+					m_wait_ops.erase(std::find(m_wait_ops.begin(), m_wait_ops.end(), op));
+
+					op->complete();
+					delete op;
+				}
+				break;
+
+			case wait_type::write:
+				if (is_open() and m_host_window_size > 0)
+				{
+					m_wait_ops.erase(std::find(m_wait_ops.begin(), m_wait_ops.end(), op));
+
+					op->complete();
+					delete op;
+				}
+				break;
+		}
+	}
 }
 
 // --------------------------------------------------------------------

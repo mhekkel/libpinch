@@ -201,10 +201,11 @@ template <typename Handler, typename IoExecutor>
 class wait_channel_handler : public wait_channel_op
 {
   public:
-	wait_channel_handler(Handler&& h, const IoExecutor& io_ex)
+	wait_channel_handler(Handler&& h, const IoExecutor& io_ex, channel_wait_type type)
 		: m_handler(std::forward<Handler>(h))
 		, m_io_executor(io_ex)
 	{
+		m_type = type;
 		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
 	}
 
@@ -286,10 +287,10 @@ class channel : public std::enable_shared_from_this<channel>
 	using wait_type = detail::channel_wait_type;
 
 	template<typename Handler>
-	auto async_wait(wait_type type)
+	auto async_wait(wait_type type, Handler&& handler)
 	{
 		return boost::asio::async_initiate<Handler,void(boost::system::error_code)>(
-			async_wait_impl{}, this, type
+			async_wait_impl{}, handler, this, type
 		);
 	}
 

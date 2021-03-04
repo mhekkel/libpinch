@@ -19,6 +19,7 @@
 #include <pinch/packet.hpp>
 #include "pinch/crypto-engine.hpp"
 #include "pinch/ssh_agent.hpp"
+#include "pinch/operations.hpp"
 
 namespace pinch
 {
@@ -71,6 +72,11 @@ enum class auth_state_type
 	none, public_key, keyboard_interactive, password, error
 };
 
+enum class connection_wait_type
+{
+	read, write
+};
+
 struct async_connect_impl
 {
 	boost::asio::streambuf& response;
@@ -103,6 +109,41 @@ struct async_connect_impl
 	void process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec);
 };
 
+// --------------------------------------------------------------------
+
+class wait_connection_op : public operation
+{
+  public:
+	boost::system::error_code m_ec;
+	connection_wait_type m_type;
+};
+
+template <typename Handler, typename IoExecutor>
+class wait_connection_handler : public wait_connection_op
+{
+  public:
+	wait_connection_handler(Handler&& h, const IoExecutor& io_ex, connection_wait_type type)
+		: m_handler(std::forward<Handler>(h))
+		, m_io_executor(io_ex)
+	{
+		m_type = type;
+		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
+	}
+
+	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
+	{
+		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
+
+		binder1<Handler, boost::system::error_code> handler(m_handler, m_ec);
+
+		w.complete(handler, handler.m_handler);
+	}
+
+  private:
+	Handler m_handler;
+	IoExecutor m_io_executor;
+};
+
 }
 
 // --------------------------------------------------------------------
@@ -128,7 +169,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	virtual void open() = 0;
 	virtual bool is_open() const = 0;
 
-	enum class wait_type { read, write };
+	using wait_type = detail::connection_wait_type;
 
 	virtual ~basic_connection() {}
 
@@ -468,6 +509,10 @@ class proxied_connection : public basic_connection
 	// virtual void async_read(uint32_t at_least);
 
   private:
+	friend async_wait_impl;
+
+	void do_wait(std::unique_ptr<detail::wait_connection_op> op);
+
 	std::shared_ptr<basic_connection> m_proxy;
 	std::shared_ptr<channel> m_channel;
 	std::string m_host;
@@ -513,20 +558,18 @@ void basic_connection::async_wait_impl::operator()(Handler&& handler, basic_conn
 
 	switch (type)
 	{
-		case basic_connection::wait_type::read:
+		case wait_type::read:
 			if (c)
 				c->next_layer().async_wait(boost::asio::socket_base::wait_read, std::move(handler));
 			else
-				assert(false);
-				// pc->next_layer().async_wait(channel::wait_type::read, std::move(handler));
+				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(new detail::wait_connection_handler(std::move(handler), pc->get_executor(), type)));
 			break;
 		
-		case basic_connection::wait_type::write:
+		case wait_type::write:
 			if (c)
 				c->next_layer().async_wait(boost::asio::socket_base::wait_write, std::move(handler));
 			else
-				assert(false);
-				// pc->next_layer().async_wait(channel::wait_type::write, std::move(handler));
+				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(new detail::wait_connection_handler(std::move(handler), pc->get_executor(), type)));
 			break;
 		
 		default:
