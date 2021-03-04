@@ -8,7 +8,6 @@
 
 #include <pinch/connection.hpp>
 #include <pinch/connection_pool.hpp>
-#include <pinch/proxy_cmd.hpp>
 #include <pinch/terminal_channel.hpp>
 #include <pinch/sftp_channel.hpp>
 #include <pinch/debug.hpp>

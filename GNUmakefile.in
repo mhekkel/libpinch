@@ -87,7 +87,6 @@ OBJECTS = \
 	$(OBJDIR)/key_exchange.lo \
 	$(OBJDIR)/packet.lo \
 	$(OBJDIR)/posix_ssh_agent_impl.lo \
-	$(OBJDIR)/proxy_cmd.lo \
 	$(OBJDIR)/terminal_channel.lo \
 	$(OBJDIR)/ssh_agent.lo \
 	$(OBJDIR)/x11_channel.lo

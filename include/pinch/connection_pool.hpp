@@ -10,7 +10,7 @@
 #include <list>
 
 #include <boost/asio/io_service.hpp>
-#include <pinch/connection.hpp>
+#include <pinch/channel.hpp>
 
 namespace pinch
 {

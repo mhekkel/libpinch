@@ -17,8 +17,6 @@
 #include "pinch/terminal_channel.hpp"
 #include "pinch/ssh_agent.hpp"
 #include "pinch/crypto-engine.hpp"
-#include "pinch/proxy_cmd.hpp"
-
 
 namespace ba = boost::algorithm;
 namespace io = boost::iostreams;
@@ -59,7 +57,7 @@ int main() {
 	auto conn = std::make_shared<pinch::connection>(io_context, "maarten");
 
 	tcp::resolver resolver(io_context);
-	tcp::resolver::results_type endpoints = resolver.resolve("s4", "2022");
+	tcp::resolver::results_type endpoints = resolver.resolve("localhost", "2022");
 
 	boost::asio::connect(conn->lowest_layer(), endpoints);
 
@@ -69,10 +67,11 @@ int main() {
 	// 	// t->close();
 	// });
 
-	auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "/usr/bin/nc %h %p", "maarten", "localhost");
+	auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "/usr/bin/nc %h %p", "maarten", "s4");
 
 
-	auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
+	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
+	auto channel = std::make_shared<pinch::terminal_channel>(conn);
 
 	auto msg = [](const std::string& msg, const std::string& lang)
 	{

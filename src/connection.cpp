@@ -476,6 +476,130 @@ void basic_connection::keep_alive()
 
 // --------------------------------------------------------------------
 
+class proxy_channel : public channel
+{
+public:
+	proxy_channel(std::shared_ptr<basic_connection> connection, const std::string &nc_cmd, const std::string &user, const std::string &host, int16_t port)
+		: channel(connection), m_cmd(nc_cmd)
+	{
+		for (const auto& [pat, repl]: std::initializer_list<std::pair<std::string,std::string>>
+			{ { "%r", user }, { "%h", host }, { "%p", std::to_string(port)}})
+		{
+			for (auto p = m_cmd.find(pat); p != std::string::npos; p = m_cmd.find(pat, p + repl.length()))
+				m_cmd.replace(p, 2, repl);
+		}
+	}
+
+	virtual void opened()
+	{
+		channel::opened();
+		send_request_and_command("exec", m_cmd);
+	}
+
+	std::string m_cmd;
+};
+
+// --------------------------------------------------------------------
+
+proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, int16_t port)
+	: basic_connection(user), m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
+{
+	// m_proxy->reference();
+}
+
+proxied_connection::~proxied_connection()
+{
+	if (m_channel and m_channel->is_open())
+		m_channel->close();
+
+	// m_proxy->release();
+}
+
+proxied_connection::executor_type proxied_connection::get_executor() noexcept
+{
+	return m_channel->lowest_layer().get_executor();
+}
+
+const proxied_connection::lowest_layer_type& proxied_connection::lowest_layer() const
+{
+	return m_channel->lowest_layer();
+}
+
+proxied_connection::lowest_layer_type& proxied_connection::lowest_layer()
+{
+	return m_channel->lowest_layer();
+}
+
+void proxied_connection::disconnect()
+{
+	basic_connection::disconnect();
+
+	m_channel->close();
+}
+
+void proxied_connection::set_validate_callback(const validate_callback_type &cb)
+{
+	m_proxy->set_validate_callback(cb);
+	basic_connection::set_validate_callback(cb);
+}
+
+// void proxied_connection::start_handshake()
+// {
+// 	if (not m_proxy->is_connected())
+// 	{
+// 		m_proxy->async_connect([this](const boost::system::error_code &ec) {
+// 			if (ec)
+// 				handle_connect_result(ec);
+// 			else
+// 				start_handshake();
+// 		},
+// 								channel_ptr());
+// 	}
+// 	else if (not m_channel->is_open())
+// 	{
+// 		m_channel->async_open([this](const boost::system::error_code &ec) {
+// 			if (ec)
+// 				handle_connect_result(ec);
+// 			else
+// 				start_handshake();
+// 		});
+// 	}
+// 	else // proxy connection and channel are now open
+// 		basic_connection::start_handshake();
+// }
+
+bool proxied_connection::validate_host_key(const std::string &pk_alg, const blob &host_key)
+{
+	return m_validate_host_key_cb and m_validate_host_key_cb(m_host, pk_alg, host_key);
+}
+
+// void proxied_connection::async_write_int(boost::asio::streambuf *request, basic_write_op *op)
+// {
+// 	boost::asio::async_write(*m_channel, *request,
+// 								[op, request](const boost::system::error_code &ec, size_t bytes_transferred) {
+// 									delete request;
+// 									(*op)(ec, bytes_transferred);
+// 									delete op;
+// 								});
+// }
+
+// void proxied_connection::async_read(uint32_t at_least)
+// {
+// 	boost::asio::async_read(*m_channel, m_response, boost::asio::transfer_at_least(at_least),
+// 							[this](const boost::system::error_code &ec, size_t bytes_transferred) {
+// 								this->received_data(ec);
+// 							});
+// }
+
+void proxied_connection::open()
+{
+	m_channel->open();
+}
+
+bool proxied_connection::is_open() const
+{
+	return m_channel->is_open();
+}
 
 // basic_connection::basic_connection(boost::asio::io_service &io_service, const string &user)
 // 	: m_io_service(io_service)

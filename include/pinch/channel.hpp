@@ -40,6 +40,8 @@ const uint32_t
 namespace detail
 {
 
+enum class channel_wait_type { read, write };
+
 class open_channel_op : public operation
 {
   public:
@@ -188,6 +190,37 @@ class write_channel_handler : public write_channel_op
 	std::list<opacket> m_packets;
 };
 
+class wait_channel_op : public operation
+{
+  public:
+	boost::system::error_code m_ec;
+	channel_wait_type m_type;
+};
+
+template <typename Handler, typename IoExecutor>
+class wait_channel_handler : public wait_channel_op
+{
+  public:
+	wait_channel_handler(Handler&& h, const IoExecutor& io_ex)
+		: m_handler(std::forward<Handler>(h))
+		, m_io_executor(io_ex)
+	{
+		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
+	}
+
+	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
+	{
+		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
+
+		binder1<Handler, boost::system::error_code> handler(m_handler, m_ec);
+
+		w.complete(handler, handler.m_handler);
+	}
+
+  private:
+	Handler m_handler;
+	IoExecutor m_io_executor;
+};
 
 }
 
@@ -249,6 +282,16 @@ class channel : public std::enable_shared_from_this<channel>
 	void open();
 	void close();
 	// void disconnect(bool disconnectProxy = false);
+
+	using wait_type = detail::channel_wait_type;
+
+	template<typename Handler>
+	auto async_wait(wait_type type)
+	{
+		return boost::asio::async_initiate<Handler,void(boost::system::error_code)>(
+			async_wait_impl{}, this, type
+		);
+	}
 
 	virtual void fill_open_opacket(opacket& out);
 
@@ -386,6 +429,7 @@ class channel : public std::enable_shared_from_this<channel>
 	// low level
 	void send_pending();
 	void push_received();
+	void check_wait();
 
 	virtual void receive_data(const char *data, std::size_t size);
 	virtual void receive_extended_data(const char *data, std::size_t size, uint32_t type);
@@ -408,6 +452,7 @@ class channel : public std::enable_shared_from_this<channel>
 	std::deque<char> m_received;
 	std::deque<detail::read_channel_op*> m_read_ops;
 	std::deque<detail::write_channel_op*> m_write_ops;
+	std::deque<detail::wait_channel_op*> m_wait_ops;
 	bool m_eof;
 
 	message_callback_type m_banner_handler;
@@ -484,6 +529,16 @@ class channel : public std::enable_shared_from_this<channel>
 				ch->m_write_ops.push_back(new detail::write_channel_handler(std::move(handler), ch->get_executor(), std::move(out)));
 				ch->send_pending();
 			}
+		}
+	};
+
+	struct async_wait_impl
+	{
+		template<typename Handler>
+		void operator()(Handler&& handler, channel* ch, wait_type type)
+		{
+			ch->m_wait_ops.push_back(new detail::wait_channel_handler(std::move(handler), ch->get_executor(), type));
+			ch->check_wait();
 		}
 	};
 

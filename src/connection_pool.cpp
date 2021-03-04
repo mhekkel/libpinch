@@ -10,7 +10,6 @@
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
 
-#include <pinch/proxy_cmd.hpp>
 #include <pinch/connection_pool.hpp>
 
 using namespace std;
