@@ -6,7 +6,6 @@
 #include <pinch/pinch.hpp>
 #include <pinch/error.hpp>
 
-using namespace std;
 
 namespace pinch {
 namespace error {

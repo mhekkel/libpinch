@@ -9,7 +9,6 @@
 #include <pinch/connection.hpp>
 #include <pinch/packet.hpp>
 
-using namespace std;
 
 namespace pinch
 {

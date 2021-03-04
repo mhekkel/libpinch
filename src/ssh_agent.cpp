@@ -260,7 +260,7 @@ void ssh_agent::expose_pageant(bool expose)
 #endif
 }
 
-struct ssh_known_ciper_for_private_key
+struct ssh_known_cipher_for_private_key
 {
 	std::string name;
 	uint32_t key_size;

@@ -18,7 +18,6 @@
 #pragma comment (lib, "cryptlib")
 #endif
 
-using namespace std;
 namespace io = boost::iostreams;
 
 class client

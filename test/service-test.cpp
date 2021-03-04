@@ -54,24 +54,29 @@ int main() {
 
 	boost::asio::io_context io_context;
 
-	auto conn = std::make_shared<pinch::connection>(io_context, "maarten");
+	// auto conn = std::make_shared<pinch::connection>(io_context, "maarten");
 
-	tcp::resolver resolver(io_context);
-	tcp::resolver::results_type endpoints = resolver.resolve("localhost", "2022");
+	// tcp::resolver resolver(io_context);
+	// tcp::resolver::results_type endpoints = resolver.resolve("localhost", "2022");
 
-	boost::asio::connect(conn->lowest_layer(), endpoints);
+	// boost::asio::connect(conn->lowest_layer(), endpoints);
 
-	// conn->async_connect([](const boost::system::error_code& ec)
-	// {
-	// 	std::cout << "handler, ec = " << ec.message() << std::endl;
-	// 	// t->close();
-	// });
+	// // conn->async_connect([](const boost::system::error_code& ec)
+	// // {
+	// // 	std::cout << "handler, ec = " << ec.message() << std::endl;
+	// // 	// t->close();
+	// // });
 
-	// auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "/bin/netcat %h %p", "maarten", "localhost", 2021);
-	auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "maarten", "localhost", 2021);
+	// // auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "/bin/netcat %h %p", "maarten", "localhost", 2021);
+	// auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "maarten", "localhost", 2021);
 
-	auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
-	// auto channel = std::make_shared<pinch::terminal_channel>(conn);
+	pinch::connection_pool pool(io_context);
+
+	// auto conn = pool.get("maarten", "localhost", 2022);
+	auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
+
+	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
+	auto channel = std::make_shared<pinch::terminal_channel>(conn);
 
 	auto msg = [](const std::string& msg, const std::string& lang)
 	{

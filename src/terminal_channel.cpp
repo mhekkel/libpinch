@@ -9,7 +9,6 @@
 #include <pinch/terminal_channel.hpp>
 #include <pinch/connection.hpp>
 
-using namespace std;
 
 namespace pinch
 {
@@ -25,7 +24,7 @@ terminal_channel::terminal_channel(std::shared_ptr<basic_connection> connection)
 }
 
 void terminal_channel::set_environment_variable(
-	const string& name, const string& value)
+	const std::string& name, const std::string& value)
 {
 	environment_variable v = { name, value };
 	m_env.push_back(v);
@@ -43,8 +42,8 @@ void terminal_channel::opened()
 }
 
 void terminal_channel::open_with_pty(uint32_t width, uint32_t height,
-	const string& terminal_type, bool forward_agent, bool forward_x11,
-	const string& ssh_command)
+	const std::string& terminal_type, bool forward_agent, bool forward_x11,
+	const std::string& ssh_command)
 {
 	m_width = width;
 	m_height = height;
@@ -63,7 +62,7 @@ void terminal_channel::send_window_resize(uint32_t width, uint32_t height)
 		<< "window-change" << false
 		<< width << height
 		<< uint32_t(0) << uint32_t(0);
-	m_connection->async_write(move(out));
+	m_connection->async_write(std::move(out));
 }
 	
 }

@@ -14,7 +14,6 @@
 #include <pinch/packet.hpp>
 #include <pinch/channel.hpp>
 
-using namespace std;
 namespace ba = boost::algorithm;
 
 namespace pinch
@@ -101,7 +100,7 @@ void opacket::compress(compression_helper& compressor, boost::system::error_code
 	zstream.avail_in = m_data.size();
 	zstream.total_in = 0;
 	
-	vector<uint8_t> data;
+	blob data;
 	data.reserve(m_data.size());
 	
 	uint8_t buffer[1024];
@@ -131,14 +130,14 @@ void opacket::compress(compression_helper& compressor, boost::system::error_code
 	swap(data, m_data);
 }
 
-void opacket::write(ostream& os, int blocksize) const
+void opacket::write(std::ostream& os, int blocksize) const
 {
 	static std::random_device rng;
 
-	assert(blocksize < numeric_limits<uint8_t>::max());
+	assert(blocksize < std::numeric_limits<uint8_t>::max());
 
 	uint8_t header[5];
-	vector<uint8_t> padding;
+	blob padding;
 	
 	uint32_t size = m_data.size() + 5;
 	uint32_t padding_size = blocksize - (size % blocksize);
@@ -181,7 +180,7 @@ opacket& opacket::operator<<(const char* v)
 	return *this;
 }
 
-opacket& opacket::operator<<(const string& v)
+opacket& opacket::operator<<(const std::string& v)
 {
 	uint32_t len = v.length();
 	this->operator<<(len);
@@ -190,14 +189,14 @@ opacket& opacket::operator<<(const string& v)
 	return *this;
 }
 
-opacket& opacket::operator<<(const vector<string>& v)
+opacket& opacket::operator<<(const std::vector<std::string>& v)
 {
 	return this->operator<<(ba::join(v, ","));
 }
 
 opacket& opacket::operator<<(const char* v[])
 {
-	string s;
+	std::string s;
 	bool first = true;
 
 	for (const char** i = v; *i != nullptr; ++i)
@@ -226,7 +225,7 @@ opacket& opacket::operator<<(const CryptoPP::Integer& v)
 	return *this;
 }
 
-opacket& opacket::operator<<(const vector<uint8_t>& v)
+opacket& opacket::operator<<(const blob& v)
 {
 	operator<<(static_cast<uint32_t>(v.size()));
 	m_data.insert(m_data.end(), v.begin(), v.end());
@@ -242,7 +241,7 @@ opacket& opacket::operator<<(const ipacket& v)
 
 opacket& opacket::operator<<(const opacket& v)
 {
-	const vector<uint8_t>& data(v);
+	const blob& data(v);
 	return operator<<(data);
 }
 
@@ -336,7 +335,7 @@ void ipacket::decompress(compression_helper& decompressor, boost::system::error_
 	zstream.avail_in = m_length;
 	zstream.total_in = 0;
 	
-	vector<uint8_t> data;
+	blob data;
 	uint8_t buffer[1024];
 	
 	zstream.next_out = buffer;
@@ -404,7 +403,7 @@ void ipacket::clear()
 	m_offset = 0;
 }
 
-void ipacket::append(const vector<uint8_t>& block)
+void ipacket::append(const blob& block)
 {
 	if (m_complete)
 		throw packet_exception();
@@ -509,7 +508,7 @@ size_t ipacket::read(const char* data, size_t size)
 	return result;
 }
 
-ipacket& ipacket::operator>>(string& v)
+ipacket& ipacket::operator>>(std::string& v)
 {
 	uint32_t len;
 	this->operator>>(len);
@@ -523,9 +522,9 @@ ipacket& ipacket::operator>>(string& v)
 	return *this;
 }
 
-ipacket& ipacket::operator>>(vector<string>& v)
+ipacket& ipacket::operator>>(std::vector<std::string>& v)
 {
-	string s;
+	std::string s;
 	this->operator>>(s);
 	ba::split(v, s, ba::is_any_of(","));
 	return *this;
@@ -573,7 +572,7 @@ ipacket& ipacket::operator>>(ipacket& v)
 	return *this;
 }
 
-ipacket& ipacket::operator>>(pair<const char*,size_t>& v)
+ipacket& ipacket::operator>>(std::pair<const char*,size_t>& v)
 {
 	uint32_t l;
 	operator>>(l);
@@ -589,7 +588,7 @@ ipacket& ipacket::operator>>(pair<const char*,size_t>& v)
 	return *this;
 }
 
-ipacket& ipacket::operator>>(vector<uint8_t>& v)
+ipacket& ipacket::operator>>(blob& v)
 {
 	uint32_t l;
 	operator>>(l);

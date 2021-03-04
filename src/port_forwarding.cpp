@@ -13,17 +13,16 @@
 #include <pinch/port_forwarding.hpp>
 #include <pinch/connection.hpp>
 
-using namespace std;
 namespace ip = boost::asio::ip;
 
 namespace pinch
 {
 
 forwarding_channel::forwarding_channel(std::shared_ptr<basic_connection> inConnection,
-	const string& local_addr, int16_t local_port, const string& remote_addr, int16_t remote_port)
+	const std::string& local_addr, int16_t local_port, const std::string& remote_addr, int16_t remote_port)
 	: channel(inConnection)
-	, m_local_address(local_addr), m_local_port(local_port)
 	, m_remote_address(remote_addr), m_remote_port(remote_port)
+	, m_local_address(local_addr), m_local_port(local_port)
 {
 }
 

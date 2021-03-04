@@ -18,7 +18,6 @@
 #pragma comment (lib, "crypt32")
 
 using namespace CryptoPP;
-using namespace std;
 
 namespace pinch
 {
