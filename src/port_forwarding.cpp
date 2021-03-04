@@ -19,8 +19,11 @@ namespace ip = boost::asio::ip;
 namespace pinch
 {
 
-forwarding_channel::forwarding_channel(std::shared_ptr<basic_connection> inConnection, const string& remote_addr, int16_t remote_port)
-	: channel(inConnection), m_remote_address(remote_addr), m_remote_port(remote_port)
+forwarding_channel::forwarding_channel(std::shared_ptr<basic_connection> inConnection,
+	const string& local_addr, int16_t local_port, const string& remote_addr, int16_t remote_port)
+	: channel(inConnection)
+	, m_local_address(local_addr), m_local_port(local_port)
+	, m_remote_address(remote_addr), m_remote_port(remote_port)
 {
 }
 
@@ -32,11 +35,10 @@ void forwarding_channel::fill_open_opacket(opacket& out)
 	//string originator_address = boost::lexical_cast<string>(originator);
 	//int16_t originator_port = get_socket().remote_endpoint().port();
 
-	string originator_address = "127.0.0.1";
-	int16_t originator_port = 80;
-
-	out << m_remote_address << uint32_t(m_remote_port) << originator_address << uint32_t(originator_port);
+	out << m_remote_address << uint32_t(m_remote_port) << m_local_address << uint32_t(m_local_port);
 }
+
+#if 0
 
 // --------------------------------------------------------------------
 
@@ -703,5 +705,7 @@ void port_forward_listener::connection_closed()
 	//for_each(m_bound_ports.begin(), m_bound_ports.end(), [](bound_port* e) { delete e; });
 	//m_bound_ports.clear();
 }
+
+#endif
 
 }

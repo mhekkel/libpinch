@@ -1,67 +1,75 @@
-// //           Copyright Maarten L. Hekkelman 2013
-// // Distributed under the Boost Software License, Version 1.0.
-// //    (See accompanying file LICENSE_1_0.txt or copy at
-// //          http://www.boost.org/LICENSE_1_0.txt)
+//           Copyright Maarten L. Hekkelman 2013
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
 
-// #pragma once
+#pragma once
 
-// #include <pinch/pinch.hpp>
+#include <pinch/pinch.hpp>
 
-// #include <boost/asio.hpp>
+#include <boost/asio.hpp>
 
-// #include <pinch/channel.hpp>
-// #include <pinch/packet.hpp>
+#include <pinch/channel.hpp>
+#include <pinch/packet.hpp>
 
-// namespace pinch
-// {
+namespace pinch
+{
 
-// class basic_connection;
+class basic_connection;
 
-// class port_forward_listener
-// {
-//   public:
-// 	port_forward_listener(std::shared_ptr<basic_connection> connection);
-// 	~port_forward_listener();
+class port_forward_listener
+{
+  public:
+	port_forward_listener(std::shared_ptr<basic_connection> connection);
+	~port_forward_listener();
 
-// 	void forward_port(
-// 		const std::string& local_addr, int16_t local_port,
-// 		const std::string& remote_addr, int16_t remote_port);
-// 	void forward_socks5(const std::string& local_addr, int16_t local_port);
+	void forward_port(
+		const std::string& local_addr, int16_t local_port,
+		const std::string& remote_addr, int16_t remote_port);
+	void forward_socks5(const std::string& local_addr, int16_t local_port);
 
-// 	void remove_port_forward(int16_t local_port);
-// 	void connection_closed();
+	void remove_port_forward(int16_t local_port);
+	void connection_closed();
 
-// 	//void accept_failed(const boost::system::error_code& ec, bound_port* e);
+	//void accept_failed(const boost::system::error_code& ec, bound_port* e);
 
-//   private:
-// 	port_forward_listener(const port_forward_listener&);
-// 	port_forward_listener&
-// 		operator=(const port_forward_listener&);
+  private:
+	port_forward_listener(const port_forward_listener&);
+	port_forward_listener&
+		operator=(const port_forward_listener&);
 
-// 	//typedef std::list<bound_port*> bound_port_list;
+	//typedef std::list<bound_port*> bound_port_list;
 
-// 	std::shared_ptr<basic_connection> m_connection;
-// 	//bound_port_list m_bound_ports;
-// };
+	std::shared_ptr<basic_connection> m_connection;
+	//bound_port_list m_bound_ports;
+};
 
-// // --------------------------------------------------------------------
+// --------------------------------------------------------------------
 
-// class forwarding_channel : public channel
-// {
-//   public:
-// 	forwarding_channel(std::shared_ptr<basic_connection> inConnection, const std::string& remote_addr, int16_t remote_port);
+class forwarding_channel : public channel
+{
+  public:
+	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
+		const std::string& local_addr, int16_t local_port,
+		const std::string& remote_addr, int16_t remote_port);
 
-// 	virtual std::string channel_type() const		{ return "direct-tcpip"; }
-// 	virtual void fill_open_opacket(opacket& out);
+	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
+		const std::string& remote_addr, int16_t remote_port)
+		: forwarding_channel(inConnection, "::1", 80, remote_addr, remote_port)
+	{
+	}
 
-// 	bool forwards_to(const std::string& host, int16_t port) const
-// 	{
-// 		return port == m_remote_port and host == m_remote_address;
-// 	}
+	virtual std::string channel_type() const		{ return "direct-tcpip"; }
+	virtual void fill_open_opacket(opacket& out);
 
-//   protected:
-// 	std::string m_remote_address;
-// 	int16_t m_remote_port;
-// };
+	bool forwards_to(const std::string& host, int16_t port) const
+	{
+		return port == m_remote_port and host == m_remote_address;
+	}
 
-// }
+  protected:
+	std::string m_remote_address, m_local_address;
+	int16_t m_remote_port, m_local_port;
+};
+
+}

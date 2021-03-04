@@ -13,43 +13,6 @@ namespace pinch
 
 uint32_t channel::s_next_channel_id = 1;
 
-// channel::channel(std::shared_ptr<basic_connection> inConnection)
-// 	: m_connection(inConnection)
-// 	, m_open_handler(nullptr)
-// 	, m_max_send_packet_size(0)
-// 	, m_channel_open(false)
-// 	, m_send_pending(false)
-// 	, m_my_channel_id(s_next_channel_id++)
-// 	, m_host_channel_id(0)
-// 	, m_my_window_size(kWindowSize)
-// 	, m_host_window_size(0)
-// 	, m_eof(false)
-// {
-// }
-
-// channel::~channel()
-// {
-// 	assert(not is_open());
-	
-// 	if (is_open())
-// 	{
-// 		try
-// 		{
-// 			close();
-// 		}
-// 		catch (...) {}
-// 	}
-	
-// 	if (m_open_handler)
-// 		m_open_handler->cancel();
-
-// 	// if (m_connection != nullptr)
-// 	// 	m_connection->release();
-
-// 	m_open_handler = nullptr;
-// 	// delete m_open_handler;
-// }
-
 void channel::fill_open_opacket(opacket& out)
 {
 	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
@@ -62,27 +25,9 @@ void channel::setup(ipacket& in)
 
 void channel::open()
 {
-	// if (not m_connection->is_connected())
-	// {
-	// 	m_connection->async_connect([this](const boost::system::error_code& ec)
-	// 	{
-	// 		if (ec)
-	// 		{
-	// 			if (m_open_handler)
-	// 				m_open_handler->handle_open_result(ec);
-	// 			else
-	// 				this->error(ec.message(), "en");
-	// 		}
-	// 		else
-	// 			this->open();
-	// 	}, shared_from_this());
-	// }
-	// else
-	// {
-		m_my_window_size = kWindowSize;
-		m_my_channel_id = s_next_channel_id++;
-		m_connection->open_channel(shared_from_this(), m_my_channel_id);
-	// }
+	m_my_window_size = kWindowSize;
+	m_my_channel_id = s_next_channel_id++;
+	m_connection->open_channel(shared_from_this(), m_my_channel_id);
 }
 
 void channel::opened()

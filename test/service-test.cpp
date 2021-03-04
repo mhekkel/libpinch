@@ -67,8 +67,8 @@ int main() {
 	// 	// t->close();
 	// });
 
-	auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "/bin/netcat %h %p", "maarten", "localhost", 2021);
-
+	// auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "/bin/netcat %h %p", "maarten", "localhost", 2021);
+	auto proxied_conn = std::make_shared<pinch::proxied_connection>(conn, "maarten", "localhost", 2021);
 
 	auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
 	// auto channel = std::make_shared<pinch::terminal_channel>(conn);

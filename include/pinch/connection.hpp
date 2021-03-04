@@ -466,6 +466,10 @@ class proxied_connection : public basic_connection
 						const std::string &user,
 						const std::string &host, int16_t port = 22);
 
+	proxied_connection(std::shared_ptr<basic_connection> proxy,
+						const std::string &user,
+						const std::string &host, int16_t port = 22);
+
 	~proxied_connection();
 
 	/// The type of the next layer.
@@ -500,13 +504,8 @@ class proxied_connection : public basic_connection
 	virtual bool is_open() const override;
 
   protected:
-	// virtual void start_handshake();
 
 	virtual bool validate_host_key(const std::string &pk_alg, const blob &host_key);
-
-	// virtual void async_write_int(boost::asio::streambuf *request, basic_write_op *op);
-	// virtual void async_read_version_string();
-	// virtual void async_read(uint32_t at_least);
 
   private:
 	friend async_wait_impl;
