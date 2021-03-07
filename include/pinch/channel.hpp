@@ -40,6 +40,8 @@ const uint32_t
 namespace detail
 {
 
+// --------------------------------------------------------------------
+
 enum class channel_wait_type { read, write };
 
 class open_channel_op : public operation

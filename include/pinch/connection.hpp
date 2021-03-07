@@ -24,6 +24,9 @@
 namespace pinch
 {
 
+class channel;
+using channel_ptr = std::shared_ptr<channel>;
+
 // --------------------------------------------------------------------
 
 class socket_closed_exception : public exception
@@ -34,8 +37,6 @@ class socket_closed_exception : public exception
 
 class basic_connection;
 class key_exchange;
-class channel;
-using channel_ptr = std::shared_ptr<channel>;
 class port_forward_listener;
 
 // --------------------------------------------------------------------
