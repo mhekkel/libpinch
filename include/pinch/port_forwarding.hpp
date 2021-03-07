@@ -24,11 +24,11 @@ class port_forward_listener
 	~port_forward_listener();
 
 	void forward_port(
-		const std::string& local_addr, int16_t local_port,
-		const std::string& remote_addr, int16_t remote_port);
-	void forward_socks5(const std::string& local_addr, int16_t local_port);
+		const std::string& local_addr, uint16_t local_port,
+		const std::string& remote_addr, uint16_t remote_port);
+	void forward_socks5(const std::string& local_addr, uint16_t local_port);
 
-	void remove_port_forward(int16_t local_port);
+	void remove_port_forward(uint16_t local_port);
 	void connection_closed();
 
 	//void accept_failed(const boost::system::error_code& ec, bound_port* e);
@@ -50,11 +50,11 @@ class forwarding_channel : public channel
 {
   public:
 	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
-		const std::string& local_addr, int16_t local_port,
-		const std::string& remote_addr, int16_t remote_port);
+		const std::string& local_addr, uint16_t local_port,
+		const std::string& remote_addr, uint16_t remote_port);
 
 	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
-		const std::string& remote_addr, int16_t remote_port)
+		const std::string& remote_addr, uint16_t remote_port)
 		: forwarding_channel(inConnection, "::1", 80, remote_addr, remote_port)
 	{
 	}
@@ -62,14 +62,16 @@ class forwarding_channel : public channel
 	virtual std::string channel_type() const		{ return "direct-tcpip"; }
 	virtual void fill_open_opacket(opacket& out);
 
-	bool forwards_to(const std::string& host, int16_t port) const
+	bool forwards_to(const std::string& host, uint16_t port) const
 	{
 		return port == m_remote_port and host == m_remote_address;
 	}
 
   protected:
-	std::string m_remote_address, m_local_address;
-	int16_t m_remote_port, m_local_port;
+	std::string m_remote_address;
+	uint16_t m_remote_port;
+	std::string m_local_address;
+	uint16_t m_local_port;
 };
 
 }

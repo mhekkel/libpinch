@@ -464,11 +464,11 @@ class proxied_connection : public basic_connection
 	proxied_connection(std::shared_ptr<basic_connection> proxy,
 						const std::string &nc_cmd,
 						const std::string &user,
-						const std::string &host, int16_t port = 22);
+						const std::string &host, uint16_t port = 22);
 
 	proxied_connection(std::shared_ptr<basic_connection> proxy,
 						const std::string &user,
-						const std::string &host, int16_t port = 22);
+						const std::string &host, uint16_t port = 22);
 
 	~proxied_connection();
 

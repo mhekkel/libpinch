@@ -24,17 +24,17 @@ class connection_pool
 	// set algorithms to use by connections created by this pool
 	void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
 
-	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, int16_t port);
+	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, uint16_t port);
 
 	// get a proxied connection
-	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, int16_t port,
+	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, uint16_t port,
 						  const std::string &proxy_user, const std::string &proxy_host,
-						  int16_t proxy_port, const std::string &proxy_cmd = {});
+						  uint16_t proxy_port, const std::string &proxy_cmd = {});
 
 	// register a default proxy for a connection
-	void register_proxy(const std::string &destination_host, int16_t destination_port,
+	void register_proxy(const std::string &destination_host, uint16_t destination_port,
 						const std::string &proxy_user, const std::string &proxy_host,
-						int16_t proxy_port, const std::string &proxy_cmd);
+						uint16_t proxy_port, const std::string &proxy_cmd);
 
 	void disconnect_all();
 	bool has_open_connections();
@@ -48,7 +48,7 @@ class connection_pool
 	{
 		std::string user;
 		std::string host;
-		int16_t port;
+		uint16_t port;
 		std::shared_ptr<basic_connection> connection;
 	};
 
@@ -57,11 +57,11 @@ class connection_pool
 	struct proxy
 	{
 		std::string destination_host;
-		int16_t destination_port;
+		uint16_t destination_port;
 		std::string proxy_cmd;
 		std::string proxy_user;
 		std::string proxy_host;
-		int16_t proxy_port;
+		uint16_t proxy_port;
 
 		bool operator==(const proxy &rhs) const
 		{
