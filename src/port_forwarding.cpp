@@ -19,7 +19,7 @@ namespace pinch
 {
 
 forwarding_channel::forwarding_channel(std::shared_ptr<basic_connection> inConnection,
-	const std::string& local_addr, int16_t local_port, const std::string& remote_addr, int16_t remote_port)
+	const std::string& local_addr, uint16_t local_port, const std::string& remote_addr, uint16_t remote_port)
 	: channel(inConnection)
 	, m_remote_address(remote_addr), m_remote_port(remote_port)
 	, m_local_address(local_addr), m_local_port(local_port)
@@ -32,7 +32,7 @@ void forwarding_channel::fill_open_opacket(opacket& out)
 
 	//boost::asio::ip::address originator = get_socket().remote_endpoint().address();
 	//string originator_address = boost::lexical_cast<string>(originator);
-	//int16_t originator_port = get_socket().remote_endpoint().port();
+	//uint16_t originator_port = get_socket().remote_endpoint().port();
 
 	out << m_remote_address << uint32_t(m_remote_port) << m_local_address << uint32_t(m_local_port);
 }
@@ -119,7 +119,7 @@ class bound_port : public enable_shared_from_this<bound_port>
   public:
 	bound_port(std::shared_ptr<basic_connection> connection, port_forward_listener& listener, forwarding_connection_factory&& connection_factory);
 
-	void listen(const string& local_address, int16_t local_port);
+	void listen(const string& local_address, uint16_t local_port);
 
   private:
 	virtual void handle_accept(const boost::system::error_code& ec);
@@ -138,7 +138,7 @@ bound_port::bound_port(std::shared_ptr<basic_connection> connection, port_forwar
 {
 }
 
-void bound_port::listen(const string& local_address, int16_t local_port)
+void bound_port::listen(const string& local_address, uint16_t local_port)
 {
 	ip::tcp::resolver::query query(local_address, boost::lexical_cast<string>(local_port));
 
@@ -181,7 +181,7 @@ class port_forwarding_connection : public forwarding_connection
 {
   public:	
 
-	port_forwarding_connection(std::shared_ptr<basic_connection> ssh_connection, const string& remote_addr, int16_t remote_port)
+	port_forwarding_connection(std::shared_ptr<basic_connection> ssh_connection, const string& remote_addr, uint16_t remote_port)
 		: forwarding_connection(ssh_connection)
 	{
 		m_channel.reset(new forwarding_channel(ssh_connection, remote_addr, remote_port));
@@ -213,7 +213,7 @@ class socks5_forwarding_connection : public forwarding_connection
 	void wrote_error();
 
 	void handshake(const boost::system::error_code& ec, size_t bytes_transferred);
-	void channel_open(const boost::system::error_code& ec, const string& remote_address, int16_t remote_port, bool socks4);
+	void channel_open(const boost::system::error_code& ec, const string& remote_address, uint16_t remote_port, bool socks4);
 
 	shared_ptr<socks5_forwarding_connection> self() { return dynamic_pointer_cast<socks5_forwarding_connection>(shared_from_this()); }
 
@@ -297,7 +297,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 				uint8_t* p = m_buffer.data();
 
 				string remote_address;
-				int16_t remote_port;
+				uint16_t remote_port;
 
 				remote_port = *p++;
 				remote_port = (remote_port << 8) | *p++;
@@ -327,7 +327,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 				uint8_t* p = m_buffer.data();
 
 				string remote_address(m_buffer.begin() + 2, m_buffer.end());
-				int16_t remote_port;
+				uint16_t remote_port;
 
 				remote_port = *p++;
 				remote_port = (remote_port << 8) | *p++;
@@ -402,7 +402,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 			uint8_t* p = m_buffer.data();
 
 			string remote_address;
-			int16_t remote_port;
+			uint16_t remote_port;
 
 			switch (m_state)
 			{
@@ -445,7 +445,7 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code& ec
 	}
 }
 
-void socks5_forwarding_connection::channel_open(const boost::system::error_code& ec, const string& remote_address, int16_t remote_port, bool socks4)
+void socks5_forwarding_connection::channel_open(const boost::system::error_code& ec, const string& remote_address, uint16_t remote_port, bool socks4)
 {
 	if (not ec)
 	{
@@ -487,7 +487,7 @@ void socks5_forwarding_connection::wrote_error()
 //{
 //	boost::system::error_code ec;
 //	string remote_address;
-//	int16_t remote_port;
+//	uint16_t remote_port;
 //	enum { SOCKS4, SOCKS4a, SOCKS5 } version;
 //
 //	for (;;)
@@ -670,8 +670,8 @@ port_forward_listener::~port_forward_listener()
 	//for_each(m_bound_ports.begin(), m_bound_ports.end(), [](bound_port* e) { delete e; });
 }
 
-void port_forward_listener::forward_port(const string& local_addr, int16_t local_port,
-	const string& remote_address, int16_t remote_port)
+void port_forward_listener::forward_port(const string& local_addr, uint16_t local_port,
+	const string& remote_address, uint16_t remote_port)
 {
 	shared_ptr<bound_port> p(new bound_port(m_connection, *this,
 		[this, remote_address, remote_port]() -> shared_ptr<forwarding_connection>
@@ -682,7 +682,7 @@ void port_forward_listener::forward_port(const string& local_addr, int16_t local
 	p->listen(local_addr, local_port);
 }
 
-void port_forward_listener::forward_socks5(const string& local_addr, int16_t local_port)
+void port_forward_listener::forward_socks5(const string& local_addr, uint16_t local_port)
 {
 	shared_ptr<bound_port> p(new bound_port(m_connection, *this,
 		[this]() -> shared_ptr<forwarding_connection>

@@ -147,7 +147,7 @@ int main(int argc, char* const argv[])
 		//pool.register_proxy("newcmbi2", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
 		//pool.register_proxy("newcmbi2.cmbi.ru.nl", 22, "/usr/bin/nc %h %p", "maarten", "www", 22);
 	
-		pinch::std::shared_ptr<basic_connection> connection(pool.get(user, host, boost::lexical_cast<int16_t>(port)));
+		pinch::std::shared_ptr<basic_connection> connection(pool.get(user, host, boost::lexical_cast<uint16_t>(port)));
 
 		client* c = nullptr;
 		

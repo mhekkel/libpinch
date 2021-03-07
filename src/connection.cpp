@@ -479,7 +479,7 @@ void basic_connection::keep_alive()
 class proxy_channel : public channel
 {
 public:
-	proxy_channel(std::shared_ptr<basic_connection> connection, const std::string &nc_cmd, const std::string &user, const std::string &host, int16_t port)
+	proxy_channel(std::shared_ptr<basic_connection> connection, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
 		: channel(connection), m_cmd(nc_cmd)
 	{
 		for (const auto& [pat, repl]: std::initializer_list<std::pair<std::string,std::string>>
@@ -501,13 +501,13 @@ public:
 
 // --------------------------------------------------------------------
 
-proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, int16_t port)
+proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
 	: basic_connection(user), m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
 {
 	// m_proxy->reference();
 }
 
-proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, int16_t port)
+proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, uint16_t port)
 	: basic_connection(user), m_proxy(proxy), m_channel(new forwarding_channel(m_proxy, host, port)), m_host(host)
 {
 	// m_proxy->reference();
@@ -736,15 +736,15 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 // 	m_forward_agent = forward;
 // }
 
-// void basic_connection::forward_port(const string &local_address, int16_t local_port,
-// 									const string &remote_address, int16_t remote_port)
+// void basic_connection::forward_port(const string &local_address, uint16_t local_port,
+// 									const string &remote_address, uint16_t remote_port)
 // {
 // 	// if (m_port_forwarder == nullptr)
 // 	// 	m_port_forwarder = new port_forward_listener(shared_from_this());
 // 	// m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
 // }
 
-// void basic_connection::forward_socks5(const string &local_address, int16_t local_port)
+// void basic_connection::forward_socks5(const string &local_address, uint16_t local_port)
 // {
 // 	// if (m_port_forwarder == nullptr)
 // 	// 	m_port_forwarder = new port_forward_listener(shared_from_this());
@@ -1424,7 +1424,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 // // --------------------------------------------------------------------
 
 // connection::connection(boost::asio::io_service &io_service,
-// 						const string &user, const string &host, int16_t port = 22)
+// 						const string &user, const string &host, uint16_t port = 22)
 // 	: basic_connection(io_service, user), m_io_service(io_service), m_socket(io_service), m_resolver(io_service), m_host(host), m_port(port)
 // {
 // }

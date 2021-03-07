@@ -105,7 +105,7 @@ class read_channel_handler : public read_channel_op
 
 	virtual std::deque<char>::iterator transfer_bytes(std::deque<char>::iterator begin, std::deque<char>::iterator end) override
 	{
-		auto size = boost::asio::buffer_size(m_buffers);
+		std::ptrdiff_t size = boost::asio::buffer_size(m_buffers);
 		if (size > end - begin)
 			size = end - begin;
 
@@ -113,7 +113,7 @@ class read_channel_handler : public read_channel_op
 		{
 			char* dst = static_cast<char*>(buf->data());
 			
-			auto bsize = size;
+			std::size_t bsize = size;
 			if (bsize > buf->size())
 				bsize = buf->size();
 

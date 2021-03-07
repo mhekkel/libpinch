@@ -62,8 +62,8 @@ void connection_pool::set_algorithm(algorithm alg, direction dir, const std::str
 	// 	e.connection->set_algorithm(alg, dir, preferred);
 }
 
-void connection_pool::register_proxy(const std::string& destination_host, int16_t destination_port,
-	const std::string& proxy_user, const std::string& proxy_host, int16_t proxy_port, const std::string& proxy_cmd)
+void connection_pool::register_proxy(const std::string& destination_host, uint16_t destination_port,
+	const std::string& proxy_user, const std::string& proxy_host, uint16_t proxy_port, const std::string& proxy_cmd)
 {
 	proxy p = { destination_host, destination_port, proxy_cmd, proxy_user, proxy_host, proxy_port };
 	proxy_list::iterator pi = find(m_proxies.begin(), m_proxies.end(), p);
@@ -73,7 +73,7 @@ void connection_pool::register_proxy(const std::string& destination_host, int16_
 		*pi = p;
 }
 
-std::shared_ptr<basic_connection> connection_pool::get(const std::string& user, const std::string& host, int16_t port)
+std::shared_ptr<basic_connection> connection_pool::get(const std::string& user, const std::string& host, uint16_t port)
 {
 	std::shared_ptr<basic_connection> result;
 	
@@ -125,8 +125,8 @@ std::shared_ptr<basic_connection> connection_pool::get(const std::string& user, 
 	return result;
 }
 	
-std::shared_ptr<basic_connection> connection_pool::get(const std::string& user, const std::string& host, int16_t port,
-	const std::string& proxy_user, const std::string& proxy_host, int16_t proxy_port, const std::string& proxy_cmd)
+std::shared_ptr<basic_connection> connection_pool::get(const std::string& user, const std::string& host, uint16_t port,
+	const std::string& proxy_user, const std::string& proxy_host, uint16_t proxy_port, const std::string& proxy_cmd)
 {
 	std::shared_ptr<basic_connection> result;
 	
