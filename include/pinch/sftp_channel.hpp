@@ -43,45 +43,78 @@ inline boost::system::error_code make_error_code(sftp_error e)
 
 }
 
-// // --------------------------------------------------------------------
+// --------------------------------------------------------------------
 
-// namespace detail
-// {
+struct file_attributes
+{
+	int64_t size;
+	uint32_t gid;
+	uint32_t uid;
+	uint32_t permissions;
+	uint32_t atime;
+	uint32_t mtime;
+	std::list<std::pair<std::string, std::string>> extended;
+};
 
-// class wait_channel_op : public operation
-// {
-//   public:
-// 	boost::system::error_code m_ec;
-	
-// };
+// --------------------------------------------------------------------
 
-// template <typename Handler, typename IoExecutor>
-// class wait_channel_handler : public wait_channel_op
-// {
-//   public:
-// 	wait_channel_handler(Handler&& h, const IoExecutor& io_ex, channel_wait_type type)
-// 		: m_handler(std::forward<Handler>(h))
-// 		, m_io_executor(io_ex)
-// 	{
-// 		m_type = type;
-// 		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
-// 	}
+namespace detail
+{
 
-// 	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
-// 	{
-// 		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
+class sftp_operation : public operation
+{
+  public:
+	uint32_t m_id;
+	std::string m_handle;
+	bool m_completed = false;
 
-// 		binder1<Handler, boost::system::error_code> handler(m_handler, m_ec);
+	bool is_complete() const { return m_completed; }
 
-// 		w.complete(handler, handler.m_handler);
-// 	}
+	virtual opacket process(ipacket& p)
+	{
+		return {};
+	}
+};
 
-//   private:
-// 	Handler m_handler;
-// 	IoExecutor m_io_executor;
-// };
+class sftp_readdir_op : public sftp_operation
+{
+  public:
+	boost::system::error_code m_ec;
+	std::list<std::tuple<std::string,std::string,file_attributes>> m_files;
 
-// }
+	virtual opacket process(ipacket& p) override;
+};
+
+template <typename Handler, typename IoExecutor>
+class sftp_readdir_handler : public sftp_readdir_op
+{
+  public:
+	sftp_readdir_handler(Handler&& h, const IoExecutor& io_ex, uint32_t id)
+		: m_handler(std::forward<Handler>(h))
+		, m_io_executor(io_ex)
+	{
+		m_id = id;
+		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
+	}
+
+	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
+	{
+		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
+
+		binder<Handler, boost::system::error_code, std::list<std::tuple<std::string, std::string, file_attributes>>>
+			handler(m_handler, m_ec, m_files);
+
+		w.complete(handler, handler.m_handler);
+
+		m_completed = true;
+	}
+
+  private:
+	Handler m_handler;
+	IoExecutor m_io_executor;
+};
+
+}
 
 // --------------------------------------------------------------------
 
@@ -94,71 +127,12 @@ public:
 	virtual void opened() override;
 	virtual void closed() override;
 
-	struct file_attributes
-	{
-		int64_t size;
-		uint32_t gid;
-		uint32_t uid;
-		uint32_t permissions;
-		uint32_t atime;
-		uint32_t mtime;
-		std::list<std::pair<std::string, std::string>> extended;
-	};
-
-	struct sftp_reply_handler
-	{
-		sftp_reply_handler(uint32_t id) : m_id(id) {}
-		virtual ~sftp_reply_handler() {}
-
-		virtual void handle_status(const boost::system::error_code &ec,
-									const std::string &message, const std::string &language_tag) = 0;
-
-		virtual void handle_handle(const std::string &handle, opacket &out);
-
-		uint32_t m_id;
-		std::string m_handle;
-	};
-	typedef std::list<sftp_reply_handler *> sftp_reply_handler_list;
-
-	// Handler for handle_read_dir should have the signature:
-	//	bool (const boost::system::error_code& ec, const std::string& name,
-	//			const std::string& longname, const sftp_channel::file_attributes& attr)
-	// Returning true means continue, false will stop.
-
-	struct handle_read_dir_base : public sftp_reply_handler
-	{
-		handle_read_dir_base(uint32_t id) : sftp_reply_handler(id) {}
-		virtual bool handle_name(const std::string &name, const std::string &longname, const file_attributes &attr) = 0;
-	};
-
 	template <typename Handler>
-	struct handle_read_dir : public handle_read_dir_base
+	auto read_dir(const std::string &path, Handler &&handler)
 	{
-		handle_read_dir(uint32_t id, Handler &&handler)
-			: handle_read_dir_base(id), m_handler(handler) {}
-
-		virtual void handle_status(const boost::system::error_code &ec,
-									const std::string &message, const std::string &language_tag)
-		{
-			if (ec != make_error_code(error::ssh_fx_eof))
-			{
-				file_attributes attr = {};
-				(void)m_handler(ec, "", "", attr);
-			}
-		}
-
-		virtual bool handle_name(const std::string &name, const std::string &longname, const file_attributes &attr)
-		{
-			return m_handler(boost::system::error_code(), name, longname, attr);
-		}
-
-		Handler m_handler;
-	};
-
-	template <typename Handler>
-	void read_dir(const std::string &path, Handler &&handler)
-	{
-		read_dir_int(path, new handle_read_dir<Handler>(m_request_id++, std::move(handler)));
+		return boost::asio::async_initiate<Handler, void(boost::system::error_code)>(
+			async_readdir_impl{}, handler, this, m_request_id++, path
+		);
 	}
 
 	//	template<typename Handler>
@@ -168,29 +142,49 @@ public:
 	//	void			write_file(const std::string& path, Handler&& handler);
 
 private:
-	virtual void receive_data(const char *data, size_t size);
+
+	virtual void receive_data(const char *data, size_t size) override;
 	void process_packet();
 
-	void read_dir_int(const std::string &path, handle_read_dir_base *handler);
-	//	void					read_file(handle_read_file_base* handler);
+	void write(opacket &&out)
+	{
+		opacket p = opacket() << std::move(out);
+		send_data(std::move(p));
+	}
 
-	void write(opacket &&out);
-
-	sftp_reply_handler *fetch_handler(uint32_t id);
-	void handle_status(uint32_t id, const boost::system::error_code &ec,
-						const std::string &message, const std::string &language_tag,
-						opacket &out);
-	void handle_handle(uint32_t id, const std::string &handle, opacket &out);
-	void handle_data(uint32_t id, const char *data, size_t size, opacket &out);
-	bool handle_name(uint32_t id, const std::string &name,
-						const std::string &longname, const file_attributes &attr,
-						opacket &out);
-	void handle_attrs(uint32_t id, const file_attributes &attr, opacket &out);
+	void opendir(uint32_t request_id, const std::string& path);
 
 	uint32_t m_request_id;
 	uint32_t m_version;
 	ipacket m_packet;
-	sftp_reply_handler_list m_handlers;
+
+	std::list<detail::sftp_operation*> m_sftp_ops;
+
+	template<typename OpHandler = detail::sftp_operation>
+	OpHandler* fetch_op(uint32_t id)
+	{
+		for (auto op: m_sftp_ops)
+		{
+			if (op->m_id != id)
+				continue;
+			
+			return dynamic_cast<OpHandler*>(op);
+		}
+
+		return nullptr;
+	}
+
+	// --------------------------------------------------------------------
+	
+	struct async_readdir_impl
+	{
+		template<typename Handler>
+		void operator()(Handler&& handler, sftp_channel* ch, uint32_t request_id, const std::string& path)
+		{
+			ch->m_sftp_ops.push_back(new detail::sftp_readdir_handler(std::move(handler), ch->get_executor(), request_id));
+			ch->opendir(request_id, path);
+		}
+	};
 };
 
 }

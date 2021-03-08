@@ -15,3 +15,4 @@ libtool
 test/unit-test
 include/pinch/config.hpp.in
 include/pinch/config.hpp
+test/sftp-test

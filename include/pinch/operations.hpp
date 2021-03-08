@@ -73,96 +73,46 @@ class handler_work
 
 // --------------------------------------------------------------------
 
-template <typename Handler, typename Arg1>
-struct binder1
+template <typename Handler, typename... Args>
+struct binder
 {
 	template<typename T>
-	binder1(int, T&& handler, const Arg1& arg1)
+	binder(int, T&& handler, const Args&... args)
 		: m_handler(std::forward<T>(handler))
-		, m_arg_1(arg1)
+		, m_args(args...)
 	{
 	}
 
-	binder1(Handler& handler, const Arg1& arg1)
-		: m_handler(BOOST_ASIO_MOVE_CAST(Handler)(handler))
-		, m_arg_1(arg1)
+	binder(Handler& handler, const Args&... args)
+		: m_handler(std::forward<Handler>(handler))
+		, m_args(args...)
 	{
 	}
 
-	binder1(const binder1& other)
+	binder(const binder& other)
 		: m_handler(other.m_handler)
-		, m_arg_1(other.m_arg_1)
+		, m_args(other.m_args)
 	{
 	}
 
-	binder1(binder1&& other)
+	binder(binder&& other)
 		: m_handler(std::move(other.m_handler))
-		, m_arg_1(std::move(other.m_arg_1))
+		, m_args(std::move(other.m_args))
 	{
 	}
+
+	// void operator()()
+	// {
+	// 	std::invoke(m_handler, static_cast<const Args&>(m_args));
+	// }
 
 	void operator()()
 	{
-		m_handler(static_cast<const Arg1&>(m_arg_1));
-	}
-
-	void operator()() const
-	{
-		m_handler(m_arg_1);
+		std::apply(m_handler, m_args);
 	}
 
 	Handler m_handler;
-	Arg1 m_arg_1;
-};
-
-// --------------------------------------------------------------------
-
-
-template <typename Handler, typename Arg1, typename Arg2>
-struct binder2
-{
-	template<typename T>
-	binder2(int, T&& handler, const Arg1& arg1, const Arg2& arg2)
-		: m_handler(std::forward<T>(handler))
-		, m_arg_1(arg1)
-		, m_arg_2(arg2)
-	{
-	}
-
-	binder2(Handler& handler, const Arg1& arg1, const Arg2& arg2)
-		: m_handler(BOOST_ASIO_MOVE_CAST(Handler)(handler))
-		, m_arg_1(arg1)
-		, m_arg_2(arg2)
-	{
-	}
-
-	binder2(const binder2& other)
-		: m_handler(other.m_handler)
-		, m_arg_1(other.m_arg_1)
-		, m_arg_2(other.m_arg_2)
-	{
-	}
-
-	binder2(binder2&& other)
-		: m_handler(std::move(other.m_handler))
-		, m_arg_1(std::move(other.m_arg_1))
-		, m_arg_2(std::move(other.m_arg_2))
-	{
-	}
-
-	void operator()()
-	{
-		m_handler(static_cast<const Arg1&>(m_arg_1), static_cast<const Arg2&>(m_arg_2));
-	}
-
-	void operator()() const
-	{
-		m_handler(m_arg_1, m_arg_2);
-	}
-
-	Handler m_handler;
-	Arg1 m_arg_1;
-	Arg2 m_arg_2;
+	std::tuple<Args...> m_args;
 };
 
 }

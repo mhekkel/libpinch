@@ -135,7 +135,7 @@ class wait_connection_handler : public wait_connection_op
 	{
 		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
 
-		binder1<Handler, boost::system::error_code> handler(m_handler, m_ec);
+		binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
 
 		w.complete(handler, handler.m_handler);
 	}

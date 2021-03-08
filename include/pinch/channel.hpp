@@ -65,7 +65,7 @@ class open_channel_handler : public open_channel_op
 	{
 		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
 
-		binder1<Handler, boost::system::error_code> handler(m_handler, m_ec);
+		binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
 
 		w.complete(handler, handler.m_handler);
 	}
@@ -100,7 +100,7 @@ class read_channel_handler : public read_channel_op
 	{
 		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
 
-		binder2<Handler, boost::system::error_code, std::size_t> handler(m_handler, m_ec, m_bytes_transferred);
+		binder<Handler, boost::system::error_code, std::size_t> handler(m_handler, m_ec, m_bytes_transferred);
 
 		w.complete(handler, handler.m_handler);
 	}
@@ -162,7 +162,7 @@ class write_channel_handler : public write_channel_op
 	{
 		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
 
-		binder2<Handler, boost::system::error_code, std::size_t> handler(m_handler, m_ec, m_bytes_transferred);
+		binder<Handler, boost::system::error_code, std::size_t> handler(m_handler, m_ec, m_bytes_transferred);
 
 		w.complete(handler, handler.m_handler);
 	}
@@ -215,7 +215,7 @@ class wait_channel_handler : public wait_channel_op
 	{
 		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
 
-		binder1<Handler, boost::system::error_code> handler(m_handler, m_ec);
+		binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
 
 		w.complete(handler, handler.m_handler);
 	}
