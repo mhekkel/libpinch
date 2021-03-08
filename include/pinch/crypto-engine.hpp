@@ -8,15 +8,6 @@
 namespace pinch
 {
 
-extern const std::string
-	kKeyExchangeAlgorithms,
-	kServerHostKeyAlgorithms,
-	kEncryptionAlgorithms,
-	kMacAlgorithms,
-	kCompressionAlgorithms;
-
-std::string choose_protocol(const std::string &server, const std::string &client);
-
 // --------------------------------------------------------------------
 
 class crypto_engine
@@ -25,10 +16,10 @@ class crypto_engine
 	crypto_engine(const crypto_engine&) = delete;
 	crypto_engine& operator=(const crypto_engine&) = delete;
 
-	// configure before connecting
-	static void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
-
 	crypto_engine();
+
+	std::string get_connection_parameters(direction dir) const;
+	std::string get_key_exchange_algorithm() const;
 
 	void newkeys(key_exchange& kex, bool authenticated);
 	void enable_compression();
@@ -63,13 +54,6 @@ class crypto_engine
 	bool m_delay_compressor, m_delay_decompressor;
 
 	std::unique_ptr<ipacket> m_packet;
-
-	// --------------------------------------------------------------------
-	
-	// The preferred algo's
-	static std::string
-		s_alg_kex, s_alg_enc_s2c, s_alg_enc_c2s, s_alg_ver_s2c, s_alg_ver_c2s, s_alg_cmp_s2c, s_alg_cmp_c2s;
-
 };
 
 }

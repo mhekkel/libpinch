@@ -13,6 +13,7 @@ namespace pinch
 {
 
 class basic_connection;
+class bound_port;
 
 class port_forward_listener
 {
@@ -35,10 +36,10 @@ class port_forward_listener
 	port_forward_listener&
 		operator=(const port_forward_listener&);
 
-	//typedef std::list<bound_port*> bound_port_list;
+	typedef std::list<bound_port*> bound_port_list;
 
 	std::shared_ptr<basic_connection> m_connection;
-	//bound_port_list m_bound_ports;
+	bound_port_list m_bound_ports;
 };
 
 // --------------------------------------------------------------------

@@ -13,14 +13,22 @@
 namespace pinch
 {
 
+std::string choose_protocol(const std::string &server, const std::string &client);
+
+// --------------------------------------------------------------------
+
 using verify_host_key_func = std::function<bool(const std::string&, const blob&)>;
 struct key_exchange_impl;
 
 class key_exchange
 {
   public:
-	key_exchange(const std::string& host_version);
-	key_exchange(const std::string& host_version, const blob& session_id);
+
+	// configure before connecting
+	static void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
+
+	key_exchange(const std::string& host_version, verify_host_key_func verify_cb);
+	key_exchange(const std::string& host_version, const blob& session_id, verify_host_key_func verify_cb);
 	~key_exchange();
 
 	key_exchange(const key_exchange&) = delete;
@@ -55,6 +63,12 @@ class key_exchange
 	blob m_host_payload, m_my_payload;
 	bool m_first_kex_packet_follows;
  	verify_host_key_func cb_verify_host_key;
+
+	// --------------------------------------------------------------------
+	
+	static std::string
+		s_alg_kex, s_alg_enc_s2c, s_alg_enc_c2s, s_alg_ver_s2c, s_alg_ver_c2s, s_alg_cmp_s2c, s_alg_cmp_c2s;
+
  };
 
 } // namespace pinch

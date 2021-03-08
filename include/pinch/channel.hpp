@@ -290,7 +290,7 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual void succeeded(); // the request succeeded
 
 	// std::string get_connection_parameters(direction dir) const;
-	// std::string get_key_exchange_algoritm() const;
+	// std::string get_key_exchange_algorithm() const;
 
 	void open_pty(uint32_t width, uint32_t height,
 				  const std::string& terminal_type,

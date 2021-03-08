@@ -102,9 +102,9 @@ void channel::keep_alive()
 // 	return is_open() ? m_connection->get_connection_parameters(dir) : "";
 // }
 
-// std::string channel::get_key_exchange_algoritm() const
+// std::string channel::get_key_exchange_algorithm() const
 // {
-// 	return is_open() ? m_connection->get_key_exchange_algoritm() : "";
+// 	return is_open() ? m_connection->get_key_exchange_algorithm() : "";
 // }
 
 void channel::open_pty(uint32_t width, uint32_t height,

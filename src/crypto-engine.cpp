@@ -22,52 +22,6 @@ namespace io = boost::iostreams;
 namespace pinch
 {
 
-const std::string
-	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256"),
-	kServerHostKeyAlgorithms("ecdsa-sha2-nistp256" /* ",rsa-sha2-512,rsa-sha2-256" */",ssh-rsa"),
-	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc"),
-	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256"),
-	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
-
-std::string choose_protocol(const std::string &server, const std::string &client)
-{
-	std::string result;
-	bool found = false;
-
-	std::string::size_type ci = 0, cn = client.find(',');
-	while (not found)
-	{
-		auto cp = client.substr(ci, cn - ci);
-
-		std::string::size_type si = 0, sn = server.find(',');
-		while (not found)
-		{
-			auto sp = server.substr(si, sn - si);
-
-			if (cp == sp)
-			{
-				result = cp;
-				found = true;
-				break;
-			}
-
-			if (sn == std::string::npos)
-				break;
-
-			si = sn + 1;
-			sn = server.find(',', si);
-		}
-
-		if (found or cn == std::string::npos)
-			break;
-
-		ci = cn + 1;
-		cn = client.find(',', ci);
-	}
-
-	return result;
-}
-
 // --------------------------------------------------------------------
 
 struct packet_encryptor
@@ -157,16 +111,8 @@ crypto_engine::crypto_engine()
 
 void crypto_engine::newkeys(key_exchange& kex, bool authenticated)
 {
-	ipacket payload = kex.host_payload();
-
-	std::string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
-
-	payload.skip(16);
-	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
-
 	// Client to server encryption
-	std::string protocol = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s);
+	std::string protocol = kex.get_encryption_protocol(direction::c2s);
 
 	const uint8_t *key = kex.key(key_exchange::C);
 	const uint8_t *iv = kex.key(key_exchange::A);
@@ -187,7 +133,7 @@ void crypto_engine::newkeys(key_exchange& kex, bool authenticated)
 		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
 
 	// Server to client encryption
-	protocol = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c);
+	protocol = kex.get_encryption_protocol(direction::s2c);
 
 	key = kex.key(key_exchange::D);
 	iv = kex.key(key_exchange::B);
@@ -208,7 +154,7 @@ void crypto_engine::newkeys(key_exchange& kex, bool authenticated)
 		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
 
 	// Client To Server verification
-	protocol = choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
+	protocol = kex.get_verification_protocol(direction::c2s);
 	iv = kex.key(key_exchange::E);
 
 	if (protocol == "hmac-sha2-512")
@@ -222,7 +168,7 @@ void crypto_engine::newkeys(key_exchange& kex, bool authenticated)
 
 	// Server to Client verification
 
-	protocol = choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
+	protocol = kex.get_verification_protocol(direction::s2c);
 	iv = kex.key(key_exchange::F);
 
 	if (protocol == "hmac-sha2-512")
@@ -235,14 +181,14 @@ void crypto_engine::newkeys(key_exchange& kex, bool authenticated)
 		assert(false);
 
 	// Client to Server compression
-	protocol = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
+	protocol = kex.get_compression_protocol(direction::c2s);
 	if ((not m_compressor and protocol == "zlib") or (authenticated and protocol == "zlib@openssh.com"))
 		m_compressor.reset(new compression_helper(true));
 	else if (protocol == "zlib@openssh.com")
 		m_delay_compressor = true;
 
 	// Server to Client compression
-	protocol = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
+	protocol = kex.get_compression_protocol(direction::s2c);
 	if ((not m_decompressor and protocol == "zlib") or (authenticated and protocol == "zlib@openssh.com"))
 		m_decompressor.reset(new compression_helper(false));
 	else if (protocol == "zlib@openssh.com")

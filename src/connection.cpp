@@ -186,7 +186,11 @@ void basic_connection::disconnect()
 
 void basic_connection::rekey()
 {
-	m_kex.reset(new key_exchange(m_host_version, m_session_id));
+	m_kex.reset(new key_exchange(m_host_version, m_session_id,
+		[cb = m_validate_host_key_cb, host = m_host](const std::string& alg, const blob& hash)
+		{
+			return cb ? cb(host, alg, hash) : true;
+		}));
 	async_write(m_kex->init());
 }
 
@@ -598,12 +602,12 @@ public:
 // --------------------------------------------------------------------
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(user), m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
+	: basic_connection(user, host, port), m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port))
 {
 }
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(user), m_proxy(proxy), m_channel(new forwarding_channel(m_proxy, host, port)), m_host(host)
+	: basic_connection(user, host, port), m_proxy(proxy), m_channel(new forwarding_channel(m_proxy, host, port))
 {
 }
 
@@ -682,289 +686,6 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 
 	}
 }
-
-
-// void basic_connection::handle_connect_result(const boost::system::error_code &ec)
-// {
-// 	if (ec)
-// 		m_auth_state = auth_state_none;
-// 	else
-// 		m_auth_state = auth_state_connected;
-
-// 	auto self(shared_from_this());
-// 	for_each(m_connect_handlers.begin(), m_connect_handlers.end(),
-// 				[self, this, &ec](basic_connect_handler *h) {
-// 					try
-// 					{
-// 						h->handle_connect(ec, m_io_service);
-// 					}
-// 					catch (...)
-// 					{
-// 					}
-// 					delete h;
-// 				});
-
-// 	m_connect_handlers.clear();
-
-// 	if (ec)
-// 		disconnect();
-// }
-
-// void basic_connection::start_handshake()
-// {
-// 	if (m_auth_state == auth_state_none)
-// 	{
-// 		reset();
-
-// 		m_auth_state = auth_state_connecting;
-
-// 		boost::asio::streambuf *request(new boost::asio::streambuf);
-// 		ostream out(request);
-// 		out << kSSHVersionString << "\r\n";
-
-// 		auto self(shared_from_this());
-// 		async_write(request, [self, this](const boost::system::error_code &ec, size_t bytes_transferred) {
-// 			handle_protocol_version_request(ec, bytes_transferred);
-// 			//			delete request;
-// 		});
-// 	}
-// }
-
-// void basic_connection::handle_protocol_version_request(const boost::system::error_code &ec, size_t)
-// {
-// 	if (ec)
-// 		handle_connect_result(ec);
-// 	else
-// 		async_read_version_string();
-// }
-
-// void basic_connection::handle_protocol_version_response(const boost::system::error_code &ec, size_t)
-// {
-// 	if (ec)
-// 		handle_connect_result(ec);
-// 	else
-// 	{
-// 		istream response_stream(&m_response);
-
-// 		getline(response_stream, m_host_version);
-// 		ba::trim_right(m_host_version);
-
-// 		if (ba::starts_with(m_host_version, "SSH-2.0"))
-// 		{
-// 			rekey();
-
-// 			// start read loop
-// 			received_data(boost::system::error_code());
-// 		}
-// 		else
-// 			handle_connect_result(error::make_error_code(error::protocol_version_not_supported));
-// 	}
-// }
-
-// // the read loop, this routine keeps calling itself until an error condition is met
-// void basic_connection::received_data(const boost::system::error_code &ec)
-// {
-// 	if (ec)
-// 	{
-// 		handle_error(ec);
-// 		return;
-// 	}
-
-// 	// don't process data at all if we're no longer willing
-// 	if (m_auth_state == auth_state_none)
-// 		return;
-
-// 	try
-// 	{
-// 		while (m_response.size() >= m_iblocksize)
-// 		{
-// 			if (not m_packet.complete())
-// 			{
-// 				vector<uint8_t> block(m_iblocksize);
-// 				m_response.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
-
-// 				if (m_decryptor)
-// 				{
-// 					vector<uint8_t> data(m_iblocksize);
-// 					m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
-// 					swap(data, block);
-// 				}
-
-// 				if (m_verifier)
-// 				{
-// 					if (m_packet.empty())
-// 					{
-// 						for (int32_t i = 3; i >= 0; --i)
-// 						{
-// 							uint8_t b = m_in_seq_nr >> (i * 8);
-// 							m_verifier->Update(&b, 1);
-// 						}
-// 					}
-
-// 					m_verifier->Update(block.data(), block.size());
-// 				}
-
-// 				m_packet.append(block);
-// 			}
-
-// 			if (m_packet.complete())
-// 			{
-// 				if (m_verifier)
-// 				{
-// 					if (m_response.size() < m_verifier->DigestSize())
-// 						break;
-
-// 					vector<uint8_t> digest(m_verifier->DigestSize());
-// 					m_response.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
-
-// 					if (not m_verifier->Verify(digest.data()))
-// 					{
-// 						handle_error(error::make_error_code(error::mac_error));
-// 						return;
-// 					}
-// 				}
-
-// 				if (m_decompressor)
-// 				{
-// 					boost::system::error_code ec;
-// 					m_packet.decompress(*m_decompressor, ec);
-// 					if (ec)
-// 					{
-// 						handle_error(ec);
-// 						break;
-// 					}
-// 				}
-
-// 				process_packet(m_packet);
-
-// 				m_packet.clear();
-// 				++m_in_seq_nr;
-// 			}
-// 		}
-
-// 		uint32_t at_least = m_iblocksize;
-// 		if (m_response.size() >= m_iblocksize)
-// 		{
-// 			// if we arrive here, we might have read a block, but not the digest?
-// 			// call readsome with 0 as at-least, that will return something we hope.
-// 			at_least = 1;
-// 		}
-// 		else
-// 			at_least -= m_response.size();
-
-// 		async_read(at_least);
-// 	}
-// 	catch (...)
-// 	{
-// 		try
-// 		{
-// 			disconnect();
-// 		}
-// 		catch (...)
-// 		{
-// 		}
-// 		throw;
-// 	}
-// }
-
-// void basic_connection::process_packet(ipacket &in)
-// {
-// 	// update time for keep alive
-// 	struct timeval tv;
-// 	gettimeofday(&tv, nullptr);
-// 	m_last_io = tv.tv_sec;
-
-// 	opacket out;
-// 	boost::system::error_code ec;
-
-// 	bool handled = false;
-
-// 	if (m_key_exchange)
-// 		handled = m_key_exchange->process(in, out, ec);
-
-// 	if (not handled)
-// 	{
-// 		handled = true;
-
-// 		switch ((message_type)in)
-// 		{
-// 			case msg_disconnect:
-// 			{
-// 				uint32_t reasonCode;
-// 				in >> reasonCode;
-// 				handle_error(error::make_error_code(error::disconnect_errors(reasonCode)));
-// 				break;
-// 			}
-
-// 			case msg_ignore:
-// 			case msg_unimplemented:
-// 			case msg_debug:
-// 				break;
-
-// 			case msg_service_request:
-// 				disconnect();
-// 				break;
-
-// 			case msg_service_accept:
-// 				process_service_accept(in, out, ec);
-// 				break;
-
-// 			case msg_kexinit:
-// 				process_kexinit(in, out, ec);
-// 				break;
-
-// 			case msg_newkeys:
-// 				process_newkeys(in, out, ec);
-// 				break;
-
-// 			case msg_userauth_success:
-// 				process_userauth_success(in, out, ec);
-// 				break;
-// 			case msg_userauth_failure:
-// 				process_userauth_failure(in, out, ec);
-// 				break;
-// 			case msg_userauth_banner:
-// 				process_userauth_banner(in, out, ec);
-// 				break;
-// 			case msg_userauth_info_request:
-// 				process_userauth_info_request(in, out, ec);
-// 				break;
-
-// 			// channel
-// 			case msg_channel_open:
-// 				if (m_authenticated)
-// 					process_channel_open(in, out);
-// 				break;
-// 			case msg_channel_open_confirmation:
-// 			case msg_channel_open_failure:
-// 			case msg_channel_window_adjust:
-// 			case msg_channel_data:
-// 			case msg_channel_extended_data:
-// 			case msg_channel_eof:
-// 			case msg_channel_close:
-// 			case msg_channel_request:
-// 			case msg_channel_success:
-// 			case msg_channel_failure:
-// 				if (m_authenticated)
-// 					process_channel(in, out, ec);
-// 				break;
-
-// 			default:
-// 			{
-// 				opacket out(msg_unimplemented);
-// 				out << (uint32_t)m_in_seq_nr;
-// 				async_write(move(out));
-// 				break;
-// 			}
-// 		}
-// 	}
-
-// 	if (ec)
-// 		handle_connect_result(ec);
-
-// 	if (not out.empty())
-// 		async_write(move(out));
-// }
 
 // bool basic_connection::validate_host_key(const string &pk_alg, const vector<uint8_t> &host_key)
 // {

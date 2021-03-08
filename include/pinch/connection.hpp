@@ -226,17 +226,17 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	void keep_alive();
 
-	void basic_connection::forward_port(const std::string &local_address, uint16_t local_port,
+	void forward_port(const std::string &local_address, uint16_t local_port,
 		const std::string &remote_address, uint16_t remote_port);
 
 	void forward_socks5(const std::string &local_address, uint16_t local_port);
 
 	std::string get_connection_parameters(direction dir) const
 	{
-		return m_crypto_engine.get_connection_parameters(direction);
+		return m_crypto_engine.get_connection_parameters(dir);
 	}
 
-	std::string get_key_exchange_algoritm() const
+	std::string get_key_exchange_algorithm() const
 	{
 		return m_crypto_engine.get_key_exchange_algorithm();
 	}
@@ -344,10 +344,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
   protected:
 
-	basic_connection(const std::string& user)
-		: m_user(user)
+	basic_connection(const std::string& user, const std::string& host, uint16_t port)
+		: m_user(user), m_host(host), m_port(port)
 	{
-		
 	}
 
 	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
@@ -361,6 +360,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void handle_banner(const std::string &message, const std::string &lang);
 
 	std::string m_user;
+	std::string m_host;
+	uint16_t m_port;
 
 	std::string m_host_version;
 	blob m_session_id;
@@ -413,10 +414,8 @@ class connection : public basic_connection
 
 	template<typename Arg>
 	connection(Arg&& arg, const std::string& user, const std::string& host, uint16_t port)
-		: basic_connection(user)
+		: basic_connection(user, host, port)
 		, m_next_layer(std::forward<Arg>(arg))
-		, m_host(host)
-		, m_port(port)
 	{
 		reset();
 	}
@@ -465,8 +464,6 @@ class connection : public basic_connection
 
   private:
 	boost::asio::ip::tcp::socket m_next_layer;
-	std::string m_host;
-	uint16_t m_port;
 };
 
 // --------------------------------------------------------------------
@@ -640,7 +637,12 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 			}
 
 			state = state_type::rekeying;
-			kex = std::make_unique<key_exchange>(host_version);
+			kex = std::make_unique<key_exchange>(host_version,
+				[cb = conn->m_validate_host_key_cb, host = conn->m_host]
+				(const std::string& alg, const blob& hash)
+				{
+					return cb ? cb(host, alg, hash) : true;
+				});
 
 			conn->async_write(kex->init());
 			
