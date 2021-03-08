@@ -287,7 +287,7 @@ opacket sftp_readdir_op::process(ipacket& p)
 {
 	opacket out;
 
-	switch (p.message())
+	switch ((sftp_messages)p.message())
 	{
 		case SSH_FXP_STATUS:
 		{

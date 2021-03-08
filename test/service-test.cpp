@@ -88,11 +88,13 @@ int main() {
 	);
 
 	channel->open_with_pty(80, 24, "vt220", true, true, "",
-		[t = channel](const boost::system::error_code& ec)
+		[t = channel, conn](const boost::system::error_code& ec)
 	{
 		std::cout << "handler, ec = " << ec.message() << std::endl;
 		
 		read_from_channel(t);
+
+		// conn->rekey();
 	});
 
 

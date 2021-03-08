@@ -83,27 +83,7 @@ std::shared_ptr<basic_connection> connection_pool::get(const std::string& user, 
 	
 	if (result == nullptr)
 	{
-		for (auto& p: m_proxies)
-		{
-			if (p.destination_host == host and p.destination_port == port)
-			{
-				result.reset(new proxied_connection(get(p.proxy_user, p.proxy_host, p.proxy_port), p.proxy_cmd, user, host, port));
-				break;
-			}
-		}
-		
-		if (result == nullptr)
-			result = std::make_shared<connection>(m_io_context, user);
-
-		if (not result->is_connected())
-		{
-			using namespace boost::asio::ip;
-
-			tcp::resolver resolver(m_io_context);
-			tcp::resolver::results_type endpoints = resolver.resolve(host, std::to_string(port));
-
-			boost::asio::connect(result->lowest_layer(), endpoints);
-		}
+		result = std::make_shared<connection>(m_io_context, user, host, port);
 
 		entry e = { user, host, port, result };
 		m_entries.push_back(e);

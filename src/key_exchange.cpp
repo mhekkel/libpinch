@@ -380,6 +380,15 @@ void key_exchange_dh_gex<HashAlgorithm>::calculate_hash(const std::string& host_
 
 // --------------------------------------------------------------------
 
+std::string
+	key_exchange::s_alg_kex			= kKeyExchangeAlgorithms,
+	key_exchange::s_alg_enc_s2c		= kEncryptionAlgorithms,
+	key_exchange::s_alg_enc_c2s		= kEncryptionAlgorithms,
+	key_exchange::s_alg_ver_s2c		= kMacAlgorithms,
+	key_exchange::s_alg_ver_c2s		= kMacAlgorithms,
+	key_exchange::s_alg_cmp_s2c		= kCompressionAlgorithms,
+	key_exchange::s_alg_cmp_c2s		= kCompressionAlgorithms;
+
 key_exchange::key_exchange(const std::string& host_version)
 	: m_host_version(host_version)
 {
@@ -412,6 +421,38 @@ bool key_exchange::process(ipacket& in, opacket& out, boost::system::error_code&
 	return handled;
 }
 
+void key_exchange::set_algorithm(algorithm alg, direction dir, const std::string &preferred)
+{
+	switch (alg)
+	{
+		case algorithm::keyexchange:
+			s_alg_kex = preferred;
+			break;
+
+		case algorithm::encryption:
+			if (dir != direction::c2s)
+				s_alg_enc_s2c = preferred;
+			if (dir != direction::s2c)
+				s_alg_enc_c2s = preferred;
+			break;
+
+		case algorithm::verification:
+			if (dir != direction::c2s)
+				s_alg_ver_s2c = preferred;
+			if (dir != direction::s2c)
+				s_alg_ver_c2s = preferred;
+			break;
+
+		case algorithm::compression:
+			if (dir != direction::c2s)
+				s_alg_cmp_s2c = preferred;
+			if (dir != direction::s2c)
+				s_alg_cmp_c2s = preferred;
+			break;
+	}
+}
+
+
 opacket key_exchange::init()
 {
 	// create the kexinit out message
@@ -419,14 +460,14 @@ opacket key_exchange::init()
 	for (uint32_t i = 0; i < 16; ++i)
 		out << rng.GenerateByte();
 
-	out << kKeyExchangeAlgorithms
+	out << s_alg_kex
 		<< kServerHostKeyAlgorithms
-		<< kEncryptionAlgorithms	//m_alg_enc_c2s
-		<< kEncryptionAlgorithms	//m_alg_enc_s2c
-		<< kMacAlgorithms			//m_alg_ver_c2s
-		<< kMacAlgorithms			//m_alg_ver_s2c
-		<< kCompressionAlgorithms	//m_alg_cmp_c2s
-		<< kCompressionAlgorithms	//m_alg_cmp_s2c
+		<< s_alg_enc_c2s
+		<< s_alg_enc_s2c
+		<< s_alg_ver_c2s
+		<< s_alg_ver_s2c
+		<< s_alg_cmp_c2s
+		<< s_alg_cmp_s2c
 		<< ""
 		<< ""
 		<< false

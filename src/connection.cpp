@@ -184,6 +184,12 @@ void basic_connection::disconnect()
 		ch->close();
 }
 
+void basic_connection::rekey()
+{
+	m_kex.reset(new key_exchange(m_host_version, m_session_id));
+	async_write(m_kex->init());
+}
+
 // the read loop, this routine keeps calling itself until an error condition is met
 
 void basic_connection::received_data(boost::system::error_code ec)
@@ -234,61 +240,72 @@ void basic_connection::process_packet(ipacket& in)
 	opacket out;
 	boost::system::error_code ec;
 
-	switch ((message_type)in)
-	{
-		case msg_disconnect:
+	if (not (m_kex and m_kex->process(in, out, ec)))
+		switch ((message_type)in)
 		{
-			uint32_t reasonCode;
-			in >> reasonCode;
-			handle_error(error::make_error_code(error::disconnect_errors(reasonCode)));
-			break;
+			case msg_disconnect:
+			{
+				uint32_t reasonCode;
+				in >> reasonCode;
+				handle_error(error::make_error_code(error::disconnect_errors(reasonCode)));
+				break;
+			}
+
+			case msg_ignore:
+			case msg_unimplemented:
+			case msg_debug:
+				break;
+
+			case msg_service_request:
+				disconnect();
+				break;
+
+			case msg_kexinit:
+		 		rekey();
+				m_kex->process(in, out, ec);
+				break;
+
+			case msg_newkeys:
+				m_crypto_engine.newkeys(*m_kex, true);
+				m_kex.reset();
+				break;
+
+			// channel
+			case msg_channel_open:
+				process_channel_open(in, out);
+				break;
+
+			case msg_channel_open_confirmation:
+			case msg_channel_open_failure:
+			case msg_channel_window_adjust:
+			case msg_channel_data:
+			case msg_channel_extended_data:
+			case msg_channel_eof:
+			case msg_channel_close:
+			case msg_channel_request:
+			case msg_channel_success:
+			case msg_channel_failure:
+				process_channel(in, out, ec);
+				break;
+
+			case msg_global_request:
+			{
+				std::string request;
+				bool want_reply;
+				in >> request >> want_reply;
+				if (want_reply)
+					async_write(opacket(msg_request_failure));
+				break;
+			}
+
+			default:
+			{
+				opacket out(msg_unimplemented);
+				out << m_crypto_engine.get_next_out_seq_nr();
+				async_write(std::move(out));
+				break;
+			}
 		}
-
-		case msg_ignore:
-		case msg_unimplemented:
-		case msg_debug:
-			break;
-
-		case msg_service_request:
-			disconnect();
-			break;
-
-		// channel
-		case msg_channel_open:
-			process_channel_open(in, out);
-			break;
-
-		case msg_channel_open_confirmation:
-		case msg_channel_open_failure:
-		case msg_channel_window_adjust:
-		case msg_channel_data:
-		case msg_channel_extended_data:
-		case msg_channel_eof:
-		case msg_channel_close:
-		case msg_channel_request:
-		case msg_channel_success:
-		case msg_channel_failure:
-			process_channel(in, out, ec);
-			break;
-
-		case msg_global_request:
-		{
-			std::string request;
-			bool want_reply;
-			in >> request >> want_reply;
-			if (want_reply)
-				async_write(opacket(msg_request_failure));
-			break;
-		}
-
-		default:
-		{
-			opacket out(msg_unimplemented);
-			out << m_crypto_engine.get_next_out_seq_nr();
-			async_write(std::move(out));
-			break;
-		}
-	}
 
 	if (ec)
 		handle_error(ec);
@@ -470,6 +487,89 @@ void basic_connection::keep_alive()
 	}
 }
 
+void basic_connection::forward_port(const std::string &local_address, uint16_t local_port,
+									const std::string &remote_address, uint16_t remote_port)
+{
+	if (not m_port_forwarder)
+		m_port_forwarder.reset(new port_forward_listener(shared_from_this()));
+	m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
+}
+
+void basic_connection::forward_socks5(const std::string &local_address, uint16_t local_port)
+{
+	if (not m_port_forwarder)
+		m_port_forwarder.reset(new port_forward_listener(shared_from_this()));
+	m_port_forwarder->forward_socks5(local_address, local_port);
+}
+
+// --------------------------------------------------------------------
+
+void connection::open()
+{
+	if (not is_open())
+	{
+		using namespace boost::asio::ip;
+
+		// synchronous for now...
+
+		tcp::resolver resolver(get_executor());
+		tcp::resolver::results_type endpoints = resolver.resolve(m_host, std::to_string(m_port));
+
+		boost::asio::connect(m_next_layer, endpoints);
+
+// 		enum { start, resolving, connecting };
+
+// 		auto resolver = std::make_shared<tcp::resolver>(get_executor());
+// 		tcp::resolver::endpoint_type endpoint{};
+
+// 		auto handler = [](const boost::system::error_code& ec) {};
+// 		using Handler = decltype(handler);
+
+// 		boost::asio::async_compose<Handler,void(boost::system::error_code)>(
+// 			[
+// 				&socket = m_next_layer,
+// 				query = tcp::resolver::query(m_host, std::to_string(m_port)),
+// 				resolver,
+// 				endpoint,
+// 				state = start
+// 			]
+// 			(auto& self, const boost::system::error_code& ec = {}, tcp::resolver::iterator endpoint_iterator = {}) mutable
+// 			{
+// 				if (ec and state == connecting and endpoint_iterator != boost::asio::ip::tcp::resolver::iterator())
+// 				{
+// 					auto endpoint = *endpoint_iterator++;							
+// 					socket.async_connect(endpoint, std::move(self));
+// 					return;
+// 				}
+
+// 				if (not ec)
+// 				{
+// 					switch (state)
+// 					{
+// 						case start:
+// 							state = resolving;
+// 							resolver->async_resolve(query, std::move(self));
+// 							return;
+						
+// 						case resolving:
+// 						{
+// 							state = connecting;
+// 							auto endpoint = *endpoint_iterator++;							
+// 							socket.async_connect(endpoint, std::move(self));
+// 							return;
+// 						}
+
+// 						case connecting:
+// 							break;
+// 					}
+// 				}
+
+// 				self.complete(ec);
+// 			}, handler
+// 		);
+	}
+}
+
 // --------------------------------------------------------------------
 
 class proxy_channel : public channel
@@ -500,21 +600,17 @@ public:
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
 	: basic_connection(user), m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port)), m_host(host)
 {
-	// m_proxy->reference();
 }
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, uint16_t port)
 	: basic_connection(user), m_proxy(proxy), m_channel(new forwarding_channel(m_proxy, host, port)), m_host(host)
 {
-	// m_proxy->reference();
 }
 
 proxied_connection::~proxied_connection()
 {
 	if (m_channel and m_channel->is_open())
 		m_channel->close();
-
-	// m_proxy->release();
 }
 
 proxied_connection::executor_type proxied_connection::get_executor() noexcept
@@ -587,213 +683,6 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 	}
 }
 
-// basic_connection::basic_connection(boost::asio::io_service &io_service, const string &user)
-// 	: m_io_service(io_service)
-// 	, m_user(user)
-// 	, m_authenticated(false)
-// 	, m_auth_state(auth_state_none)
-// 	, m_forward_agent(false)
-// 	, m_port_forwarder(nullptr)
-// 	, m_alg_kex(kKeyExchangeAlgorithms)
-// 	, m_alg_enc_c2s(kEncryptionAlgorithms)
-// 	, m_alg_ver_c2s(kMacAlgorithms)
-// 	, m_alg_cmp_c2s(kCompressionAlgorithms)
-// 	, m_alg_enc_s2c(kEncryptionAlgorithms)
-// 	, m_alg_ver_s2c(kMacAlgorithms)
-// 	, m_alg_cmp_s2c(kCompressionAlgorithms)
-// {
-// 	reset();
-// }
-
-// basic_connection::~basic_connection()
-// {
-// 	// ssh_agent::instance().unregister_connection(shared_from_this());
-
-// 	// delete m_port_forwarder;
-// }
-
-// void basic_connection::set_algorithm(algorithm alg, direction dir, const string &preferred)
-// {
-// 	switch (alg)
-// 	{
-// 		case algorithm::keyexchange:
-// 			m_alg_kex = preferred;
-// 			break;
-
-// 		case algorithm::encryption:
-// 			if (dir != direction::c2s)
-// 				m_alg_enc_s2c = preferred;
-// 			if (dir != direction::s2c)
-// 				m_alg_enc_c2s = preferred;
-// 			break;
-
-// 		case algorithm::verification:
-// 			if (dir != direction::c2s)
-// 				m_alg_ver_s2c = preferred;
-// 			if (dir != direction::s2c)
-// 				m_alg_ver_c2s = preferred;
-// 			break;
-
-// 		case algorithm::compression:
-// 			if (dir != direction::c2s)
-// 				m_alg_cmp_s2c = preferred;
-// 			if (dir != direction::s2c)
-// 				m_alg_cmp_c2s = preferred;
-// 			break;
-// 	}
-// }
-
-// void basic_connection::set_validate_callback(const validate_callback_type &cb)
-// {
-// 	m_validate_host_key_cb = cb;
-// }
-
-// void basic_connection::set_password_callback(const password_callback_type &cb)
-// {
-// 	m_request_password_cb = cb;
-// }
-
-// void basic_connection::set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
-// {
-// 	m_keyboard_interactive_cb = cb;
-// }
-
-// void basic_connection::reset()
-// {
-// 	m_authenticated = false;
-// 	m_auth_state = auth_state_none;
-// 	m_private_key_hash.clear();
-// 	m_key_exchange.reset();
-// 	m_session_id.clear();
-// 	m_packet.clear();
-// 	m_encryptor.reset(nullptr);
-// 	m_decryptor.reset(nullptr);
-// 	m_signer.reset(nullptr);
-// 	m_verifier.reset(nullptr);
-// 	m_compressor.reset(nullptr);
-// 	m_decompressor.reset(nullptr);
-// 	m_delay_decompressor = m_delay_compressor = false;
-// 	m_password_attempts = 0;
-// 	m_in_seq_nr = m_out_seq_nr = 0;
-// 	m_iblocksize = m_oblocksize = 8;
-// 	m_last_io = 0;
-// }
-
-// void basic_connection::disconnect()
-// {
-// 	reset();
-
-// 	// copy the list since calling Close will change it
-// 	list<channel_ptr> channels(m_channels);
-// 	for_each(channels.begin(), channels.end(), [](channel_ptr c) { c->close(); });
-// }
-
-// void basic_connection::keep_alive()
-// {
-// 	struct timeval tv;
-// 	gettimeofday(&tv, nullptr);
-
-// 	if (m_authenticated and m_last_io + kKeepAliveInterval < static_cast<int64_t>(tv.tv_sec))
-// 	{
-// 		opacket out(msg_ignore);
-// 		out << "Hello, world!";
-
-// 		auto self(shared_from_this());
-// 		async_write(move(out), [self, this, tv](const boost::system::error_code &ec, size_t bytes_transferred) {
-// 			if (not ec)
-// 				this->m_last_io = tv.tv_sec;
-// 		});
-// 	}
-// }
-
-// void basic_connection::handle_error(const boost::system::error_code &ec)
-// {
-// 	if (ec)
-// 	{
-// #if DEBUG
-// 		cerr << ec << endl;
-// #endif
-
-// 		for_each(m_channels.begin(), m_channels.end(), [&ec](channel_ptr ch) { ch->error(ec.message(), ""); });
-
-// 		disconnect();
-// 		handle_connect_result(ec);
-// 	}
-// }
-
-// void basic_connection::rekey()
-// {
-// 	m_key_exchange.reset(new key_exchange(m_host_version, m_session_id));
-// 	async_write(m_key_exchange->init());
-// }
-
-// void basic_connection::forward_agent(bool forward)
-// {
-// 	m_forward_agent = forward;
-// }
-
-// void basic_connection::forward_port(const string &local_address, uint16_t local_port,
-// 									const string &remote_address, uint16_t remote_port)
-// {
-// 	// if (m_port_forwarder == nullptr)
-// 	// 	m_port_forwarder = new port_forward_listener(shared_from_this());
-// 	// m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
-// }
-
-// void basic_connection::forward_socks5(const string &local_address, uint16_t local_port)
-// {
-// 	// if (m_port_forwarder == nullptr)
-// 	// 	m_port_forwarder = new port_forward_listener(shared_from_this());
-// 	// m_port_forwarder->forward_socks5(local_address, local_port);
-// }
-
-// string basic_connection::get_connection_parameters(direction dir) const
-// {
-// 	string result;
-
-// 	// ipacket payload(m_host_payload.data(), m_host_payload.size());
-
-// 	string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-// 		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
-
-// 	// payload.skip(16);
-// 	// payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
-
-// 	if (dir == direction::c2s)
-// 	{
-// 		result = choose_protocol(encryption_alg_c2s, m_alg_enc_c2s) + '/' +
-// 					choose_protocol(MAC_alg_c2s, m_alg_ver_c2s);
-
-// 		string compression = choose_protocol(compression_alg_c2s, m_alg_cmp_c2s);
-// 		if (compression != "none")
-// 			result = result + '/' + compression;
-// 	}
-// 	else
-// 	{
-// 		result = choose_protocol(encryption_alg_s2c, m_alg_enc_s2c) + '/' +
-// 					choose_protocol(MAC_alg_s2c, m_alg_ver_s2c);
-
-// 		string compression = choose_protocol(compression_alg_s2c, m_alg_cmp_s2c);
-// 		if (compression != "none")
-// 			result = result + '/' + compression;
-// 	}
-
-// 	return result;
-// }
-
-// string basic_connection::get_key_exchange_algoritm() const
-// {
-// 	// ipacket payload(m_host_payload.data(), m_host_payload.size());
-
-// 	// string key_exchange_alg;
-
-// 	// payload.skip(16);
-// 	// payload >> key_exchange_alg;
-
-// 	// return choose_protocol(key_exchange_alg, m_alg_kex);
-
-// 	return {};
-// }
 
 // void basic_connection::handle_connect_result(const boost::system::error_code &ec)
 // {

@@ -169,6 +169,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	virtual void disconnect();
 
+	void rekey();
+
 	template<typename Handler>
 	auto async_wait(wait_type type, Handler&& handler)
 	{
@@ -223,6 +225,21 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	}
 
 	void keep_alive();
+
+	void basic_connection::forward_port(const std::string &local_address, uint16_t local_port,
+		const std::string &remote_address, uint16_t remote_port);
+
+	void forward_socks5(const std::string &local_address, uint16_t local_port);
+
+	std::string get_connection_parameters(direction dir) const
+	{
+		return m_crypto_engine.get_connection_parameters(direction);
+	}
+
+	std::string get_key_exchange_algoritm() const
+	{
+		return m_crypto_engine.get_key_exchange_algorithm();
+	}
 
   private:
 
@@ -338,8 +355,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void received_data(boost::system::error_code ec);
 
 	void process_packet(ipacket &in);
-	void process_newkeys(ipacket &in, opacket &out, boost::system::error_code &ec);
-
 	void process_channel_open(ipacket &in, opacket &out);
 	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
 
@@ -364,7 +379,10 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;
-	port_forward_listener *m_port_forwarder;
+	std::shared_ptr<port_forward_listener> m_port_forwarder;
+
+	// for rekeying
+	std::unique_ptr<key_exchange> m_kex;
 
 	// --------------------------------------------------------------------
 
@@ -394,9 +412,11 @@ class connection : public basic_connection
   public:
 
 	template<typename Arg>
-	connection(Arg&& arg, const std::string& user)
+	connection(Arg&& arg, const std::string& user, const std::string& host, uint16_t port)
 		: basic_connection(user)
 		, m_next_layer(std::forward<Arg>(arg))
+		, m_host(host)
+		, m_port(port)
 	{
 		reset();
 	}
@@ -436,11 +456,7 @@ class connection : public basic_connection
 		m_next_layer.close();
 	}
 
-	virtual void open() override
-	{
-		assert(false);
-		// m_next_layer.open();
-	}
+	virtual void open() override;
 
 	virtual bool is_open() const override
 	{
@@ -449,6 +465,8 @@ class connection : public basic_connection
 
   private:
 	boost::asio::ip::tcp::socket m_next_layer;
+	std::string m_host;
+	uint16_t m_port;
 };
 
 // --------------------------------------------------------------------
