@@ -9,12 +9,11 @@
 #include <sys/socket.h>
 #include <cerrno>
 #include <fcntl.h>
+#include <netinet/in.h>
 
 #include <pinch/ssh_agent.hpp>
 #include <pinch/detail/ssh_agent_impl.hpp>
 #include <pinch/packet.hpp>
-
-#include <cryptopp/base64.h>
 
 using namespace CryptoPP;
 

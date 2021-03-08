@@ -6,23 +6,6 @@
 #pragma once
 
 #include <pinch/pinch.hpp>
-
-#include <cassert>
-
-#include <list>
-#include <string>
-#include <deque>
-#include <numeric>
-#include <future>
-
-#include <boost/type_traits.hpp>
-#include <boost/asio.hpp>
-#include <boost/asio/use_future.hpp>
-#include <boost/asio/spawn.hpp>
-#include <boost/thread/condition.hpp>
-
-#include <pinch/error.hpp>
-#include <pinch/packet.hpp>
 #include <pinch/connection.hpp>
 #include <pinch/operations.hpp>
 

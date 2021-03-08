@@ -5,11 +5,6 @@
 
 #include <pinch/pinch.hpp>
 
-#include <iostream>
-
-#include <boost/algorithm/string/finder.hpp>
-#include <boost/algorithm/string/find_iterator.hpp>
-
 #include <cryptopp/gfpcrypt.h>
 #include <cryptopp/rsa.h>
 #include <cryptopp/osrng.h>
@@ -24,12 +19,9 @@
 #include <cryptopp/dsa.h>
 
 #include <pinch/channel.hpp>
-#include <pinch/key_exchange.hpp>
-#include <pinch/error.hpp>
 #include <pinch/crypto-engine.hpp>
 
 using namespace CryptoPP;
-namespace ba = boost::algorithm;
 
 namespace pinch
 {

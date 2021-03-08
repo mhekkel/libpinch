@@ -2,7 +2,6 @@
 #include <pinch/crypto-engine.hpp>
 #include <pinch/error.hpp>
 
-#include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 
 #include <cryptopp/cryptlib.h>
@@ -16,7 +15,6 @@
 #include <cryptopp/factory.h>
 #include <cryptopp/modes.h>
 
-namespace ba = boost::algorithm;
 namespace io = boost::iostreams;
 
 // --------------------------------------------------------------------
@@ -36,22 +34,35 @@ std::string choose_protocol(const std::string &server, const std::string &client
 	std::string result;
 	bool found = false;
 
-#warning "dit kan beter, zonder boost"
-
-	typedef ba::split_iterator<std::string::const_iterator> split_iter_type;
-	split_iter_type c = ba::make_split_iterator(client, ba::first_finder(",", ba::is_equal()));
-	split_iter_type s = ba::make_split_iterator(server, ba::first_finder(",", ba::is_equal()));
-
-	for (split_iter_type ci = c; not found and ci != split_iter_type(); ++ci)
+	std::string::size_type ci = 0, cn = client.find(',');
+	while (not found)
 	{
-		for (split_iter_type si = s; not found and si != split_iter_type(); ++si)
+		auto cp = client.substr(ci, cn - ci);
+
+		std::string::size_type si = 0, sn = server.find(',');
+		while (not found)
 		{
-			if (*ci == *si)
+			auto sp = server.substr(si, sn - si);
+
+			if (cp == sp)
 			{
-				result = boost::copy_range<std::string>(*ci);
+				result = cp;
 				found = true;
+				break;
 			}
+
+			if (sn == std::string::npos)
+				break;
+
+			si = sn + 1;
+			sn = server.find(',', si);
 		}
+
+		if (found or cn == std::string::npos)
+			break;
+
+		ci = cn + 1;
+		cn = client.find(',', ci);
 	}
 
 	return result;

@@ -11,14 +11,10 @@
 #include <pinch/channel.hpp>
 #include <pinch/ssh_agent.hpp>
 #include <pinch/x11_channel.hpp>
-#include <pinch/key_exchange.hpp>
 #include <pinch/error.hpp>
 #include <pinch/port_forwarding.hpp>
 #include <pinch/crypto-engine.hpp>
 #include "pinch/ssh_agent_channel.hpp"
-
-namespace io = boost::iostreams;
-namespace ba = boost::algorithm;
 
 namespace pinch
 {

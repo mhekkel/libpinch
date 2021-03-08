@@ -1,5 +1,7 @@
 #pragma once
 
+#include <boost/asio/streambuf.hpp>
+
 #include <pinch/packet.hpp>
 #include <pinch/key_exchange.hpp>
 

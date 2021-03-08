@@ -7,9 +7,6 @@
 
 #include <pinch/pinch.hpp>
 
-#include <vector>
-#include <deque>
-
 #include <cryptopp/integer.h>
 
 namespace pinch

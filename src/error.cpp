@@ -7,9 +7,11 @@
 #include <pinch/error.hpp>
 
 
-namespace pinch {
-namespace error {
-namespace detail {
+namespace pinch::error
+{
+
+namespace detail
+{
 
 class ssh_category : public boost::system::error_category
 {
@@ -113,8 +115,6 @@ boost::system::error_category& disconnect_category()
 {
 	static detail::disconnect_category impl;
 	return impl;
-}
-
 }
 
 }

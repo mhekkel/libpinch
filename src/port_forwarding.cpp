@@ -5,11 +5,6 @@
 
 #include <pinch/pinch.hpp>
 
-#include <functional>
-#include <regex>
-
-#include <boost/lexical_cast.hpp>
-
 #include <pinch/port_forwarding.hpp>
 #include <pinch/connection.hpp>
 

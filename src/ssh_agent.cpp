@@ -5,23 +5,19 @@
 
 #include <pinch/pinch.hpp>
 
-#include <cassert>
 #include <regex>
-
-#include <iterator>
 
 #include <pinch/ssh_agent.hpp>
 #include <pinch/detail/ssh_agent_impl.hpp>
-#include <pinch/packet.hpp>
 #include <pinch/connection.hpp>
 #include <pinch/ssh_agent_channel.hpp>
 
 #include <cryptopp/base64.h>
 #include <cryptopp/rsa.h>
 #include <cryptopp/osrng.h>
-#include <cryptopp/queue.h>
+// #include <cryptopp/queue.h>
 #include <cryptopp/modes.h>
-#include <cryptopp/asn.h>
+// #include <cryptopp/asn.h>
 #include <cryptopp/aes.h>
 #include <cryptopp/camellia.h>
 #include <cryptopp/idea.h>

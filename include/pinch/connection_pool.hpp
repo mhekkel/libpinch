@@ -6,10 +6,6 @@
 #pragma once
 
 #include <pinch/pinch.hpp>
-
-#include <list>
-
-#include <boost/asio/io_service.hpp>
 #include <pinch/channel.hpp>
 
 namespace pinch

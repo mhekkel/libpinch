@@ -5,21 +5,14 @@
 
 #pragma once
 
+#include <memory>
+#include <deque>
+
 #include <pinch/pinch.hpp>
 #include <pinch/error.hpp>
-#include <pinch/key_exchange.hpp>
-
-#include <boost/algorithm/string.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
-
-#include <list>
-#include <deque>
-#include <functional>
-
-#include <pinch/packet.hpp>
-#include "pinch/crypto-engine.hpp"
-#include "pinch/ssh_agent.hpp"
-#include "pinch/operations.hpp"
+#include <pinch/operations.hpp>
+#include <pinch/crypto-engine.hpp>
+#include <pinch/ssh_agent.hpp>
 
 namespace pinch
 {

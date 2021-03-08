@@ -6,14 +6,8 @@
 #pragma once
 
 #include <pinch/pinch.hpp>
-
-#include <vector>
-#include <deque>
-
-#include <cryptopp/integer.h>
-
-#include "pinch/connection.hpp"
-#include "pinch/channel.hpp"
+#include <pinch/connection.hpp>
+#include <pinch/channel.hpp>
 
 namespace pinch
 {

@@ -6,14 +6,7 @@
 #pragma once
 
 #include <pinch/pinch.hpp>
-
-#include <boost/format.hpp>
-#include <boost/function.hpp>
-#include <boost/asio.hpp>
-
 #include <pinch/channel.hpp>
-#include <pinch/packet.hpp>
-#include <pinch/operations.hpp>
 
 namespace pinch
 {

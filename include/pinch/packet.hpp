@@ -7,12 +7,7 @@
 
 #include <pinch/pinch.hpp>
 
-#include <vector>
-#include <deque>
-
-#include <boost/static_assert.hpp>
-#include <boost/asio.hpp>
-#include <boost/type_traits/is_integral.hpp>
+#include <boost/system/error_code.hpp>
 
 #include <cryptopp/integer.h>
 
@@ -249,7 +244,7 @@ protected:
 template <typename INT>
 opacket& opacket::operator<<(INT v)
 {
-	static_assert(boost::is_integral<INT>::value);
+	static_assert(std::is_integral_v<INT>);
 
 	for (int i = sizeof(INT) - 1; i >= 0; --i)
 		m_data.push_back(static_cast<uint8_t>(v >> (i * 8)));
@@ -260,7 +255,7 @@ opacket& opacket::operator<<(INT v)
 template <typename INT>
 ipacket& ipacket::operator>>(INT& v)
 {
-	static_assert(boost::is_integral<INT>::value);
+	static_assert(std::is_integral_v<INT>);
 
 	if (m_offset + sizeof(INT) > m_length)
 		throw packet_exception();

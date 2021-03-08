@@ -7,10 +7,7 @@
 
 #include <pinch/pinch.hpp>
 
-#include <boost/asio.hpp>
-
 #include <pinch/channel.hpp>
-#include <pinch/packet.hpp>
 
 namespace pinch
 {

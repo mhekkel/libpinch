@@ -5,11 +5,6 @@
 
 #include <pinch/pinch.hpp>
 
-#include <list>
-
-#include <boost/foreach.hpp>
-#define foreach BOOST_FOREACH
-
 #include <pinch/connection_pool.hpp>
 
 namespace pinch
