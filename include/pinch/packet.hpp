@@ -151,6 +151,7 @@ class opacket
 	void write(std::ostream& os, int blocksize) const;
 
 	operator blob() const { return m_data; }
+	operator std::string_view() const { return std::string_view(reinterpret_cast<const char*>(m_data.data()), m_data.size()); }
 
 	bool empty() const { return m_data.empty() or static_cast<message_type>(m_data[0]) == msg_undefined; }
 	std::size_t size() const { return m_data.size(); }
