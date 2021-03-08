@@ -291,6 +291,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				break;
 
 			case none:
+				m_auth_state = handshake;
 				m_channels.push_back(channel);
 				boost::asio::async_compose<Handler, void(boost::system::error_code)>(
 					detail::async_connect_impl{

@@ -88,11 +88,11 @@ OBJECTS = \
 	$(OBJDIR)/packet.lo \
 	$(OBJDIR)/port_forwarding.lo \
 	$(OBJDIR)/posix_ssh_agent_impl.lo \
+	$(OBJDIR)/sftp_channel.lo \
 	$(OBJDIR)/terminal_channel.lo \
 	$(OBJDIR)/ssh_agent.lo \
 	$(OBJDIR)/x11_channel.lo
 
-	# $(OBJDIR)/sftp_channel.lo \
 
 $(LIB_TARGET): $(OBJECTS)
 	$(CXXLINK) -rpath $(libdir) $(OBJECTS) $(LIBS)
@@ -126,6 +126,8 @@ distclean: clean
 	rm -f config.status config.cache config.log configure.lineno config.status.lineno
 	rm -f GNUmakefile
 
+sftp_PARAMS = localhost 22 $(USER)
+
 define TEST_template =
 
 -include $$(OBJDIR)/$(1)-test.d
@@ -142,7 +144,7 @@ $(1)-test: test/$(1)-test
 
 endef
 
-TESTS = service unit
+TESTS = service unit sftp
 
 $(foreach part,$(TESTS),$(eval $(call TEST_template,$(part))))
 

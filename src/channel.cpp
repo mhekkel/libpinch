@@ -31,14 +31,6 @@ void channel::open()
 
 void channel::opened()
 {
-	if (m_open_handler)
-	{
-		std::unique_ptr<detail::open_channel_op> handler;
-		std::swap(m_open_handler, handler);
-		handler->complete(boost::system::error_code(), 0);
-	}
-
-	check_wait();
 }
 
 void channel::close()
@@ -194,6 +186,15 @@ void channel::process(ipacket& in)
 			m_channel_open = true;
 			m_eof = false;
 			opened();
+
+			if (m_open_handler)
+			{
+				std::unique_ptr<detail::open_channel_op> handler;
+				std::swap(m_open_handler, handler);
+				handler->complete(boost::system::error_code(), 0);
+			}
+
+			check_wait();
 			break;
 
 		case msg_channel_open_failure:

@@ -167,7 +167,7 @@ ipacket& operator>>(ipacket& in, sftp_channel::file_attributes& attr)
 		in >> count;
 		while (count-- > 0)
 		{
-			string type, value;
+			std::string type, value;
 			in >> type >> value;
 			attr.extended.push_back(make_pair(type, value));
 		}
@@ -220,7 +220,7 @@ void sftp_channel::opened()
 	
 	opacket out((message_type)SSH_FXP_INIT);
 	out << uint32_t(3);
-	write(move(out));
+	write(std::move(out));
 }
 
 // --------------------------------------------------------------------
@@ -232,7 +232,10 @@ void sftp_channel::read_dir_int(const std::string& path, handle_read_dir_base* h
 	
 	opacket out((message_type)SSH_FXP_OPENDIR);
 	out << handler->m_id << path;
-	write(move(out));
+
+std::cerr << out << std::endl;
+
+	write(std::move(out));
 }
 
 void sftp_channel::receive_data(const char* data, size_t size)
@@ -284,7 +287,7 @@ void sftp_channel::process_packet()
 		case SSH_FXP_STATUS:
 		{
 			uint32_t error;
-			string message, language_tag;
+			std::string message, language_tag;
 			m_packet >> error >> message >> language_tag;
 			handler->handle_status(error::make_error_code(error::sftp_error(error)),
 				message, language_tag);
@@ -297,7 +300,7 @@ void sftp_channel::process_packet()
 
 		case SSH_FXP_HANDLE:
 		{
-			string handle;
+			std::string handle;
 			m_packet >> handle;
 			handler->handle_handle(handle, out);
 			break;
@@ -320,7 +323,7 @@ void sftp_channel::process_packet()
 				m_packet >> count;
 				while (count--)
 				{
-					string name, longname;
+					std::string name, longname;
 					file_attributes attr;
 				
 					m_packet >> name >> longname >> attr;
@@ -351,7 +354,7 @@ void sftp_channel::process_packet()
 	}
 	
 	if (not out.empty())
-		write(move(out));
+		write(std::move(out));
 }
 
 sftp_channel::sftp_reply_handler* sftp_channel::fetch_handler(uint32_t id)
@@ -371,8 +374,8 @@ sftp_channel::sftp_reply_handler* sftp_channel::fetch_handler(uint32_t id)
 
 void sftp_channel::write(opacket&& out)
 {
-	opacket p = opacket() << move(out);
-	send_data(move(p));
+	opacket p = opacket() << std::move(out);
+	send_data(std::move(p));
 }
 
 

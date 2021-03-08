@@ -7,7 +7,6 @@
 
 #include <regex>
 
-#include <boost/lexical_cast.hpp>
 #include <boost/asio/local/stream_protocol.hpp>
 
 #include <pinch/x11_channel.hpp>
