@@ -5,6 +5,12 @@
 
 #pragma once
 
+/// \file
+/// Definition of the base class pinch::channel
+///
+/// The class channel implements the concept of a bare SSH channel.
+/// It uses the pinch::connection class to send and receive data.
+
 #include <pinch/pinch.hpp>
 #include <pinch/connection.hpp>
 #include <pinch/operations.hpp>
