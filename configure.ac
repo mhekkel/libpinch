@@ -1,3 +1,8 @@
+dnl        Copyright Maarten L. Hekkelman 2013-2021
+dnl Distributed under the Boost Software License, Version 1.0.
+dnl    (See accompanying file LICENSE_1_0.txt or copy at
+dnl          http://www.boost.org/LICENSE_1_0.txt)
+
 AC_PREREQ([2.69])
 
 m4_define([libpinch_version_major],[1])
