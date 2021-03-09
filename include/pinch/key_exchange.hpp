@@ -13,6 +13,14 @@
 namespace pinch
 {
 
+// --------------------------------------------------------------------
+// The defaults for our protocols
+
+extern const std::string
+	kKeyExchangeAlgorithms, kServerHostKeyAlgorithms, kEncryptionAlgorithms, kMacAlgorithms, kCompressionAlgorithms;
+
+// --------------------------------------------------------------------
+
 std::string choose_protocol(const std::string &server, const std::string &client);
 
 // --------------------------------------------------------------------

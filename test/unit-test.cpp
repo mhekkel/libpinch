@@ -30,7 +30,7 @@ void SetStdinEcho(bool enable)
 
 // 	// auto connection = std::make_shared<pinch::connection>(io_service, "maarten", "localhost", 22);
 
-// 	// connection->set_password_callback([connection]()
+// 	// connection->set_provide_credentials_callback([connection]()
 // 	// {
 // 	// 	std::string password;
 

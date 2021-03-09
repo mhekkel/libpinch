@@ -36,6 +36,11 @@ class port_forward_listener;
 
 extern const std::string kSSHVersionString;
 
+enum class auth_state_type
+{
+	none, public_key, keyboard_interactive, password, error
+};
+
 // keyboard interactive support
 struct prompt
 {
@@ -43,13 +48,12 @@ struct prompt
 	bool echo;
 };
 
-using keyboard_interactive_callback_type = std::function<void(const std::string &, const std::string &, const std::vector<prompt> &)>;
+// void provide_credentials(name, instruction, language, prompts[])
+using provide_credentials_callback_type = std::function<
+	void(auth_state_type, const std::string &, const std::string &, const std::string &, const std::vector<prompt> &)>;
 
 // bool validate_host_key(host, alg, key)
 using validate_callback_type = std::function<bool(const std::string&, const std::string&, const blob&)>;
-
-// void request_password()
-using password_callback_type = std::function<void()>;
 
 // --------------------------------------------------------------------
 
@@ -59,11 +63,6 @@ namespace detail
 enum class state_type
 {
 	connect, start, wrote_version, reading, rekeying, authenticating
-};
-
-enum class auth_state_type
-{
-	none, public_key, keyboard_interactive, password, error
 };
 
 enum class connection_wait_type
@@ -76,7 +75,8 @@ struct async_connect_impl
 	boost::asio::streambuf& response;
 	std::shared_ptr<basic_connection> conn;
 	std::string user;
-	password_callback_type request_password;
+	provide_credentials_callback_type credentials_request;
+	int m_password_attempts = 0;
 
 	state_type state = state_type::connect;
 	auth_state_type auth_state = auth_state_type::none;
@@ -88,8 +88,6 @@ struct async_connect_impl
 	std::deque<opacket> private_keys;
 	blob private_key_hash;
 
-	keyboard_interactive_callback_type m_keyboard_interactive_cb;
-	int m_password_attempts = 0;
 
 	template<typename Self>
 	void operator()(Self& self, boost::system::error_code ec = {}, std::size_t bytes_transferred = 0);
@@ -267,15 +265,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		m_validate_host_key_cb = cb;
 	}
 
-	void set_password_callback(const password_callback_type &cb)
+	void set_provide_credentials_callback(const provide_credentials_callback_type &cb)
 	{
-		m_request_password_cb = cb;
+		m_provide_credentials_cb = cb;
 	}
 
-	void set_keyboard_interactive_callback(const keyboard_interactive_callback_type &cb)
-	{
-		m_keyboard_interactive_cb = cb;
-	}
+	void send_credentials(auth_state_type state, const std::vector<std::string>& replies);
 
 	virtual bool is_connected() const
 	{
@@ -305,7 +300,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				m_channels.push_back(channel);
 				boost::asio::async_compose<Handler, void(boost::system::error_code)>(
 					detail::async_connect_impl{
-						m_response, this->shared_from_this(), m_user, m_request_password_cb
+						m_response, this->shared_from_this(), m_user, m_provide_credentials_cb
 					}, handler, *this
 				);
 		}
@@ -375,8 +370,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	boost::asio::streambuf m_response;
 
 	validate_callback_type m_validate_host_key_cb;
-	password_callback_type m_request_password_cb;
-	keyboard_interactive_callback_type m_keyboard_interactive_cb;
+	provide_credentials_callback_type m_provide_credentials_cb;
 
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;

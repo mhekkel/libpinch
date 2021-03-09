@@ -45,9 +45,9 @@ class crypto_engine
 	std::size_t m_iblocksize = 8, m_oblocksize = 8;
 	uint32_t m_in_seq_nr = 0, m_out_seq_nr = 0;
 
-	// std::string m_alg_kex,
-	// 	m_alg_enc_c2s = kEncryptionAlgorithms, m_alg_ver_c2s = kMacAlgorithms, m_alg_cmp_c2s = kCompressionAlgorithms,
-	// 	m_alg_enc_s2c = kEncryptionAlgorithms, m_alg_ver_s2c = kMacAlgorithms, m_alg_cmp_s2c = kCompressionAlgorithms;
+	std::string m_alg_kex,
+		m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
+		m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 
 	std::unique_ptr<CryptoPP::StreamTransformation> m_decryptor;
 	std::unique_ptr<CryptoPP::StreamTransformation> m_encryptor;

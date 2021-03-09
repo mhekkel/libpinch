@@ -295,9 +295,6 @@ class channel : public std::enable_shared_from_this<channel>
 
 	virtual void succeeded(); // the request succeeded
 
-	// std::string get_connection_parameters(direction dir) const;
-	// std::string get_key_exchange_algorithm() const;
-
 	void open_pty(uint32_t width, uint32_t height,
 				  const std::string& terminal_type,
 				  bool forward_agent, bool forward_x11,
@@ -309,6 +306,9 @@ class channel : public std::enable_shared_from_this<channel>
 	void send_signal(const std::string& inSignal);
 
 	uint32_t my_channel_id() const { return m_my_channel_id; }
+
+	basic_connection& get_connection() const	{ return *m_connection; }
+
 	bool is_open() const { return m_channel_open; }
 
 	typedef std::function<void(const std::string &, const std::string &)> message_callback_type;

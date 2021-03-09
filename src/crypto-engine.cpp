@@ -117,86 +117,86 @@ crypto_engine::crypto_engine()
 void crypto_engine::newkeys(key_exchange& kex, bool authenticated)
 {
 	// Client to server encryption
-	std::string protocol = kex.get_encryption_protocol(direction::c2s);
+	m_alg_enc_c2s = kex.get_encryption_protocol(direction::c2s);
 
 	const uint8_t *key = kex.key(key_exchange::C);
 	const uint8_t *iv = kex.key(key_exchange::A);
 
-	if (protocol == "3des-cbc")
+	if (m_alg_enc_c2s == "3des-cbc")
 		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption(key, 24, iv));
-	else if (protocol == "aes128-cbc")
+	else if (m_alg_enc_c2s == "aes128-cbc")
 		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
-	else if (protocol == "aes192-cbc")
+	else if (m_alg_enc_c2s == "aes192-cbc")
 		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
-	else if (protocol == "aes256-cbc")
+	else if (m_alg_enc_c2s == "aes256-cbc")
 		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
-	else if (protocol == "aes128-ctr")
+	else if (m_alg_enc_c2s == "aes128-ctr")
 		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
-	else if (protocol == "aes192-ctr")
+	else if (m_alg_enc_c2s == "aes192-ctr")
 		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
-	else if (protocol == "aes256-ctr")
+	else if (m_alg_enc_c2s == "aes256-ctr")
 		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
 
 	// Server to client encryption
-	protocol = kex.get_encryption_protocol(direction::s2c);
+	m_alg_enc_s2c = kex.get_encryption_protocol(direction::s2c);
 
 	key = kex.key(key_exchange::D);
 	iv = kex.key(key_exchange::B);
 
-	if (protocol == "3des-cbc")
+	if (m_alg_enc_s2c == "3des-cbc")
 		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption(key, 24, iv));
-	else if (protocol == "aes128-cbc")
+	else if (m_alg_enc_s2c == "aes128-cbc")
 		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
-	else if (protocol == "aes192-cbc")
+	else if (m_alg_enc_s2c == "aes192-cbc")
 		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
-	else if (protocol == "aes256-cbc")
+	else if (m_alg_enc_s2c == "aes256-cbc")
 		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
-	else if (protocol == "aes128-ctr")
+	else if (m_alg_enc_s2c == "aes128-ctr")
 		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
-	else if (protocol == "aes192-ctr")
+	else if (m_alg_enc_s2c == "aes192-ctr")
 		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
-	else if (protocol == "aes256-ctr")
+	else if (m_alg_enc_s2c == "aes256-ctr")
 		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
 
 	// Client To Server verification
-	protocol = kex.get_verification_protocol(direction::c2s);
+	m_alg_ver_c2s = kex.get_verification_protocol(direction::c2s);
 	iv = kex.key(key_exchange::E);
 
-	if (protocol == "hmac-sha2-512")
+	if (m_alg_ver_c2s == "hmac-sha2-512")
 		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
-	else if (protocol == "hmac-sha2-256")
+	else if (m_alg_ver_c2s == "hmac-sha2-256")
 		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (protocol == "hmac-sha1")
+	else if (m_alg_ver_c2s == "hmac-sha1")
 		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
 	else
 		assert(false);
 
 	// Server to Client verification
 
-	protocol = kex.get_verification_protocol(direction::s2c);
+	m_alg_ver_s2c = kex.get_verification_protocol(direction::s2c);
 	iv = kex.key(key_exchange::F);
 
-	if (protocol == "hmac-sha2-512")
+	if (m_alg_ver_s2c == "hmac-sha2-512")
 		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
-	else if (protocol == "hmac-sha2-256")
+	else if (m_alg_ver_s2c == "hmac-sha2-256")
 		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (protocol == "hmac-sha1")
+	else if (m_alg_ver_s2c == "hmac-sha1")
 		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
 	else
 		assert(false);
 
 	// Client to Server compression
-	protocol = kex.get_compression_protocol(direction::c2s);
-	if ((not m_compressor and protocol == "zlib") or (authenticated and protocol == "zlib@openssh.com"))
+	m_alg_cmp_c2s = kex.get_compression_protocol(direction::c2s);
+	if ((not m_compressor and m_alg_cmp_c2s == "zlib") or (authenticated and m_alg_cmp_c2s == "zlib@openssh.com"))
 		m_compressor.reset(new compression_helper(true));
-	else if (protocol == "zlib@openssh.com")
+	else if (m_alg_cmp_c2s == "zlib@openssh.com")
 		m_delay_compressor = true;
 
 	// Server to Client compression
-	protocol = kex.get_compression_protocol(direction::s2c);
-	if ((not m_decompressor and protocol == "zlib") or (authenticated and protocol == "zlib@openssh.com"))
+	m_alg_cmp_s2c = kex.get_compression_protocol(direction::s2c);
+	if ((not m_decompressor and m_alg_cmp_s2c == "zlib") or (authenticated and m_alg_cmp_s2c == "zlib@openssh.com"))
 		m_decompressor.reset(new compression_helper(false));
-	else if (protocol == "zlib@openssh.com")
+	else if (m_alg_cmp_c2s == "zlib@openssh.com")
 		m_delay_decompressor = true;
 
 	if (m_decryptor)
@@ -218,6 +218,41 @@ void crypto_engine::reset()
 	m_delay_decompressor = m_delay_compressor = false;
 	m_in_seq_nr = m_out_seq_nr = 0;
 	m_iblocksize = m_oblocksize = 8;
+
+	m_alg_kex.clear();
+	m_alg_enc_c2s.clear();
+	m_alg_ver_c2s.clear();
+	m_alg_cmp_c2s.clear();
+	m_alg_enc_s2c.clear();
+	m_alg_ver_s2c.clear();
+	m_alg_cmp_s2c.clear();
+}
+
+std::string crypto_engine::get_connection_parameters(direction dir) const
+{
+	std::string result;
+
+	if (dir == direction::c2s)
+	{
+		result = m_alg_enc_c2s + '/' + m_alg_ver_c2s;
+		
+		if (m_alg_cmp_c2s != "none")
+			result = result + '/' + m_alg_cmp_c2s;
+	}
+	else
+	{
+		result = m_alg_enc_s2c + '/' + m_alg_ver_s2c;
+		
+		if (m_alg_cmp_s2c != "none")
+			result = result + '/' + m_alg_cmp_s2c;
+	}
+	
+	return result;
+}
+
+std::string crypto_engine::get_key_exchange_algorithm() const
+{
+	return m_alg_kex;
 }
 
 blob crypto_engine::get_next_block(boost::asio::streambuf& buffer, bool empty)

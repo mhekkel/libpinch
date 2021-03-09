@@ -53,7 +53,7 @@ void async_connect_impl::async_connect_impl::process_userauth_failure(ipacket &i
 		private_keys.pop_front();
 		auth_state = auth_state_type::public_key;
 	}
-	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and m_keyboard_interactive_cb and ++m_password_attempts <= 3)
+	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and credentials_request and ++m_password_attempts <= 3)
 	{
 		out = opacket(msg_userauth_request)
 				<< user << "ssh-connection"
@@ -62,10 +62,10 @@ void async_connect_impl::async_connect_impl::process_userauth_failure(ipacket &i
 				<< "";
 		auth_state = auth_state_type::keyboard_interactive;
 	}
-	else if (choose_protocol(s, "password") == "password" and request_password and ++m_password_attempts <= 3)
+	else if (choose_protocol(s, "password") == "password" and credentials_request and ++m_password_attempts <= 3)
 	{
 		auth_state = auth_state_type::password;
-		request_password();
+		credentials_request(auth_state_type::password, "", "password", "en", { { "password" , false } });
 	}
 	else
 	{
@@ -123,7 +123,7 @@ void async_connect_impl::process_userauth_info_request(ipacket &in, opacket &out
 				if (prompts.empty())
 					prompts.push_back({ "iets", true });
 
-				m_keyboard_interactive_cb(name, language, prompts);
+				credentials_request(auth_state_type::keyboard_interactive, name, instruction, language, prompts);
 			}
 			break;
 		}
@@ -192,6 +192,39 @@ void basic_connection::rekey()
 			return cb ? cb(host, alg, hash) : true;
 		}));
 	async_write(m_kex->init());
+}
+
+void basic_connection::send_credentials(auth_state_type state, const std::vector<std::string>& replies)
+{
+	switch (state)
+	{
+		case auth_state_type::keyboard_interactive:
+		{
+			opacket out(msg_userauth_info_response);
+			out << replies.size();
+			for (auto& r : replies)
+				out << r;
+			async_write(std::move(out));
+			break;
+		}
+
+		case auth_state_type::password:
+		{
+			if (replies.size() == 1)
+			{
+				opacket out(msg_userauth_request);
+				out << m_user << "ssh-connection" << "password" << false << replies[0];
+				async_write(std::move(out));
+			}
+			else
+				handle_error(error::make_error_code(error::auth_cancelled_by_user));
+			break;
+		}
+
+		default:
+			handle_error(error::make_error_code(error::auth_cancelled_by_user));
+			break;
+	}
 }
 
 // the read loop, this routine keeps calling itself until an error condition is met
@@ -743,7 +776,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 // 		m_private_keys.pop_front();
 // 		m_auth_state = auth_state_public_key;
 // 	}
-// 	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and m_keyboard_interactive_cb and ++m_password_attempts <= 3)
+// 	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and m_provide_credentials_cb and ++m_password_attempts <= 3)
 // 	{
 // 		out = opacket(msg_userauth_request)
 // 				<< m_user << "ssh-connection"
@@ -819,7 +852,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 // 					prompts.push_back(p);
 // 				}
 
-// 				m_keyboard_interactive_cb(name, language, prompts);
+// 				m_provide_credentials_cb(name, language, prompts);
 // 			}
 // 			break;
 // 		}

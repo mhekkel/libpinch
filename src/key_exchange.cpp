@@ -619,7 +619,10 @@ std::string key_exchange::get_compression_protocol(direction dir) const
 	payload.skip(16);
 	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
 
-	return dir == direction::c2s ? choose_protocol(compression_alg_c2s, s_alg_cmp_c2s) : choose_protocol(compression_alg_s2c, s_alg_cmp_s2c);
+	return dir ==
+		direction::c2s ?
+			choose_protocol(compression_alg_c2s, s_alg_cmp_c2s) :
+			choose_protocol(compression_alg_s2c, s_alg_cmp_s2c);
 }
 
 }
