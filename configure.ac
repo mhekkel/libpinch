@@ -25,7 +25,6 @@ AX_CHECK_COMPILE_FLAG([-fstandalone-debug],
 AC_CONFIG_SRCDIR([src/channel.cpp])
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR([config/m4])
-AC_CONFIG_HEADERS([include/pinch/config.hpp])
 
 AC_PROG_INSTALL
 PKG_PROG_PKG_CONFIG
@@ -98,6 +97,27 @@ AX_CHECK_LIBRARY([LIBBZ2], [bzlib.h], [bz2],
 	[AC_MSG_ERROR([libbz2 not found - compressed files not supported])])
 
 AC_SUBST([LIBS], [$LIBS])
+
+dnl for the documentation
+AC_ARG_ENABLE(
+	documentation,
+	[AS_HELP_STRING([--enable-documentation], [Generate documentation])])
+AC_ARG_VAR([DOXYGEN],
+	[Path to doxygen needed to build reference documentation])
+AC_PATH_TOOL([DOXYGEN], [doxygen], [nodoxygen])
+AC_PATH_TOOL([QUICKBOOK], [quickbook], [noquickbook])
+AC_PATH_TOOL([XSLTPROC], [xsltproc], [noxsltproc])
+AC_PATH_TOOL([FOP], [fop], [nofop])
+AC_PATH_TOOL([BJAM], [bjam], [nobjam])
+
+AS_IF([test "$enable_documentation" = "yes"],
+	[
+		AS_IF([test "$DOXYGEN" = "nodoxygen" -o "$QUICKBOOX" = "noquickbook" -o "$XSLTPROC" = "noxsltproc" -o "$FOP" = "nofop" -o "$BJAM" = "nobjam"],
+			[AC_MSG_ERROR([could not find the tools necessary to build the documentation])])
+
+		BUILD_DOCS_TRUE=1
+		AC_SUBST(BUILD_DOCS_TRUE)
+])
 
 dnl Process Makefile.in to create Makefile
 AC_OUTPUT([GNUmakefile])
