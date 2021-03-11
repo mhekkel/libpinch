@@ -76,6 +76,49 @@ class handler_work
 	HandlerExecutor m_executor;
 };
 
+template<typename Handler, typename HandlerExecutor>
+class handler_work<Handler, boost::asio::any_io_executor, HandlerExecutor>
+{
+  public:
+
+	handler_work(const handler_work&) = delete;
+	handler_work& operator=(const handler_work&) = delete;
+
+	explicit handler_work(Handler& handler) noexcept
+		: m_io_executor()
+		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
+	{
+	}
+
+	handler_work(Handler& handler, const boost::asio::any_io_executor& io_ex) noexcept
+		: m_io_executor(io_ex)
+		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
+	{
+	}
+
+	static void start(Handler& handler) noexcept
+	{
+	}
+
+	static void start(Handler& handler, const boost::asio::any_io_executor& io_ex) noexcept
+	{
+	}
+
+	~handler_work()
+	{
+	}
+
+	template <typename Function>
+	void complete(Function& function, Handler& handler)
+	{
+		boost::asio::dispatch(m_executor, std::forward<Function>(function));
+	}
+
+  private:
+	boost::asio::any_io_executor m_io_executor;
+	HandlerExecutor m_executor;
+};
+
 // --------------------------------------------------------------------
 
 template <typename Handler, typename... Args>

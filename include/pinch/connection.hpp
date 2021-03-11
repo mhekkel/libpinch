@@ -150,7 +150,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	/// The type of the lowest layer.
 	// using lowest_layer_type = typename next_layer_type::lowest_layer_type;
-	using lowest_layer_type = typename boost::asio::basic_socket<boost::asio::ip::tcp, boost::asio::executor>::lowest_layer_type;
+	using lowest_layer_type = typename boost::asio::basic_socket<boost::asio::ip::tcp, boost::asio::any_io_executor>::lowest_layer_type;
 
 	/// The type of the executor associated with the object.
 	using executor_type = typename lowest_layer_type::executor_type;
