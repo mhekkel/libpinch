@@ -36,63 +36,12 @@ class handler_work
 	explicit handler_work(Handler& handler) noexcept
 		: m_io_executor()
 		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
-	{
-	}
-
-	handler_work(Handler& handler, const IoExecutor& io_ex) noexcept
-		: m_io_executor(io_ex),
-		m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
-	{
-	}
-
-	static void start(Handler& handler) noexcept
-	{
-		HandlerExecutor ex(boost::asio::get_associated_executor(handler));
-		ex.on_work_started();
-	}
-
-	static void start(Handler& handler, const IoExecutor& io_ex) noexcept
-	{
-		HandlerExecutor ex(boost::asio::get_associated_executor(handler, io_ex));
-		ex.on_work_started();
-		io_ex.on_work_started();
-	}
-
-	~handler_work()
-	{
-		m_io_executor.on_work_finished();
-		m_executor.on_work_finished();
-	}
-
-	template <typename Function>
-	void complete(Function& function, Handler& handler)
-	{
-		m_executor.dispatch(std::forward<Function>(function),
-			boost::asio::get_associated_allocator(handler));
-	}
-
-  private:
-	IoExecutor m_io_executor;
-	HandlerExecutor m_executor;
-};
-
-template<typename Handler, typename HandlerExecutor>
-class handler_work<Handler, boost::asio::any_io_executor, HandlerExecutor>
-{
-  public:
-
-	handler_work(const handler_work&) = delete;
-	handler_work& operator=(const handler_work&) = delete;
-
-	explicit handler_work(Handler& handler) noexcept
-		: m_io_executor()
-		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
 		, m_ex_guard(m_executor)
 		, m_ex_io_guard(m_io_executor)
 	{
 	}
 
-	handler_work(Handler& handler, const boost::asio::any_io_executor& io_ex) noexcept
+	handler_work(Handler& handler, const IoExecutor& io_ex) noexcept
 		: m_io_executor(io_ex)
 		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
 		, m_ex_guard(m_executor)
@@ -104,7 +53,7 @@ class handler_work<Handler, boost::asio::any_io_executor, HandlerExecutor>
 	{
 	}
 
-	static void start(Handler& handler, const boost::asio::any_io_executor& io_ex) noexcept
+	static void start(Handler& handler, const IoExecutor& io_ex) noexcept
 	{
 	}
 
@@ -119,10 +68,10 @@ class handler_work<Handler, boost::asio::any_io_executor, HandlerExecutor>
 	}
 
   private:
-	boost::asio::any_io_executor m_io_executor;
+	IoExecutor m_io_executor;
 	HandlerExecutor m_executor;
 	boost::asio::executor_work_guard<HandlerExecutor> m_ex_guard;
-	boost::asio::executor_work_guard<boost::asio::any_io_executor> m_ex_io_guard;
+	boost::asio::executor_work_guard<IoExecutor> m_ex_io_guard;
 };
 
 // --------------------------------------------------------------------
