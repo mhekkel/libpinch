@@ -223,8 +223,8 @@ class channel : public std::enable_shared_from_this<channel>
   public:
 
 	/// The type of the lowest layer.
-	// using lowest_layer_type = typename boost::asio::ip::tcp::socket;
-	using lowest_layer_type = typename boost::asio::basic_socket<boost::asio::ip::tcp, boost::asio::any_io_executor>::lowest_layer_type;
+	using tcp_socket_type = boost::asio::ip::tcp::socket;
+	using lowest_layer_type = typename tcp_socket_type::lowest_layer_type;
 
 	/// The type of the executor associated with the object.
 	using executor_type = typename lowest_layer_type::executor_type;
