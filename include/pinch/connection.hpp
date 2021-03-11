@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <deque>
+#include <chrono>
 
 #include <pinch/pinch.hpp>
 #include <pinch/error.hpp>
@@ -365,7 +366,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	enum { none, handshake, authenticated } m_auth_state = none;
 
-	int64_t m_last_io;
+	// Keep track of I/O operations in order to be able to send keep-alive messages
+	using time_point_type = std::chrono::time_point<std::chrono::steady_clock>;
+	time_point_type m_last_io;
 	blob m_private_key_hash;
 	boost::asio::streambuf m_response;
 

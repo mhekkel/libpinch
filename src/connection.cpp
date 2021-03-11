@@ -21,7 +21,7 @@ namespace pinch
 
 // --------------------------------------------------------------------
 
-const int64_t kKeepAliveInterval = 60; // 60 seconds, should be ok?
+const auto kKeepAliveInterval = std::chrono::seconds(60); // 60 seconds, should be ok?
 
 // --------------------------------------------------------------------
 
@@ -171,7 +171,6 @@ void basic_connection::reset()
 	m_private_key_hash.clear();
 	m_session_id.clear();
 	m_crypto_engine.reset();
-	m_last_io = 0;
 }
 
 void basic_connection::disconnect()
@@ -270,9 +269,7 @@ void basic_connection::received_data(boost::system::error_code ec)
 void basic_connection::process_packet(ipacket& in)
 {
 	// update time for keep alive
-	struct timeval tv;
-	gettimeofday(&tv, nullptr);
-	m_last_io = tv.tv_sec;
+	m_last_io = std::chrono::steady_clock::now();
 
 	opacket out;
 	boost::system::error_code ec;
@@ -509,17 +506,16 @@ void basic_connection::handle_banner(const std::string& message, const std::stri
 
 void basic_connection::keep_alive()
 {
-	struct timeval tv;
-	gettimeofday(&tv, nullptr);
+	auto now = std::chrono::steady_clock::now();
 
-	if (m_auth_state == authenticated and m_last_io + kKeepAliveInterval < static_cast<int64_t>(tv.tv_sec))
+	if (m_auth_state == authenticated and (now - m_last_io) > kKeepAliveInterval)
 	{
 		opacket out(msg_ignore);
 		out << "Hello, world!";
 
-		async_write(std::move(out), [self = shared_from_this(), tv](const boost::system::error_code &ec, size_t) {
+		async_write(std::move(out), [self = shared_from_this(), now](const boost::system::error_code &ec, size_t) {
 			if (not ec)
-				self->m_last_io = tv.tv_sec;
+				self->m_last_io = now;
 		});
 	}
 }
