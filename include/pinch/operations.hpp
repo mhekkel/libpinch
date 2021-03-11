@@ -87,12 +87,16 @@ class handler_work<Handler, boost::asio::any_io_executor, HandlerExecutor>
 	explicit handler_work(Handler& handler) noexcept
 		: m_io_executor()
 		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
+		, m_ex_guard(m_executor)
+		, m_ex_io_guard(m_io_executor)
 	{
 	}
 
 	handler_work(Handler& handler, const boost::asio::any_io_executor& io_ex) noexcept
 		: m_io_executor(io_ex)
 		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
+		, m_ex_guard(m_executor)
+		, m_ex_io_guard(m_io_executor)
 	{
 	}
 
@@ -117,6 +121,8 @@ class handler_work<Handler, boost::asio::any_io_executor, HandlerExecutor>
   private:
 	boost::asio::any_io_executor m_io_executor;
 	HandlerExecutor m_executor;
+	boost::asio::executor_work_guard<HandlerExecutor> m_ex_guard;
+	boost::asio::executor_work_guard<boost::asio::any_io_executor> m_ex_io_guard;
 };
 
 // --------------------------------------------------------------------

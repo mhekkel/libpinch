@@ -360,9 +360,9 @@ void channel::send_pending()
 
 				if (ec or op->empty())
 				{
+					m_write_ops.pop_front();
 					op->complete(ec, bytes_transferred);
 					delete op;
-					m_write_ops.pop_front();
 				}
 
 				send_pending();

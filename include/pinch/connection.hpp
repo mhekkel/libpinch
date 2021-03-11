@@ -118,23 +118,22 @@ class wait_connection_handler : public wait_connection_op
 	wait_connection_handler(Handler&& h, const IoExecutor& io_ex, connection_wait_type type)
 		: m_handler(std::forward<Handler>(h))
 		, m_io_executor(io_ex)
+		, m_work(m_handler, m_io_executor)
 	{
 		m_type = type;
-		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
 	}
 
 	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
 	{
-		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
-
 		binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
 
-		w.complete(handler, handler.m_handler);
+		m_work.complete(handler, handler.m_handler);
 	}
 
   private:
 	Handler m_handler;
 	IoExecutor m_io_executor;
+	handler_work<Handler, IoExecutor> m_work;
 };
 
 }

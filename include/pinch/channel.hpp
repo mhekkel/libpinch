@@ -46,22 +46,21 @@ class open_channel_handler : public open_channel_op
 	open_channel_handler(Handler&& h, const IoExecutor& io_ex)
 		: m_handler(std::move(h))
 		, m_io_executor(io_ex)
+		, m_work(m_handler, m_io_executor)
 	{
-		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
 	}
 
 	virtual void complete(const boost::system::error_code& ec, std::size_t bytes_transferred = 0) override
 	{
-		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
-
 		binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
 
-		w.complete(handler, handler.m_handler);
+		m_work.complete(handler, handler.m_handler);
 	}
 
   private:
 	Handler m_handler;
 	IoExecutor m_io_executor;
+	handler_work<Handler, IoExecutor> m_work;
 };
 
 class read_channel_op : public operation
@@ -80,18 +79,16 @@ class read_channel_handler : public read_channel_op
 	read_channel_handler(Handler&& h, const IoExecutor& io_ex, MutableBufferSequence& buffers)
 		: m_handler(std::move(h))
 		, m_io_executor(io_ex)
+		, m_work(m_handler, m_io_executor)
 		, m_buffers(buffers)
 	{
-		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
 	}
 
 	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
 	{
-		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
-
 		binder<Handler, boost::system::error_code, std::size_t> handler(m_handler, m_ec, m_bytes_transferred);
 
-		w.complete(handler, handler.m_handler);
+		m_work.complete(handler, handler.m_handler);
 	}
 
 	virtual std::deque<char>::iterator transfer_bytes(std::deque<char>::iterator begin, std::deque<char>::iterator end) override
@@ -121,6 +118,7 @@ class read_channel_handler : public read_channel_op
   private:
 	Handler m_handler;
 	IoExecutor m_io_executor;
+	handler_work<Handler, IoExecutor> m_work;
 	MutableBufferSequence m_buffers;
 };
 
@@ -142,18 +140,16 @@ class write_channel_handler : public write_channel_op
 	write_channel_handler(Handler&& h, const IoExecutor& io_ex, std::list<opacket>&& packets)
 		: m_handler(std::forward<Handler>(h))
 		, m_io_executor(io_ex)
+		, m_work(m_handler, m_io_executor)
 		, m_packets(std::forward<std::list<opacket>>(packets))
 	{
-		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
 	}
 
 	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
 	{
-		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
-
 		binder<Handler, boost::system::error_code, std::size_t> handler(m_handler, m_ec, m_bytes_transferred);
 
-		w.complete(handler, handler.m_handler);
+		m_work.complete(handler, handler.m_handler);
 	}
 
 	virtual bool empty() const override
@@ -178,6 +174,7 @@ class write_channel_handler : public write_channel_op
   private:
 	Handler m_handler;
 	IoExecutor m_io_executor;
+	handler_work<Handler, IoExecutor> m_work;
 	std::list<opacket> m_packets;
 };
 
@@ -195,23 +192,22 @@ class wait_channel_handler : public wait_channel_op
 	wait_channel_handler(Handler&& h, const IoExecutor& io_ex, channel_wait_type type)
 		: m_handler(std::forward<Handler>(h))
 		, m_io_executor(io_ex)
+		, m_work(m_handler, m_io_executor)
 	{
 		m_type = type;
-		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
 	}
 
 	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
 	{
-		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
-
 		binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
 
-		w.complete(handler, handler.m_handler);
+		m_work.complete(handler, handler.m_handler);
 	}
 
   private:
 	Handler m_handler;
 	IoExecutor m_io_executor;
+	handler_work<Handler, IoExecutor> m_work;
 };
 
 }
