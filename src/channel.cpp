@@ -327,9 +327,23 @@ void channel::receive_extended_data(const char* data, size_t size, uint32_t type
 {
 }
 
-void channel::send_pending()
+void channel::send_pending(const boost::system::error_code& ec)
 {
-	while (not m_write_ops.empty() and not m_send_pending)
+	if (ec)
+	{
+		while (not m_write_ops.empty())
+		{
+			auto op = m_write_ops.front();
+			m_write_ops.pop_front();
+			op->complete(ec);
+			delete op;
+		}
+
+		close();
+		return;
+	}
+
+	while (not m_write_ops.empty())
 	{
 		auto op = m_write_ops.front();
 		
@@ -346,27 +360,8 @@ void channel::send_pending()
 			break;
 		
 		m_host_window_size -= size;
-		m_send_pending = true;
 
-		m_connection->async_write(op->pop_front(),
-			[
-				this,
-				self = shared_from_this(),
-				op
-			]
-			(const boost::system::error_code& ec, size_t bytes_transferred)
-			{
-				m_send_pending = false;
-
-				if (ec or op->empty())
-				{
-					m_write_ops.pop_front();
-					op->complete(ec, bytes_transferred);
-					delete op;
-				}
-
-				send_pending();
-			});
+		m_connection->async_write(op->pop_front(), std::bind(&channel::send_pending, this, std::placeholders::_1));
 		
 		break;
 	}

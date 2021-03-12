@@ -394,7 +394,6 @@ class channel : public std::enable_shared_from_this<channel>
 		: m_connection(connection)
 		, m_max_send_packet_size(0)
 		, m_channel_open(false)
-		, m_send_pending(false)
 		, m_my_channel_id(0)
 		, m_host_channel_id(0)
 		, m_my_window_size(kWindowSize)
@@ -415,7 +414,7 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual void setup(ipacket& in);
 
 	// low level
-	void send_pending();
+	void send_pending(const boost::system::error_code& ec = {});
 	void push_received();
 	void check_wait();
 
@@ -430,7 +429,7 @@ class channel : public std::enable_shared_from_this<channel>
 	std::unique_ptr<detail::open_channel_op> m_open_handler;
 
 	uint32_t m_max_send_packet_size;
-	bool m_channel_open = false, m_send_pending = false;
+	bool m_channel_open = false;
 	uint32_t m_my_channel_id;
 	uint32_t m_host_channel_id;
 	uint32_t m_my_window_size;
