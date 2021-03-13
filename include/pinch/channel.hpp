@@ -417,6 +417,7 @@ class channel : public std::enable_shared_from_this<channel>
 	void send_pending(const boost::system::error_code& ec = {});
 	void push_received();
 	void check_wait();
+	void add_read_op(detail::read_channel_op* op);
 
 	virtual void receive_data(const char *data, std::size_t size);
 	virtual void receive_extended_data(const char *data, std::size_t size, uint32_t type);
@@ -462,7 +463,7 @@ class channel : public std::enable_shared_from_this<channel>
 			else if (boost::asio::buffer_size(buffers) == 0)
 				handler(boost::system::error_code(), 0);
 			else
-				ch->m_read_ops.emplace_back(new detail::read_channel_handler{std::move(handler), ch->get_executor(), buffers});
+				ch->add_read_op(new detail::read_channel_handler{std::move(handler), ch->get_executor(), buffers});
 		}
 	};
 

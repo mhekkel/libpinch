@@ -320,7 +320,7 @@ void channel::handle_channel_request(const std::string& request, ipacket& in, op
 void channel::receive_data(const char* data, size_t size)
 {
 	m_received.insert(m_received.end(), data, data + size);
-	push_received();
+	get_executor().execute([this]() { push_received(); });
 }
 
 void channel::receive_extended_data(const char* data, size_t size, uint32_t type)
@@ -369,22 +369,25 @@ void channel::send_pending(const boost::system::error_code& ec)
 	check_wait();
 }
 
+void channel::add_read_op(detail::read_channel_op* handler)
+{
+	m_read_ops.push_back(handler);
+	get_executor().execute([this]() { push_received(); });
+}
+
 void channel::push_received()
 {
-	auto b = m_received.begin();
-
-	while (b != m_received.end() and not m_read_ops.empty())
+	while (not m_received.empty() and not m_read_ops.empty())
 	{
 		auto handler = m_read_ops.front();
 		m_read_ops.pop_front();
 
-		b = handler->transfer_bytes(b, m_received.end());
-		handler->complete();
+		auto b = handler->transfer_bytes(m_received.begin(), m_received.end());
+		m_received.erase(m_received.begin(), b);
 
+		handler->complete();
 		delete handler;
 	}
-
-	m_received.erase(m_received.begin(), b);
 	
 	if (m_received.empty() and m_eof)
 		close();

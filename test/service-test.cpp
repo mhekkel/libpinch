@@ -53,7 +53,6 @@ void read_from_channel(pinch::channel_ptr ch, int start = 1)
 	});
 }
 
-
 int main() {
 	using boost::asio::ip::tcp;
 
@@ -78,6 +77,7 @@ int main() {
 	pinch::connection_pool pool(io_context);
 
 	// auto conn = pool.get("maarten", "localhost", 2022);
+	// auto conn = pool.get("maarten", "s4", 22);
 	auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
 
 	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
