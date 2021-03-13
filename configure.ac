@@ -51,7 +51,7 @@ AX_PTHREAD
 
 AC_ARG_VAR([DEBUG], [Build a debug version of the application])
 
-AX_BOOST_BASE([1.71])
+AX_BOOST_BASE([1.75])
 AX_BOOST_ASIO
 AX_BOOST_DATE_TIME
 AX_BOOST_REGEX
