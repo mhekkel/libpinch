@@ -67,11 +67,9 @@ struct x11_datagram_impl : public x11_socket_impl<boost::asio::ip::tcp::socket>
 		using boost::asio::ip::tcp;
 
 		tcp::resolver resolver(arg);
-		tcp::resolver::query query(host, port);
-		tcp::resolver::iterator endpoint_iterator = resolver.resolve(query);
-		boost::asio::connect(m_socket, endpoint_iterator);
+		auto endpoints = resolver.resolve(host, port);
+		boost::asio::connect(m_socket, endpoints);
 	}
-	
 };
 
 struct x11_stream_impl : public x11_socket_impl<boost::asio::local::stream_protocol::socket>

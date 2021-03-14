@@ -5,6 +5,9 @@
 
 #pragma once
 
+/// \file 
+/// definition of the connection classes
+
 #include <memory>
 #include <deque>
 #include <chrono>
@@ -23,48 +26,51 @@ using channel_ptr = std::shared_ptr<channel>;
 
 // --------------------------------------------------------------------
 
-class socket_closed_exception : public exception
-{
-  public:
-	socket_closed_exception() : exception("socket is closed") {}
-};
-
 class basic_connection;
 class key_exchange;
 class port_forward_listener;
 
 // --------------------------------------------------------------------
 
+/// \brief The SSH version string that will be communicated with the server
 extern const std::string kSSHVersionString;
 
+/// \brief The auth_state_type is used by the async_connect_impl to keep track of its state
 enum class auth_state_type
 {
 	none, public_key, keyboard_interactive, password, error
 };
 
-// keyboard interactive support
+/// \brief keyboard interactive support
+///
+/// This is used in the credentials callback, the str field contains the string to display
+/// to the user, the echo flag indicates wether the reply typed by the user should be echo'd
+/// to the screen, or should be hidden using bullets of asterisks e.g.
 struct prompt
 {
 	std::string str;
 	bool echo;
 };
 
-// void provide_credentials(name, instruction, language, prompts[])
-using provide_credentials_callback_type = std::function<
-	void(auth_state_type, const std::string &, const std::string &, const std::string &, const std::vector<prompt> &)>;
+/// \brief The type of the callback to provide credential information
+///
+/// The callback should in return call send_credentials of the connection class to
+/// supply the answers to the requests in the call.
 
-// bool validate_host_key(host, alg, key)
-using validate_callback_type = std::function<bool(const std::string&, const std::string&, const blob&)>;
+using provide_credentials_callback_type = std::function<
+	void(auth_state_type state, const std::string &name,
+		 const std::string &instruction, const std::string &lang, const std::vector<prompt> &prompts)>;
+
+/// \brief Callback type for validating host keys
+///
+/// the signature is bool validate_host_key(host, alg, key) and the callback
+/// should return true 
+using validate_callback_type = std::function<bool(const std::string &host, const std::string &algorithm, const blob &key)>;
 
 // --------------------------------------------------------------------
 
 namespace detail
 {
-
-enum class state_type
-{
-	connect, start, wrote_version, reading, rekeying, authenticating
-};
 
 enum class connection_wait_type
 {
@@ -73,6 +79,11 @@ enum class connection_wait_type
 
 struct async_connect_impl
 {
+	enum class state_type
+	{
+		connect, start, wrote_version, reading, rekeying, authenticating
+	};
+
 	boost::asio::streambuf& response;
 	std::shared_ptr<basic_connection> conn;
 	std::string user;

@@ -16,7 +16,7 @@ doxygen autodoc
     :
         [ glob ../include/pinch/*.hpp ]
     :
-		<doxygen:param>"PREDEFINED=\"HTTP_SERVER_HAS_PREFORK\""
+		<doxygen:param>"PREDEFINED=\"GENERATING_DOCUMENTATION\""
         <doxygen:param>HIDE_UNDOC_MEMBERS=YES
         <doxygen:param>EXTRACT_PRIVATE=NO
         <doxygen:param>ENABLE_PREPROCESSING=YES
@@ -43,7 +43,7 @@ boostbook standalone
         <dependency>css
         <dependency>images
         <xsl:param>boost.root="https://www.hekkelman.com/libpinch-doc/include/"
-        <xsl:param>html.stylesheet=css/zeep.css
+        <xsl:param>html.stylesheet=css/pinch.css
         <xsl:param>img.src.path=images/
         <xsl:param>boost.graphics.root=images/
         <xsl:param>boost.mobile=1

@@ -141,27 +141,15 @@ bound_port::bound_port(std::shared_ptr<basic_connection> connection, port_forwar
 
 void bound_port::listen(const std::string& local_address, uint16_t local_port)
 {
-	ip::tcp::resolver::query query(local_address, std::to_string(local_port));
-
-	std::shared_ptr<bound_port> self(shared_from_this());
-	m_resolver.async_resolve(query, [self, this](const boost::system::error_code& ec, ip::tcp::resolver::iterator iterator)
-	{
-		if (iterator != ip::tcp::resolver::iterator())
+	m_resolver.async_resolve(local_address, std::to_string(local_port),
+		[self = shared_from_this(), this](const boost::system::error_code& ec, ip::tcp::resolver::results_type results)
 		{
-			using namespace std::placeholders;
-
-			m_new_connection = m_connection_factory();
-
-			m_acceptor.open(iterator->endpoint().protocol());
-			m_acceptor.set_option(ip::tcp::acceptor::reuse_address(true));
-			m_acceptor.bind(*iterator);
-			m_acceptor.listen();
-			m_acceptor.async_accept(m_new_connection->get_socket(),
-				std::bind(&bound_port::handle_accept, shared_from_this(), _1));
-		}
-		//else if (ec)
-		//	m_listener.accept_failed(ec, self);
-	});
+			if (not ec)
+			{
+				m_acceptor.async_accept(m_new_connection->get_socket(),
+					std::bind(&bound_port::handle_accept, shared_from_this(), std::placeholders::_1));
+			}
+		});
 }
 
 void bound_port::handle_accept(const boost::system::error_code& ec)

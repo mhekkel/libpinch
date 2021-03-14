@@ -393,16 +393,10 @@ void basic_connection::process_channel_open(ipacket &in, opacket &out)
 
 	in >> type;
 
-	try
-	{
-		if (type == "x11")
-			c.reset(new x11_channel(shared_from_this()));
-		else if (type == "auth-agent@openssh.com" and m_forward_agent)
-			c.reset(new ssh_agent_channel(this->shared_from_this()));
-	}
-	catch (...)
-	{
-	}
+	if (type == "x11")
+		c.reset(new x11_channel(shared_from_this()));
+	else if (type == "auth-agent@openssh.com" and m_forward_agent)
+		c.reset(new ssh_agent_channel(shared_from_this()));
 
 	if (c)
 	{
@@ -440,6 +434,7 @@ void basic_connection::process_channel(ipacket &in, opacket &out, boost::system:
 	}
 	catch (...)
 	{
+		// ec = boost::system::error_code::
 	}
 }
 

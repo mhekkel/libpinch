@@ -472,9 +472,9 @@ class channel : public std::enable_shared_from_this<channel>
 	struct async_write_impl
 	{
 		template<typename Handler, typename ConstBufferSequence>
-		void operator()(Handler&& handler, channel* ch, const ConstBufferSequence& buffers)
+		void operator()(Handler&& handler, channel* ch, const ConstBufferSequence& buffer)
 		{
-			std::size_t n = boost::asio::buffer_size(buffers);
+			std::size_t n = buffer.size();
 
 			if (not ch->is_open())
 				handler(error::make_error_code(error::connection_lost), 0);
@@ -484,21 +484,18 @@ class channel : public std::enable_shared_from_this<channel>
 			{
 				std::list<opacket> packets;
 
-				for (auto& buffer: buffers)
+				const char *b = static_cast<const char*>(buffer.data());
+				const char *e = b + n;
+
+				while (b != e)
 				{
-					const char *b = boost::asio::buffer_cast<const char *>(buffer);
-					const char *e = b + n;
+					std::size_t k = e - b;
+					if (k > ch->m_max_send_packet_size)
+						k = ch->m_max_send_packet_size;
 
-					while (b != e)
-					{
-						std::size_t k = e - b;
-						if (k > ch->m_max_send_packet_size)
-							k = ch->m_max_send_packet_size;
+					packets.push_back(opacket(msg_channel_data) << ch->m_host_channel_id << std::make_pair(b, k));
 
-						packets.push_back(opacket(msg_channel_data) << ch->m_host_channel_id << std::make_pair(b, k));
-
-						b += k;
-					}
+					b += k;
 				}
 
 				ch->m_write_ops.push_back(new detail::write_channel_handler(std::move(handler), ch->get_executor(), std::move(packets)));
