@@ -5,17 +5,16 @@
 
 #pragma once
 
-/// \file 
+/// \file
 /// definition of the connection classes
 
-#include <memory>
-#include <deque>
 #include <chrono>
-
-#include <pinch/pinch.hpp>
+#include <deque>
+#include <memory>
+#include <pinch/crypto-engine.hpp>
 #include <pinch/error.hpp>
 #include <pinch/operations.hpp>
-#include <pinch/crypto-engine.hpp>
+#include <pinch/pinch.hpp>
 #include <pinch/ssh_agent.hpp>
 
 namespace pinch
@@ -35,17 +34,23 @@ class port_forward_listener;
 /// \brief The SSH version string that will be communicated with the server
 extern const std::string kSSHVersionString;
 
-/// \brief The auth_state_type is used by the async_connect_impl to keep track of its state
+/// \brief The auth_state_type is used by the async_connect_impl to keep track
+/// of its state
 enum class auth_state_type
 {
-	none, public_key, keyboard_interactive, password, error
+	none,
+	public_key,
+	keyboard_interactive,
+	password,
+	error
 };
 
 /// \brief keyboard interactive support
 ///
-/// This is used in the credentials callback, the str field contains the string to display
-/// to the user, the echo flag indicates wether the reply typed by the user should be echo'd
-/// to the screen, or should be hidden using bullets of asterisks e.g.
+/// This is used in the credentials callback, the str field contains the string
+/// to display to the user, the echo flag indicates wether the reply typed by
+/// the user should be echo'd to the screen, or should be hidden using bullets
+/// of asterisks e.g.
 struct prompt
 {
 	std::string str;
@@ -54,109 +59,120 @@ struct prompt
 
 /// \brief The type of the callback to provide credential information
 ///
-/// The callback should in return call send_credentials of the connection class to
-/// supply the answers to the requests in the call.
+/// The callback should in return call send_credentials of the connection class
+/// to supply the answers to the requests in the call.
 
-using provide_credentials_callback_type = std::function<
-	void(auth_state_type state, const std::string &name,
-		 const std::string &instruction, const std::string &lang, const std::vector<prompt> &prompts)>;
+using provide_credentials_callback_type =
+	std::function<void(auth_state_type state, const std::string &name,
+                       const std::string &instruction, const std::string &lang,
+                       const std::vector<prompt> &prompts)>;
 
 /// \brief Callback type for validating host keys
 ///
 /// the signature is bool validate_host_key(host, alg, key) and the callback
-/// should return true 
-using validate_callback_type = std::function<bool(const std::string &host, const std::string &algorithm, const blob &key)>;
+/// should return true
+using validate_callback_type = std::function<bool(
+	const std::string &host, const std::string &algorithm, const blob &key)>;
 
 // --------------------------------------------------------------------
 
 namespace detail
 {
 
-enum class connection_wait_type
-{
-	read, write
-};
-
-struct async_connect_impl
-{
-	enum class state_type
+	/// \brief enum used in connection::async_wait
+	enum class connection_wait_type
 	{
-		connect, start, wrote_version, reading, rekeying, authenticating
+		read,
+		write
 	};
 
-	boost::asio::streambuf& response;
-	std::shared_ptr<basic_connection> conn;
-	std::string user;
-	provide_credentials_callback_type credentials_request;
-	int m_password_attempts = 0;
-
-	state_type state = state_type::connect;
-	auth_state_type auth_state = auth_state_type::none;
-
-	std::string host_version;
-	std::unique_ptr<boost::asio::streambuf> request = std::make_unique<boost::asio::streambuf>();
-	std::unique_ptr<ipacket> packet = std::make_unique<ipacket>();
-	std::unique_ptr<key_exchange> kex;
-	std::deque<opacket> private_keys;
-	blob private_key_hash;
-
-
-	template<typename Self>
-	void operator()(Self& self, boost::system::error_code ec = {}, std::size_t bytes_transferred = 0);
-
-	template<typename Self>
-	void failed(Self& self, boost::system::error_code ec);
-
-	void process_userauth_success(ipacket &in, opacket &out, boost::system::error_code &ec);
-	void process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec);
-	void process_userauth_banner(ipacket &in);
-	void process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec);
-};
-
-// --------------------------------------------------------------------
-
-class wait_connection_op : public operation
-{
-  public:
-	boost::system::error_code m_ec;
-	connection_wait_type m_type;
-};
-
-template <typename Handler, typename IoExecutor>
-class wait_connection_handler : public wait_connection_op
-{
-  public:
-	wait_connection_handler(Handler&& h, const IoExecutor& io_ex, connection_wait_type type)
-		: m_handler(std::forward<Handler>(h))
-		, m_io_executor(io_ex)
-		, m_work(m_handler, m_io_executor)
+	/// \brief internal class used for the handshake in setting up a connection
+	struct async_connect_impl
 	{
-		m_type = type;
-	}
+		enum class state_type
+		{
+			connect,
+			start,
+			wrote_version,
+			reading,
+			rekeying,
+			authenticating
+		};
 
-	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
+		boost::asio::streambuf &response;
+		std::shared_ptr<basic_connection> conn;
+		std::string user;
+		provide_credentials_callback_type credentials_request;
+		int m_password_attempts = 0;
+
+		state_type state = state_type::connect;
+		auth_state_type auth_state = auth_state_type::none;
+
+		std::string host_version;
+		std::unique_ptr<boost::asio::streambuf> request =
+			std::make_unique<boost::asio::streambuf>();
+		std::unique_ptr<ipacket> packet = std::make_unique<ipacket>();
+		std::unique_ptr<key_exchange> kex;
+		std::deque<opacket> private_keys;
+		blob private_key_hash;
+
+		template <typename Self>
+		void operator()(Self &self, boost::system::error_code ec = {},
+		                std::size_t bytes_transferred = 0);
+
+		template <typename Self>
+		void failed(Self &self, boost::system::error_code ec);
+
+		void process_userauth_failure(ipacket &in, opacket &out,
+		                              boost::system::error_code &ec);
+		void process_userauth_info_request(ipacket &in, opacket &out,
+		                                   boost::system::error_code &ec);
+	};
+
+	// --------------------------------------------------------------------
+
+	class wait_connection_op : public operation
 	{
-		binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
+	  public:
+		boost::system::error_code m_ec;
+		connection_wait_type m_type;
+	};
 
-		m_work.complete(handler, handler.m_handler);
-	}
+	template <typename Handler, typename IoExecutor>
+	class wait_connection_handler : public wait_connection_op
+	{
+	  public:
+		wait_connection_handler(Handler &&h, const IoExecutor &io_ex,
+		                        connection_wait_type type)
+			: m_handler(std::forward<Handler>(h)), m_io_executor(io_ex),
+			  m_work(m_handler, m_io_executor)
+		{
+			m_type = type;
+		}
 
-  private:
-	Handler m_handler;
-	IoExecutor m_io_executor;
-	handler_work<Handler, IoExecutor> m_work;
-};
+		virtual void complete(const boost::system::error_code &ec = {},
+		                      std::size_t bytes_transferred = 0) override
+		{
+			binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
 
-}
+			m_work.complete(handler, handler.m_handler);
+		}
+
+	  private:
+		Handler m_handler;
+		IoExecutor m_io_executor;
+		handler_work<Handler, IoExecutor> m_work;
+	};
+
+} // namespace detail
 
 // --------------------------------------------------------------------
 
 class basic_connection : public std::enable_shared_from_this<basic_connection>
 {
   public:
-	basic_connection(const basic_connection&) = delete;
-	basic_connection& operator=(const basic_connection& ) = delete;
-
+	basic_connection(const basic_connection &) = delete;
+	basic_connection &operator=(const basic_connection &) = delete;
 
 	/// The type of the lowest layer.
 	using tcp_socket_type = boost::asio::ip::tcp::socket;
@@ -166,8 +182,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	using executor_type = typename lowest_layer_type::executor_type;
 
 	virtual executor_type get_executor() noexcept = 0;
-	virtual lowest_layer_type& lowest_layer() = 0;
-	virtual const lowest_layer_type& lowest_layer() const = 0;
+	virtual lowest_layer_type &lowest_layer() = 0;
+	virtual const lowest_layer_type &lowest_layer() const = 0;
 
 	virtual void open() = 0;
 	virtual bool is_open() const = 0;
@@ -180,33 +196,36 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	void rekey();
 
-	template<typename Handler>
-	auto async_wait(wait_type type, Handler&& handler)
+	template <typename Handler>
+	auto async_wait(wait_type type, Handler &&handler)
 	{
-		return boost::asio::async_initiate<Handler,void(boost::system::error_code)>(
-			async_wait_impl{}, handler, this, type
-		);
+		return boost::asio::async_initiate<Handler,
+		                                   void(boost::system::error_code)>(
+			async_wait_impl{}, handler, this, type);
 	}
 
-	template<typename Handler>
-	auto async_write(opacket&& p, Handler&& handler)
+	template <typename Handler>
+	auto async_write(opacket &&p, Handler &&handler)
 	{
-		return async_write(m_crypto_engine.get_next_request(std::move(p)), std::move(handler));
+		return async_write(m_crypto_engine.get_next_request(std::move(p)),
+		                   std::move(handler));
 	}
 
-	template<typename Handler>
-	auto async_write(std::unique_ptr<boost::asio::streambuf> buffer, Handler&& handler)
+	template <typename Handler>
+	auto async_write(std::unique_ptr<boost::asio::streambuf> buffer,
+	                 Handler &&handler)
 	{
-		enum { start, writing };
+		enum
+		{
+			start,
+			writing
+		};
 
-		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
-			[
-				buffer = std::move(buffer),
-				conn = this->shared_from_this(),
-				state = start
-			]
-			(auto& self, const boost::system::error_code& ec = {}, std::size_t bytes_received = 0) mutable
-			{
+		return boost::asio::async_compose<Handler, void(boost::system::error_code,
+		                                                std::size_t)>(
+			[buffer = std::move(buffer), conn = this->shared_from_this(),
+		     state = start](auto &self, const boost::system::error_code &ec = {},
+		                    std::size_t bytes_received = 0) mutable {
 				if (not ec and state == start)
 				{
 					state = writing;
@@ -215,28 +234,25 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				}
 
 				self.complete(ec, 0);
-			}, handler, *this
-		);
+			},
+			handler, *this);
 	}
 
-	void async_write(opacket&& out)
+	void async_write(opacket &&out)
 	{
-		async_write(std::move(out), [this](const boost::system::error_code& ec, std::size_t)
-		{
-			if (ec)
-				this->handle_error(ec);
-		});
+		async_write(std::move(out),
+		            [this](const boost::system::error_code &ec, std::size_t) {
+						if (ec)
+							this->handle_error(ec);
+					});
 	}
 
-	void forward_agent(bool forward)
-	{
-		m_forward_agent = forward;
-	}
+	void forward_agent(bool forward) { m_forward_agent = forward; }
 
 	void keep_alive();
 
 	void forward_port(const std::string &local_address, uint16_t local_port,
-		const std::string &remote_address, uint16_t remote_port);
+	                  const std::string &remote_address, uint16_t remote_port);
 
 	void forward_socks5(const std::string &local_address, uint16_t local_port);
 
@@ -251,22 +267,18 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	}
 
   private:
-
 	void async_read()
 	{
-		boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1),
-			[
-				self = this->shared_from_this()
-			]
-			(const boost::system::error_code &ec, size_t bytes_transferred)
-			{
+		boost::asio::async_read(
+			*this, m_response, boost::asio::transfer_at_least(1),
+			[self = this->shared_from_this()](const boost::system::error_code &ec,
+		                                      size_t bytes_transferred) {
 				self->received_data(ec);
 			});
 	}
 
   public:
-
-	bool uses_private_key(const blob& pk_hash)
+	bool uses_private_key(const blob &pk_hash)
 	{
 		return m_private_key_hash == pk_hash;
 	}
@@ -276,23 +288,22 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		m_validate_host_key_cb = cb;
 	}
 
-	void set_provide_credentials_callback(const provide_credentials_callback_type &cb)
+	void set_provide_credentials_callback(
+		const provide_credentials_callback_type &cb)
 	{
 		m_provide_credentials_cb = cb;
 	}
 
-	void send_credentials(auth_state_type state, const std::vector<std::string>& replies);
+	void send_credentials(auth_state_type state,
+	                      const std::vector<std::string> &replies);
 
-	virtual bool is_connected() const
-	{
-		return m_auth_state == authenticated;
-	}
+	virtual bool is_connected() const { return m_auth_state == authenticated; }
 
 	// callbacks to be installed by owning object
 	friend struct detail::async_connect_impl;
 
-	template<typename Handler>
-	void async_connect(Handler&& handler, channel_ptr channel)
+	template <typename Handler>
+	void async_connect(Handler &&handler, channel_ptr channel)
 	{
 		switch (m_auth_state)
 		{
@@ -310,58 +321,59 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				m_auth_state = handshake;
 				m_channels.push_back(channel);
 				boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-					detail::async_connect_impl{
-						m_response, this->shared_from_this(), m_user, m_provide_credentials_cb
-					}, handler, *this
-				);
+					detail::async_connect_impl{m_response, this->shared_from_this(),
+				                               m_user, m_provide_credentials_cb},
+					handler, *this);
 		}
 	}
 
 	virtual void handle_error(const boost::system::error_code &ec);
 	void reset();
 
-	void newkeys(key_exchange& kex, boost::system::error_code &ec)
+	void newkeys(key_exchange &kex, boost::system::error_code &ec)
 	{
 		m_crypto_engine.newkeys(kex, m_auth_state == authenticated);
 	}
 
-	void userauth_success(const std::string& host_version, const blob& session_id, const blob& pk_hash);
+	void userauth_success(const std::string &host_version, const blob &session_id,
+	                      const blob &pk_hash);
 
 	void open_channel(channel_ptr ch, uint32_t id);
 	void close_channel(channel_ptr ch, uint32_t id);
 
 	bool has_open_channels();
 
-	template<typename MutableBufferSequence, typename ReadHandler>
-	auto async_read_some(const MutableBufferSequence& buffers, ReadHandler&& handler)
+	template <typename MutableBufferSequence, typename ReadHandler>
+	auto async_read_some(const MutableBufferSequence &buffers,
+	                     ReadHandler &&handler)
 	{
-		return boost::asio::async_initiate<ReadHandler,void(boost::system::error_code,std::size_t)>(
-			async_read_impl{}, handler, this, buffers
-		);
+		return boost::asio::async_initiate<
+			ReadHandler, void(boost::system::error_code, std::size_t)>(
+			async_read_impl{}, handler, this, buffers);
 	}
 
-	template<typename ConstBufferSequence, typename WriteHandler>
-	auto async_write_some(const ConstBufferSequence & buffers, WriteHandler && handler)
+	template <typename ConstBufferSequence, typename WriteHandler>
+	auto async_write_some(const ConstBufferSequence &buffers,
+	                      WriteHandler &&handler)
 	{
-		return boost::asio::async_initiate<WriteHandler, void(boost::system::error_code,std::size_t)>(
-			async_write_impl{}, handler, this, buffers
-		);
+		return boost::asio::async_initiate<
+			WriteHandler, void(boost::system::error_code, std::size_t)>(
+			async_write_impl{}, handler, this, buffers);
 	}
 
   protected:
+	basic_connection(const std::string &user, const std::string &host,
+	                 uint16_t port)
+		: m_user(user), m_host(host), m_port(port) {}
 
-	basic_connection(const std::string& user, const std::string& host, uint16_t port)
-		: m_user(user), m_host(host), m_port(port)
-	{
-	}
-
-	bool receive_packet(ipacket& packet, boost::system::error_code& ec);
+	bool receive_packet(ipacket &packet, boost::system::error_code &ec);
 
 	void received_data(boost::system::error_code ec);
 
 	void process_packet(ipacket &in);
 	void process_channel_open(ipacket &in, opacket &out);
-	void process_channel(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_channel(ipacket &in, opacket &out,
+	                     boost::system::error_code &ec);
 
 	void handle_banner(const std::string &message, const std::string &lang);
 
@@ -374,9 +386,15 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	crypto_engine m_crypto_engine;
 
-	enum { none, handshake, authenticated } m_auth_state = none;
+	enum
+	{
+		none,
+		handshake,
+		authenticated
+	} m_auth_state = none;
 
-	// Keep track of I/O operations in order to be able to send keep-alive messages
+	// Keep track of I/O operations in order to be able to send keep-alive
+	// messages
 	using time_point_type = std::chrono::time_point<std::chrono::steady_clock>;
 	time_point_type m_last_io;
 	blob m_private_key_hash;
@@ -396,20 +414,23 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	struct async_read_impl
 	{
-		template<typename Handler, typename MutableBufferSequence>
-		void operator()(Handler&& handler, basic_connection* connection, const MutableBufferSequence& buffers);
+		template <typename Handler, typename MutableBufferSequence>
+		void operator()(Handler &&handler, basic_connection *connection,
+		                const MutableBufferSequence &buffers);
 	};
 
 	struct async_write_impl
 	{
-		template<typename Handler, typename ConstBufferSequence>
-		void operator()(Handler&& handler, basic_connection* connection, const ConstBufferSequence& buffers);
+		template <typename Handler, typename ConstBufferSequence>
+		void operator()(Handler &&handler, basic_connection *connection,
+		                const ConstBufferSequence &buffers);
 	};
 
 	struct async_wait_impl
 	{
-		template<typename Handler>
-		void operator()(Handler&& handler, basic_connection* connection, wait_type type);
+		template <typename Handler>
+		void operator()(Handler &&handler, basic_connection *connection,
+		                wait_type type);
 	};
 };
 
@@ -418,11 +439,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 class connection : public basic_connection
 {
   public:
-
-	template<typename Arg>
-	connection(Arg&& arg, const std::string& user, const std::string& host, uint16_t port)
-		: basic_connection(user, host, port)
-		, m_next_layer(std::forward<Arg>(arg))
+	template <typename Arg>
+	connection(Arg &&arg, const std::string &user, const std::string &host,
+	           uint16_t port)
+		: basic_connection(user, host, port),
+		  m_next_layer(std::forward<Arg>(arg))
 	{
 		reset();
 	}
@@ -435,22 +456,16 @@ class connection : public basic_connection
 		return m_next_layer.lowest_layer().get_executor();
 	}
 
-	const next_layer_type& next_layer() const
-	{
-		return m_next_layer;
-	}
+	const next_layer_type &next_layer() const { return m_next_layer; }
 
-	next_layer_type& next_layer()
-	{
-		return m_next_layer;
-	}
+	next_layer_type &next_layer() { return m_next_layer; }
 
-	const lowest_layer_type& lowest_layer() const override
+	const lowest_layer_type &lowest_layer() const override
 	{
 		return m_next_layer.lowest_layer();
 	}
 
-	lowest_layer_type& lowest_layer() override
+	lowest_layer_type &lowest_layer() override
 	{
 		return m_next_layer.lowest_layer();
 	}
@@ -464,10 +479,7 @@ class connection : public basic_connection
 
 	virtual void open() override;
 
-	virtual bool is_open() const override
-	{
-		return m_next_layer.is_open();
-	}
+	virtual bool is_open() const override { return m_next_layer.is_open(); }
 
   private:
 	boost::asio::ip::tcp::socket m_next_layer;
@@ -479,13 +491,12 @@ class proxied_connection : public basic_connection
 {
   public:
 	proxied_connection(std::shared_ptr<basic_connection> proxy,
-						const std::string &nc_cmd,
-						const std::string &user,
-						const std::string &host, uint16_t port = 22);
+	                   const std::string &nc_cmd, const std::string &user,
+	                   const std::string &host, uint16_t port = 22);
 
 	proxied_connection(std::shared_ptr<basic_connection> proxy,
-						const std::string &user,
-						const std::string &host, uint16_t port = 22);
+	                   const std::string &user, const std::string &host,
+	                   uint16_t port = 22);
 
 	~proxied_connection();
 
@@ -494,19 +505,13 @@ class proxied_connection : public basic_connection
 
 	virtual executor_type get_executor() noexcept override;
 
-	const next_layer_type& next_layer() const
-	{
-		return *m_channel;
-	}
+	const next_layer_type &next_layer() const { return *m_channel; }
 
-	next_layer_type& next_layer()
-	{
-		return *m_channel;
-	}
+	next_layer_type &next_layer() { return *m_channel; }
 
-	const lowest_layer_type& lowest_layer() const override;
+	const lowest_layer_type &lowest_layer() const override;
 
-	lowest_layer_type& lowest_layer() override;
+	lowest_layer_type &lowest_layer() override;
 
 	virtual void disconnect() override;
 
@@ -521,8 +526,8 @@ class proxied_connection : public basic_connection
 	virtual bool is_open() const override;
 
   protected:
-
-	virtual bool validate_host_key(const std::string &pk_alg, const blob &host_key);
+	virtual bool validate_host_key(const std::string &pk_alg,
+	                               const blob &host_key);
 
   private:
 	friend async_wait_impl;
@@ -536,39 +541,49 @@ class proxied_connection : public basic_connection
 
 // --------------------------------------------------------------------
 
-template<typename Handler, typename MutableBufferSequence>
-void basic_connection::async_read_impl::operator()(Handler&& handler, basic_connection* conn, const MutableBufferSequence& buffers)
+template <typename Handler, typename MutableBufferSequence>
+void basic_connection::async_read_impl::operator()(
+	Handler &&handler, basic_connection *conn,
+	const MutableBufferSequence &buffers)
 {
-	auto c = dynamic_cast<connection*>(conn);
+	auto c = dynamic_cast<connection *>(conn);
 	if (c)
-		boost::asio::async_read(c->next_layer(), buffers, boost::asio::transfer_at_least(1), std::move(handler));
+		boost::asio::async_read(c->next_layer(), buffers,
+		                        boost::asio::transfer_at_least(1),
+		                        std::move(handler));
 	else
 	{
-		auto pc = dynamic_cast<proxied_connection*>(conn);
+		auto pc = dynamic_cast<proxied_connection *>(conn);
 		if (pc)
-			boost::asio::async_read(pc->next_layer(), buffers, boost::asio::transfer_at_least(1), std::move(handler));
+			boost::asio::async_read(pc->next_layer(), buffers,
+			                        boost::asio::transfer_at_least(1),
+			                        std::move(handler));
 	}
 }
 
-template<typename Handler, typename ConstBufferSequence>
-void basic_connection::async_write_impl::operator()(Handler&& handler, basic_connection* conn, const ConstBufferSequence& buffers)
+template <typename Handler, typename ConstBufferSequence>
+void basic_connection::async_write_impl::operator()(
+	Handler &&handler, basic_connection *conn,
+	const ConstBufferSequence &buffers)
 {
-	auto c = dynamic_cast<connection*>(conn);
+	auto c = dynamic_cast<connection *>(conn);
 	if (c)
 		boost::asio::async_write(c->next_layer(), buffers, std::move(handler));
 	else
 	{
-		auto pc = dynamic_cast<proxied_connection*>(conn);
+		auto pc = dynamic_cast<proxied_connection *>(conn);
 		if (pc)
 			boost::asio::async_write(pc->next_layer(), buffers, std::move(handler));
 	}
 }
 
-template<typename Handler>
-void basic_connection::async_wait_impl::operator()(Handler&& handler, basic_connection* conn, basic_connection::wait_type type)
+template <typename Handler>
+void basic_connection::async_wait_impl::operator()(
+	Handler &&handler, basic_connection *conn,
+	basic_connection::wait_type type)
 {
-	auto c = dynamic_cast<connection*>(conn);
-	auto pc = dynamic_cast<proxied_connection*>(conn);
+	auto c = dynamic_cast<connection *>(conn);
+	auto pc = dynamic_cast<proxied_connection *>(conn);
 
 	assert(!c != !pc);
 
@@ -576,18 +591,24 @@ void basic_connection::async_wait_impl::operator()(Handler&& handler, basic_conn
 	{
 		case wait_type::read:
 			if (c)
-				c->next_layer().async_wait(boost::asio::socket_base::wait_read, std::move(handler));
+				c->next_layer().async_wait(boost::asio::socket_base::wait_read,
+				                           std::move(handler));
 			else
-				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(new detail::wait_connection_handler(std::move(handler), pc->get_executor(), type)));
+				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(
+					new detail::wait_connection_handler(std::move(handler),
+				                                        pc->get_executor(), type)));
 			break;
-		
+
 		case wait_type::write:
 			if (c)
-				c->next_layer().async_wait(boost::asio::socket_base::wait_write, std::move(handler));
+				c->next_layer().async_wait(boost::asio::socket_base::wait_write,
+				                           std::move(handler));
 			else
-				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(new detail::wait_connection_handler(std::move(handler), pc->get_executor(), type)));
+				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(
+					new detail::wait_connection_handler(std::move(handler),
+				                                        pc->get_executor(), type)));
 			break;
-		
+
 		default:
 			assert(false);
 	}
@@ -598,79 +619,113 @@ void basic_connection::async_wait_impl::operator()(Handler&& handler, basic_conn
 namespace detail
 {
 
-template<typename Self>
-void async_connect_impl::operator()(Self& self, boost::system::error_code ec, std::size_t bytes_transferred)
-{
-	if (ec)
+	template <typename Self>
+	void async_connect_impl::operator()(Self &self, boost::system::error_code ec,
+	                                    std::size_t bytes_transferred)
 	{
-		failed(self, ec);
-		return;
-	}
-
-	switch (state)
-	{
-		case state_type::connect:
-			if (not conn->is_open())
-				conn->open();
-			state = state_type::start;
-			conn->async_wait(connection::wait_type::write, std::move(self));
-			return;
-
-		case state_type::start:
+		if (ec)
 		{
-			std::ostream out(request.get());
-			out << kSSHVersionString << "\r\n";
-			state = state_type::wrote_version;
-			boost::asio::async_write(*conn, *request, std::move(self));
+			failed(self, ec);
 			return;
 		}
-		
-		case state_type::wrote_version:
-			state = state_type::reading;
-			boost::asio::async_read_until(*conn, response, "\n", std::move(self));
-			return;
 
-		case state_type::reading:
+		switch (state)
 		{
-			std::istream response_stream(&response);
-			std::getline(response_stream, host_version);
-			while (std::isspace(host_version.back()))
-				host_version.pop_back();
+			case state_type::connect:
+				if (not conn->is_open())
+					conn->open();
+				state = state_type::start;
+				conn->async_wait(connection::wait_type::write, std::move(self));
+				return;
 
-			if (host_version.substr(0, 7) != "SSH-2.0")
+			case state_type::start:
 			{
-				failed(self, error::make_error_code(error::protocol_version_not_supported));
+				std::ostream out(request.get());
+				out << kSSHVersionString << "\r\n";
+				state = state_type::wrote_version;
+				boost::asio::async_write(*conn, *request, std::move(self));
 				return;
 			}
 
-			state = state_type::rekeying;
-			kex = std::make_unique<key_exchange>(host_version,
-				[cb = conn->m_validate_host_key_cb, host = conn->m_host]
-				(const std::string& alg, const blob& hash)
-				{
-					return cb ? cb(host, alg, hash) : true;
-				});
+			case state_type::wrote_version:
+				state = state_type::reading;
+				boost::asio::async_read_until(*conn, response, "\n", std::move(self));
+				return;
 
-			conn->async_write(kex->init());
-			
-			boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(8), std::move(self));
-			return;
-		}
-
-		case state_type::rekeying:
-		{
-			for (;;)
+			case state_type::reading:
 			{
-				if (not conn->receive_packet(*packet, ec) and not ec)
+				std::istream response_stream(&response);
+				std::getline(response_stream, host_version);
+				while (std::isspace(host_version.back()))
+					host_version.pop_back();
+
+				if (host_version.substr(0, 7) != "SSH-2.0")
 				{
-					boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
+					failed(self,
+					       error::make_error_code(error::protocol_version_not_supported));
 					return;
 				}
 
-				opacket out;
-				if (*packet == msg_newkeys)
+				state = state_type::rekeying;
+				kex = std::make_unique<key_exchange>(
+					host_version,
+					[cb = conn->m_validate_host_key_cb,
+				     host = conn->m_host](const std::string &alg, const blob &hash) {
+						return cb ? cb(host, alg, hash) : true;
+					});
+
+				conn->async_write(kex->init());
+
+				boost::asio::async_read(*conn, response,
+				                        boost::asio::transfer_at_least(8),
+				                        std::move(self));
+				return;
+			}
+
+			case state_type::rekeying:
+			{
+				for (;;)
 				{
-					conn->newkeys(*kex, ec);
+					if (not conn->receive_packet(*packet, ec) and not ec)
+					{
+						boost::asio::async_read(*conn, response,
+						                        boost::asio::transfer_at_least(1),
+						                        std::move(self));
+						return;
+					}
+
+					opacket out;
+					if (*packet == msg_newkeys)
+					{
+						conn->newkeys(*kex, ec);
+
+						if (ec)
+						{
+							failed(self, ec);
+							return;
+						}
+
+						state = state_type::authenticating;
+
+						out = msg_service_request;
+						out << "ssh-userauth";
+
+						// we might not be known yet
+						ssh_agent::instance().register_connection(conn);
+
+						// fetch the private keys
+						for (auto &pk : ssh_agent::instance())
+						{
+							opacket blob;
+							blob << pk;
+							private_keys.push_back(blob);
+						}
+					}
+					else if (not kex->process(*packet, out, ec))
+					{
+						if (not ec)
+							ec = error::make_error_code(error::key_exchange_failed);
+					}
 
 					if (ec)
 					{
@@ -678,112 +733,87 @@ void async_connect_impl::operator()(Self& self, boost::system::error_code ec, st
 						return;
 					}
 
-					state = state_type::authenticating;
+					if (out)
+						conn->async_write(std::move(out));
 
-					out = msg_service_request;
-					out << "ssh-userauth";
-
-					// we might not be known yet
-					ssh_agent::instance().register_connection(conn);
-
-					// fetch the private keys
-					for (auto& pk: ssh_agent::instance())
-					{
-						opacket blob;
-						blob << pk;
-						private_keys.push_back(blob);
-					}
+					packet->clear();
 				}
-				else if (not kex->process(*packet, out, ec))
-				{
-					if (not ec)
-						ec = error::make_error_code(error::key_exchange_failed);
-				}
-
-				if (ec)
-				{
-					failed(self, ec);
-					return;
-				}
-
-				if (out)
-					conn->async_write(std::move(out));
-				
-				packet->clear();
 			}
-		}
 
-		case state_type::authenticating:
-		{
-			for (;;)
+			case state_type::authenticating:
 			{
-				if (not conn->receive_packet(*packet, ec) and not ec)
+				for (;;)
 				{
-					boost::asio::async_read(*conn, response, boost::asio::transfer_at_least(1), std::move(self));
-					return;
-				}
-
-				auto& in = *packet;
-				opacket out;
-
-				switch ((message_type)in)
-				{
-					case msg_service_accept:
-						out = msg_userauth_request;
-						out << user << "ssh-connection"
-							<< "none";
-						break;
-
-					case msg_userauth_failure:
-						process_userauth_failure(in, out, ec);
-						break;
-
-					case msg_userauth_banner:
+					if (not conn->receive_packet(*packet, ec) and not ec)
 					{
-						std::string msg, lang;
-						in >> msg >> lang;
-						conn->handle_banner(msg, lang);
-						break;
+						boost::asio::async_read(*conn, response,
+						                        boost::asio::transfer_at_least(1),
+						                        std::move(self));
+						return;
 					}
 
-					case msg_userauth_info_request:
-						process_userauth_info_request(in, out, ec);
-						break;
+					auto &in = *packet;
+					opacket out;
 
-					case msg_userauth_success:
-						conn->userauth_success(host_version, kex->session_id(), private_key_hash);
-						self.complete({});
-						return;
-					
-					default:
+					switch ((message_type)in)
+					{
+						case msg_service_accept:
+							out = msg_userauth_request;
+							out << user << "ssh-connection"
+								<< "none";
+							break;
+
+						case msg_userauth_failure:
+							process_userauth_failure(in, out, ec);
+							break;
+
+						case msg_userauth_banner:
+						{
+							std::string msg, lang;
+							in >> msg >> lang;
+							conn->handle_banner(msg, lang);
+							break;
+						}
+
+						case msg_userauth_info_request:
+							process_userauth_info_request(in, out, ec);
+							break;
+
+						case msg_userauth_success:
+							conn->userauth_success(host_version, kex->session_id(),
+							                       private_key_hash);
+							self.complete({});
+							return;
+
+						default:
 #if DEBUG
-						std::cerr << "Unexpected packet: " << in << std::endl;
+							std::cerr << "Unexpected packet: " << in << std::endl;
 #endif
-						break;
-				}
+							break;
+					}
 
-				if (ec)
-				{
-					failed(self, ec);
-					return;
-				}
-				
-				if (out)
-					conn->async_write(std::move(out));
+					if (ec)
+					{
+						failed(self, ec);
+						return;
+					}
 
-				packet->clear();
+					if (out)
+						conn->async_write(std::move(out));
+
+					packet->clear();
+				}
 			}
 		}
 	}
-}
 
-template<typename Self>
-void async_connect_impl::failed(Self& self, boost::system::error_code ec)
-{
-	conn->disconnect();
-	self.complete(ec);
-}
+	template <typename Self>
+	void async_connect_impl::failed(Self &self, boost::system::error_code ec)
+	{
+		conn->disconnect();
+		self.complete(ec);
+	}
 
 } // namespace detail
 
-}
+} // namespace pinch

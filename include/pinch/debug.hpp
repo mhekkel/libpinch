@@ -13,7 +13,7 @@ namespace pinch
 class ipacket;
 class opacket;
 
-std::ostream& operator<<(std::ostream& os, ipacket& p);
-std::ostream& operator<<(std::ostream& os, opacket& p);
+std::ostream &operator<<(std::ostream &os, ipacket &p);
+std::ostream &operator<<(std::ostream &os, opacket &p);
 
 } // namespace pinch

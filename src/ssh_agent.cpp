@@ -7,22 +7,22 @@
 
 #include <regex>
 
-#include <pinch/ssh_agent.hpp>
-#include <pinch/detail/ssh_agent_impl.hpp>
 #include <pinch/connection.hpp>
+#include <pinch/detail/ssh_agent_impl.hpp>
+#include <pinch/ssh_agent.hpp>
 #include <pinch/ssh_agent_channel.hpp>
 
 #include <cryptopp/base64.h>
-#include <cryptopp/rsa.h>
 #include <cryptopp/osrng.h>
+#include <cryptopp/rsa.h>
 // #include <cryptopp/queue.h>
 #include <cryptopp/modes.h>
 // #include <cryptopp/asn.h>
 #include <cryptopp/aes.h>
 #include <cryptopp/camellia.h>
-#include <cryptopp/idea.h>
 #include <cryptopp/des.h>
 #include <cryptopp/hex.h>
+#include <cryptopp/idea.h>
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 #include <cryptopp/md5.h>
 
@@ -63,9 +63,10 @@ void ssh_private_key_impl::release()
 
 class ssh_basic_private_key_impl : public ssh_private_key_impl
 {
-public:
+  public:
 	ssh_basic_private_key_impl(RSA::PrivateKey &rsa, const std::string &comment)
-		: mPrivateKey(rsa), mComment(comment)
+		: mPrivateKey(rsa)
+		, mComment(comment)
 	{
 		m_e = mPrivateKey.GetPublicExponent();
 		m_n = mPrivateKey.GetModulus();
@@ -76,7 +77,7 @@ public:
 	virtual blob get_hash() const { return blob(); }
 	virtual std::string get_comment() const { return mComment; }
 
-private:
+  private:
 	RSA::PrivateKey mPrivateKey;
 	std::string mComment;
 };
@@ -174,40 +175,40 @@ void ssh_agent::process_agent_request(ipacket &in, opacket &out)
 {
 	switch ((message_type)in)
 	{
-	case SSH_AGENTC_REQUEST_RSA_IDENTITIES:
-		out = opacket(SSH_AGENT_RSA_IDENTITIES_ANSWER) << uint32_t(0);
-		break;
+		case SSH_AGENTC_REQUEST_RSA_IDENTITIES:
+			out = opacket(SSH_AGENT_RSA_IDENTITIES_ANSWER) << uint32_t(0);
+			break;
 
-	case SSH2_AGENTC_REQUEST_IDENTITIES:
-	{
-		out = opacket(SSH2_AGENT_IDENTITIES_ANSWER) << uint32_t(m_private_keys.size());
-
-		for (auto &key : m_private_keys)
+		case SSH2_AGENTC_REQUEST_IDENTITIES:
 		{
-			opacket blob;
-			blob << key;
-			out << blob << key.get_comment();
+			out = opacket(SSH2_AGENT_IDENTITIES_ANSWER) << uint32_t(m_private_keys.size());
+
+			for (auto &key : m_private_keys)
+			{
+				opacket blob;
+				blob << key;
+				out << blob << key.get_comment();
+			}
+			break;
 		}
-		break;
-	}
 
-	case SSH2_AGENTC_SIGN_REQUEST:
-	{
-		ipacket blob, data;
-		in >> blob >> data;
+		case SSH2_AGENTC_SIGN_REQUEST:
+		{
+			ipacket blob, data;
+			in >> blob >> data;
 
-		ssh_private_key key = get_key(blob);
+			ssh_private_key key = get_key(blob);
 
-		if (key)
-			out = opacket(SSH2_AGENT_SIGN_RESPONSE) << key.sign(data, opacket());
-		else
+			if (key)
+				out = opacket(SSH2_AGENT_SIGN_RESPONSE) << key.sign(data, opacket());
+			else
+				out = opacket(SSH_AGENT_FAILURE);
+			break;
+		}
+
+		default:
 			out = opacket(SSH_AGENT_FAILURE);
-		break;
-	}
-
-	default:
-		out = opacket(SSH_AGENT_FAILURE);
-		break;
+			break;
 	}
 }
 
@@ -276,9 +277,9 @@ struct ssh_known_cipher_for_private_key
 // Signature changed a bit to match Crypto++. Salt must be PKCS5_SALT_LEN in length.
 //  Salt, Data and Count are IN; Key and IV are OUT.
 int OPENSSL_EVP_BytesToKey(HashTransformation &hash,
-							const unsigned char *salt, const unsigned char *data, int dlen,
-							unsigned int count, unsigned char *key, unsigned int ksize,
-							unsigned char *iv, unsigned int vsize);
+                           const unsigned char *salt, const unsigned char *data, int dlen,
+                           unsigned int count, unsigned char *key, unsigned int ksize,
+                           unsigned char *iv, unsigned int vsize);
 
 // From OpenSSL, crypto/evp/evp.h.
 static const unsigned int OPENSSL_PKCS5_SALT_LEN = 8;
@@ -289,9 +290,9 @@ static const unsigned int OPENSSL_PKCS5_SALT_LEN = 8;
 
 // From crypto/evp/evp_key.h. Signature changed a bit to match Crypto++.
 int OPENSSL_EVP_BytesToKey(HashTransformation &hash,
-							const unsigned char *salt, const unsigned char *data, int dlen,
-							unsigned int count, unsigned char *key, unsigned int ksize,
-							unsigned char *iv, unsigned int vsize)
+                           const unsigned char *salt, const unsigned char *data, int dlen,
+                           unsigned int count, unsigned char *key, unsigned int ksize,
+                           unsigned char *iv, unsigned int vsize)
 {
 	unsigned int niv, nkey, nhash;
 	unsigned int addmd = 0, i;
@@ -439,7 +440,7 @@ void ssh_agent::add(const std::string &private_key, const std::string &key_comme
 
 			CryptoPP::Weak1::MD5 md5;
 			(void)OPENSSL_EVP_BytesToKey(md5, iv.data(), (const unsigned char *)password.c_str(), password.length(),
-											1, key.data(), key.size(), nullptr, 0);
+			                             1, key.data(), key.size(), nullptr, 0);
 
 			cipher.reset(c.factory());
 			cipher->SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
@@ -509,14 +510,14 @@ void ssh_agent_channel::opened()
 	m_connection->async_write(std::move(out));
 }
 
-void ssh_agent_channel::receive_data(const char* data, size_t size)
+void ssh_agent_channel::receive_data(const char *data, size_t size)
 {
 	while (size > 0)
 	{
 		if (m_packet.empty() and size < 4)
 		{
-			close();	// we have an empty packet and less than 4 bytes...
-			break;		// simply fail this agent. I guess this should never happen
+			close(); // we have an empty packet and less than 4 bytes...
+			break;   // simply fail this agent. I guess this should never happen
 		}
 
 		size_t r = m_packet.read(data, size);
@@ -536,4 +537,4 @@ void ssh_agent_channel::receive_data(const char* data, size_t size)
 	}
 }
 
-}
+} // namespace pinch

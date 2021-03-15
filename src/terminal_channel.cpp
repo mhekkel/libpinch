@@ -5,10 +5,9 @@
 
 #include <pinch/pinch.hpp>
 
+#include <pinch/connection.hpp>
 #include <pinch/packet.hpp>
 #include <pinch/terminal_channel.hpp>
-#include <pinch/connection.hpp>
-
 
 namespace pinch
 {
@@ -24,16 +23,16 @@ terminal_channel::terminal_channel(std::shared_ptr<basic_connection> connection)
 }
 
 void terminal_channel::set_environment_variable(
-	const std::string& name, const std::string& value)
+	const std::string &name, const std::string &value)
 {
-	environment_variable v = { name, value };
+	environment_variable v = {name, value};
 	m_env.push_back(v);
 }
 
 void terminal_channel::opened()
 {
 	channel::opened();
-	
+
 	open_pty(m_width, m_height, m_terminal_type, m_forward_agent, m_forward_x11, m_env);
 	if (m_command.empty())
 		send_request_and_command("shell", "");
@@ -42,8 +41,8 @@ void terminal_channel::opened()
 }
 
 void terminal_channel::open_with_pty(uint32_t width, uint32_t height,
-	const std::string& terminal_type, bool forward_agent, bool forward_x11,
-	const std::string& ssh_command)
+                                     const std::string &terminal_type, bool forward_agent, bool forward_x11,
+                                     const std::string &ssh_command)
 {
 	m_width = width;
 	m_height = height;
@@ -51,7 +50,7 @@ void terminal_channel::open_with_pty(uint32_t width, uint32_t height,
 	m_forward_agent = forward_agent;
 	m_forward_x11 = forward_x11;
 	m_command = ssh_command;
-	
+
 	open();
 }
 
@@ -64,5 +63,5 @@ void terminal_channel::send_window_resize(uint32_t width, uint32_t height)
 		<< uint32_t(0) << uint32_t(0);
 	m_connection->async_write(std::move(out));
 }
-	
-}
+
+} // namespace pinch

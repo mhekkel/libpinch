@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <pinch/pinch.hpp>
 #include <pinch/channel.hpp>
+#include <pinch/pinch.hpp>
 
 namespace pinch
 {
@@ -22,10 +22,10 @@ class terminal_channel : public channel
 
 	template <typename Handler>
 	void open_with_pty(uint32_t width, uint32_t height,
-						const std::string &terminal_type,
-						bool forward_agent, bool forward_x11,
-						const std::string &ssh_command,
-						Handler &&handler)
+	                   const std::string &terminal_type,
+	                   bool forward_agent, bool forward_x11,
+	                   const std::string &ssh_command,
+	                   Handler &&handler)
 	{
 		m_width = width;
 		m_height = height;
@@ -38,9 +38,9 @@ class terminal_channel : public channel
 	}
 
 	void open_with_pty(uint32_t width, uint32_t height,
-						const std::string &terminal_type,
-						bool forward_agent, bool forward_x11,
-						const std::string &ssh_command);
+	                   const std::string &terminal_type,
+	                   bool forward_agent, bool forward_x11,
+	                   const std::string &ssh_command);
 
 	void send_window_resize(uint32_t width, uint32_t height);
 
@@ -52,4 +52,4 @@ class terminal_channel : public channel
 	environment m_env;
 };
 
-}
+} // namespace pinch

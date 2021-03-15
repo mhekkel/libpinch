@@ -12,12 +12,12 @@ namespace pinch
 
 uint32_t channel::s_next_channel_id = 1;
 
-void channel::fill_open_opacket(opacket& out)
+void channel::fill_open_opacket(opacket &out)
 {
 	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
 }
 
-void channel::setup(ipacket& in)
+void channel::setup(ipacket &in)
 {
 	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
 }
@@ -49,21 +49,21 @@ void channel::closed()
 {
 	m_channel_open = false;
 
-	for (auto op: m_read_ops)
+	for (auto op : m_read_ops)
 	{
 		op->complete(error::make_error_code(error::channel_closed));
 		delete op;
 	}
 	m_read_ops.clear();
 
-	for (auto op: m_write_ops)
+	for (auto op : m_write_ops)
 	{
 		op->complete(error::make_error_code(error::channel_closed));
 		delete op;
 	}
 	m_write_ops.clear();
 
-	for (auto op: m_wait_ops)
+	for (auto op : m_wait_ops)
 	{
 		op->complete(error::make_error_code(error::channel_closed));
 		delete op;
@@ -108,13 +108,13 @@ void channel::keep_alive()
 // }
 
 void channel::open_pty(uint32_t width, uint32_t height,
-	const std::string& terminal_type, bool forward_agent, bool forward_x11,
-	const environment& env)
+                       const std::string &terminal_type, bool forward_agent, bool forward_x11,
+                       const environment &env)
 {
 	if (forward_x11)
 	{
 		opacket out(msg_channel_request);
-		out	<< m_host_channel_id
+		out << m_host_channel_id
 			<< "x11-req"
 			<< false << false
 			<< "MIT-MAGIC-COOKIE-1"
@@ -126,29 +126,29 @@ void channel::open_pty(uint32_t width, uint32_t height,
 	if (forward_agent)
 	{
 		m_connection->forward_agent(true);
-		
+
 		opacket out(msg_channel_request);
-		out	<< m_host_channel_id
+		out << m_host_channel_id
 			<< "auth-agent-req@openssh.com"
 			<< false;
 		m_connection->async_write(std::move(out));
 	}
-	
-	for (const auto& [name, value]: env)
+
+	for (const auto &[name, value] : env)
 	{
 		opacket out(msg_channel_request);
-		out	<< m_host_channel_id
+		out << m_host_channel_id
 			<< "env"
 			<< false
 			<< name
 			<< value;
 		m_connection->async_write(std::move(out));
 	}
-	
+
 	opacket out(msg_channel_request);
-	out	<< m_host_channel_id
+	out << m_host_channel_id
 		<< "pty-req"
-		<< true				// confirmation, ignore it?
+		<< true // confirmation, ignore it?
 		<< terminal_type
 		<< width << height
 		<< uint32_t(0) << uint32_t(0)
@@ -156,28 +156,28 @@ void channel::open_pty(uint32_t width, uint32_t height,
 	m_connection->async_write(std::move(out));
 }
 
-void channel::send_request_and_command(const std::string& request, const std::string& command)
+void channel::send_request_and_command(const std::string &request, const std::string &command)
 {
 	opacket out(msg_channel_request);
-	out	<< m_host_channel_id
+	out << m_host_channel_id
 		<< request
 		<< true;
 	if (not command.empty())
-		out	<< command;
+		out << command;
 	m_connection->async_write(std::move(out));
 }
 
-void channel::send_signal(const std::string& signal)
+void channel::send_signal(const std::string &signal)
 {
 	opacket out(msg_channel_request);
-	out	<< m_host_channel_id
+	out << m_host_channel_id
 		<< "signal"
 		<< false
 		<< signal;
 	m_connection->async_write(std::move(out));
 }
 
-void channel::process(ipacket& in)
+void channel::process(ipacket &in)
 {
 	switch ((message_type)in)
 	{
@@ -201,13 +201,13 @@ void channel::process(ipacket& in)
 		{
 			uint32_t reasonCode;
 			std::string reason;
-			
+
 			in >> reasonCode >> reason;
-			
+
 			error(reason, "en");
 
 			m_connection->close_channel(shared_from_this(), 0);
-			
+
 			if (m_open_handler)
 			{
 				auto handler = std::move(m_open_handler);
@@ -234,11 +234,11 @@ void channel::process(ipacket& in)
 			send_pending();
 			break;
 		}
-		
+
 		case msg_channel_data:
 			if (m_channel_open)
 			{
-				std::pair<const char*,size_t> data;
+				std::pair<const char *, size_t> data;
 				in >> data;
 				m_my_window_size -= data.second;
 				receive_data(data.first, data.second);
@@ -249,13 +249,13 @@ void channel::process(ipacket& in)
 			if (m_channel_open)
 			{
 				uint32_t type;
-				std::pair<const char*,size_t> data;
+				std::pair<const char *, size_t> data;
 				in >> type >> data;
 				m_my_window_size -= data.second;
 				receive_extended_data(data.first, data.second, type);
 			}
 			break;
-		
+
 		case msg_channel_eof:
 			end_of_file();
 			break;
@@ -264,12 +264,12 @@ void channel::process(ipacket& in)
 		{
 			std::string request;
 			bool want_reply = false;
-			
+
 			in >> request >> want_reply;
 
 			opacket out;
 			handle_channel_request(request, in, out);
-			
+
 			if (want_reply)
 			{
 				if (out.empty())
@@ -278,7 +278,7 @@ void channel::process(ipacket& in)
 			}
 			break;
 		}
-		
+
 		default:
 			//PRINT(("Unhandled channel message %d", inMessage));
 			;
@@ -290,44 +290,44 @@ void channel::process(ipacket& in)
 		m_my_window_size += adjust;
 
 		opacket out(msg_channel_window_adjust);
-		out	<< m_host_channel_id << adjust;
+		out << m_host_channel_id << adjust;
 		m_connection->async_write(std::move(out));
 	}
 }
 
-void channel::banner(const std::string& msg, const std::string& lang)
+void channel::banner(const std::string &msg, const std::string &lang)
 {
 	if (m_banner_handler)
 		m_banner_handler(msg, lang);
 }
 
-void channel::message(const std::string& msg, const std::string& lang)
+void channel::message(const std::string &msg, const std::string &lang)
 {
 	if (m_message_handler)
 		m_message_handler(msg, lang);
 }
 
-void channel::error(const std::string& msg, const std::string& lang)
+void channel::error(const std::string &msg, const std::string &lang)
 {
 	if (m_error_handler)
 		m_error_handler(msg, lang);
 }
 
-void channel::handle_channel_request(const std::string& request, ipacket& in, opacket& out)
+void channel::handle_channel_request(const std::string &request, ipacket &in, opacket &out)
 {
 }
 
-void channel::receive_data(const char* data, size_t size)
+void channel::receive_data(const char *data, size_t size)
 {
 	m_received.insert(m_received.end(), data, data + size);
 	get_executor().execute([this]() { push_received(); });
 }
 
-void channel::receive_extended_data(const char* data, size_t size, uint32_t type)
+void channel::receive_extended_data(const char *data, size_t size, uint32_t type)
 {
 }
 
-void channel::send_pending(const boost::system::error_code& ec)
+void channel::send_pending(const boost::system::error_code &ec)
 {
 	if (ec)
 	{
@@ -346,7 +346,7 @@ void channel::send_pending(const boost::system::error_code& ec)
 	while (not m_write_ops.empty())
 	{
 		auto op = m_write_ops.front();
-		
+
 		if (op->empty())
 		{
 			m_write_ops.pop_front();
@@ -354,22 +354,22 @@ void channel::send_pending(const boost::system::error_code& ec)
 			delete op;
 			continue;
 		}
-		
+
 		size_t size = op->front_size() - 9;
 		if (size > m_host_window_size)
 			break;
-		
+
 		m_host_window_size -= size;
 
 		m_connection->async_write(op->pop_front(), std::bind(&channel::send_pending, this, std::placeholders::_1));
-		
+
 		break;
 	}
 
 	check_wait();
 }
 
-void channel::add_read_op(detail::read_channel_op* handler)
+void channel::add_read_op(detail::read_channel_op *handler)
 {
 	m_read_ops.push_back(handler);
 	get_executor().execute([this]() { push_received(); });
@@ -388,7 +388,7 @@ void channel::push_received()
 		handler->complete();
 		delete handler;
 	}
-	
+
 	if (m_received.empty() and m_eof)
 		close();
 
@@ -399,7 +399,7 @@ void channel::check_wait()
 {
 	auto wait_ops = m_wait_ops;
 
-	for (auto& op: wait_ops)
+	for (auto &op : wait_ops)
 	{
 		switch (op->m_type)
 		{
@@ -435,14 +435,14 @@ void exec_channel::opened()
 	send_request_and_command("exec", m_command);
 }
 
-void exec_channel::handle_channel_request(const std::string& request, ipacket& in, opacket& out)
+void exec_channel::handle_channel_request(const std::string &request, ipacket &in, opacket &out)
 {
 	int32_t status = 1;
-	
+
 	if (request == "exit-status")
 		in >> status;
-	
+
 	m_handler->post_result(request, status);
 }
 
-}
+} // namespace pinch

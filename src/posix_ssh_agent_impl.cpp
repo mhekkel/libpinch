@@ -5,15 +5,15 @@
 
 #include <pinch/pinch.hpp>
 
-#include <sys/un.h>
-#include <sys/socket.h>
 #include <cerrno>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
-#include <pinch/ssh_agent.hpp>
 #include <pinch/detail/ssh_agent_impl.hpp>
 #include <pinch/packet.hpp>
+#include <pinch/ssh_agent.hpp>
 
 using namespace CryptoPP;
 
@@ -22,13 +22,13 @@ namespace pinch
 
 class ssh_agent_impl
 {
-public:
+  public:
 	static ssh_agent_impl &instance();
 
 	void get_identities(std::vector<std::tuple<Integer, Integer, std::string>> &identities);
 	blob sign(const blob &b, const blob &data);
 
-private:
+  private:
 	ssh_agent_impl();
 	~ssh_agent_impl();
 
@@ -79,7 +79,7 @@ void ssh_agent_impl::get_identities(std::vector<std::tuple<Integer, Integer, std
 	{
 		ipacket reply;
 		if (process(opacket((message_type)SSH2_AGENTC_REQUEST_IDENTITIES), reply) and
-			reply.message() == (message_type)SSH2_AGENT_IDENTITIES_ANSWER)
+		    reply.message() == (message_type)SSH2_AGENT_IDENTITIES_ANSWER)
 		{
 			uint32_t count;
 			reply >> count;
@@ -131,8 +131,8 @@ bool ssh_agent_impl::process(const opacket &request, ipacket &reply)
 	uint32_t l = htonl(req.size());
 
 	if (write(m_fd, &l, sizeof(l)) == sizeof(l) and
-		write(m_fd, req.data(), req.size()) == int32_t(req.size()) and
-		read(m_fd, &l, sizeof(l)) == sizeof(l))
+	    write(m_fd, req.data(), req.size()) == int32_t(req.size()) and
+	    read(m_fd, &l, sizeof(l)) == sizeof(l))
 	{
 		l = ntohl(l);
 
@@ -272,8 +272,8 @@ void ssh_private_key_impl::create_list(std::vector<ssh_private_key> &keys)
 
 	ssh_agent_impl::instance().get_identities(identities);
 
-	for (const auto& [e, n, comment]: identities)
+	for (const auto &[e, n, comment] : identities)
 		keys.emplace_back(new posix_ssh_private_key_impl(e, n, comment));
 }
 
-}
+} // namespace pinch

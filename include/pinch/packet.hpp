@@ -131,45 +131,45 @@ enum message_type : uint8_t
 class opacket
 {
   public:
-	friend bool operator==(const opacket&, const ipacket&);
-	friend bool operator==(const ipacket&, const opacket&);
+	friend bool operator==(const opacket &, const ipacket &);
+	friend bool operator==(const ipacket &, const opacket &);
 
 	opacket();
 	opacket(message_type message);
-	opacket(const opacket& rhs);
-	opacket(opacket&& rhs);
-	opacket& operator=(const opacket& rhs);
-	opacket& operator=(opacket&& rhs);
+	opacket(const opacket &rhs);
+	opacket(opacket &&rhs);
+	opacket &operator=(const opacket &rhs);
+	opacket &operator=(opacket &&rhs);
 
-	void compress(compression_helper& compressor, boost::system::error_code& ec);
+	void compress(compression_helper &compressor, boost::system::error_code &ec);
 
-	void write(std::ostream& os, int blocksize) const;
+	void write(std::ostream &os, int blocksize) const;
 
 	operator blob() const { return m_data; }
-	operator std::string_view() const { return std::string_view(reinterpret_cast<const char*>(m_data.data()), m_data.size()); }
+	operator std::string_view() const { return std::string_view(reinterpret_cast<const char *>(m_data.data()), m_data.size()); }
 
 	bool empty() const { return m_data.empty() or static_cast<message_type>(m_data[0]) == msg_undefined; }
 	std::size_t size() const { return m_data.size(); }
 
-	explicit operator bool() const 		{ return not empty(); }
+	explicit operator bool() const { return not empty(); }
 
 	template <typename INT>
-	opacket& operator<<(INT v);
-	opacket& operator<<(const char *v);
-	opacket& operator<<(const std::string& v);
-	opacket& operator<<(const std::vector<std::string> &v);
-	opacket& operator<<(const char *v[]);
-	opacket& operator<<(const blob &v);
-	opacket& operator<<(const CryptoPP::Integer& v);
-	opacket& operator<<(const opacket& v);
-	opacket& operator<<(const ipacket& v);
+	opacket &operator<<(INT v);
+	opacket &operator<<(const char *v);
+	opacket &operator<<(const std::string &v);
+	opacket &operator<<(const std::vector<std::string> &v);
+	opacket &operator<<(const char *v[]);
+	opacket &operator<<(const blob &v);
+	opacket &operator<<(const CryptoPP::Integer &v);
+	opacket &operator<<(const opacket &v);
+	opacket &operator<<(const ipacket &v);
 
 	// for ranges:
-	opacket& operator<<(const std::pair<const char*, std::size_t>& v)
+	opacket &operator<<(const std::pair<const char *, std::size_t> &v)
 	{
 		operator<<(uint32_t(v.second));
 		m_data.insert(m_data.end(), reinterpret_cast<const uint8_t *>(v.first),
-						reinterpret_cast<const uint8_t *>(v.first + v.second));
+		              reinterpret_cast<const uint8_t *>(v.first + v.second));
 		return *this;
 	}
 
@@ -182,23 +182,23 @@ class ipacket
   public:
 	friend class opacket;
 
-	friend bool operator==(const opacket&, const ipacket&);
-	friend bool operator==(const ipacket&, const opacket&);
+	friend bool operator==(const opacket &, const ipacket &);
+	friend bool operator==(const ipacket &, const opacket &);
 
 	ipacket();
-	ipacket(const ipacket& rhs);
+	ipacket(const ipacket &rhs);
 	ipacket(ipacket &&rhs);
 	ipacket(const uint8_t *data, std::size_t size);
 	~ipacket();
 
-	ipacket& operator=(const ipacket& rhs);
-	ipacket& operator=(ipacket &&rhs);
+	ipacket &operator=(const ipacket &rhs);
+	ipacket &operator=(ipacket &&rhs);
 
 	bool complete();
 	bool empty();
 	void clear();
 
-	void decompress(compression_helper& decompressor, boost::system::error_code& ec);
+	void decompress(compression_helper &decompressor, boost::system::error_code &ec);
 
 	uint32_t size() const { return m_length; }
 
@@ -224,15 +224,15 @@ class ipacket
 	void skip(uint32_t bytes) { m_offset += bytes; }
 
 	template <typename INT>
-	ipacket& operator>>(INT& v);
-	ipacket& operator>>(std::string& v);
-	ipacket& operator>>(std::vector<std::string> &v);
-	ipacket& operator>>(blob &v);
-	ipacket& operator>>(CryptoPP::Integer& v);
-	ipacket& operator>>(ipacket& v);
-	ipacket& operator>>(std::pair<const char *, std::size_t> &v);
+	ipacket &operator>>(INT &v);
+	ipacket &operator>>(std::string &v);
+	ipacket &operator>>(std::vector<std::string> &v);
+	ipacket &operator>>(blob &v);
+	ipacket &operator>>(CryptoPP::Integer &v);
+	ipacket &operator>>(ipacket &v);
+	ipacket &operator>>(std::pair<const char *, std::size_t> &v);
 
-protected:
+  protected:
 	message_type m_message;
 	uint8_t m_padding;
 	bool m_owned;
@@ -242,7 +242,7 @@ protected:
 };
 
 template <typename INT>
-opacket& opacket::operator<<(INT v)
+opacket &opacket::operator<<(INT v)
 {
 	static_assert(std::is_integral_v<INT>);
 
@@ -253,7 +253,7 @@ opacket& opacket::operator<<(INT v)
 }
 
 template <typename INT>
-ipacket& ipacket::operator>>(INT& v)
+ipacket &ipacket::operator>>(INT &v)
 {
 	static_assert(std::is_integral_v<INT>);
 

@@ -7,8 +7,8 @@
 
 #include <exception>
 
-#include <pinch/pinch.hpp>
 #include <boost/system/error_code.hpp>
+#include <pinch/pinch.hpp>
 
 namespace pinch
 {
@@ -16,10 +16,10 @@ namespace pinch
 class exception : public std::runtime_error
 {
   public:
-	exception(const char* msg) noexcept : std::runtime_error(msg) {}
-	exception(const std::string& msg) noexcept : std::runtime_error(msg) {}
-	exception(const exception&) = default;
-	exception& operator=(const exception&) = default;
+	exception(const char *msg) noexcept : std::runtime_error(msg) {}
+	exception(const std::string &msg) noexcept : std::runtime_error(msg) {}
+	exception(const exception &) = default;
+	exception &operator=(const exception &) = default;
 };
 
 enum error_msg

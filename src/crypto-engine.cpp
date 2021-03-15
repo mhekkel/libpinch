@@ -3,22 +3,22 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
 #include <pinch/crypto-engine.hpp>
 #include <pinch/error.hpp>
+#include <pinch/pinch.hpp>
 
 #include <boost/iostreams/filtering_stream.hpp>
 
-#include <cryptopp/cryptlib.h>
-#include <cryptopp/gfpcrypt.h>
-#include <cryptopp/rsa.h>
-#include <cryptopp/osrng.h>
 #include <cryptopp/aes.h>
+#include <cryptopp/cryptlib.h>
 #include <cryptopp/des.h>
-#include <cryptopp/filters.h>
-#include <cryptopp/files.h>
 #include <cryptopp/factory.h>
+#include <cryptopp/files.h>
+#include <cryptopp/filters.h>
+#include <cryptopp/gfpcrypt.h>
 #include <cryptopp/modes.h>
+#include <cryptopp/osrng.h>
+#include <cryptopp/rsa.h>
 
 namespace io = boost::iostreams;
 
@@ -37,8 +37,11 @@ struct packet_encryptor
 	};
 
 	packet_encryptor(CryptoPP::StreamTransformation &cipher,
-						CryptoPP::MessageAuthenticationCode &signer, uint32_t blocksize, uint32_t seq_nr)
-		: m_cipher(cipher), m_signer(signer), m_blocksize(blocksize), m_flushed(false)
+	                 CryptoPP::MessageAuthenticationCode &signer, uint32_t blocksize, uint32_t seq_nr)
+		: m_cipher(cipher)
+		, m_signer(signer)
+		, m_blocksize(blocksize)
+		, m_flushed(false)
 	{
 		for (int i = 3; i >= 0; --i)
 		{
@@ -114,7 +117,7 @@ crypto_engine::crypto_engine()
 {
 }
 
-void crypto_engine::newkeys(key_exchange& kex, bool authenticated)
+void crypto_engine::newkeys(key_exchange &kex, bool authenticated)
 {
 	// Client to server encryption
 	m_alg_enc_c2s = kex.get_encryption_protocol(direction::c2s);
@@ -235,18 +238,18 @@ std::string crypto_engine::get_connection_parameters(direction dir) const
 	if (dir == direction::c2s)
 	{
 		result = m_alg_enc_c2s + '/' + m_alg_ver_c2s;
-		
+
 		if (m_alg_cmp_c2s != "none")
 			result = result + '/' + m_alg_cmp_c2s;
 	}
 	else
 	{
 		result = m_alg_enc_s2c + '/' + m_alg_ver_s2c;
-		
+
 		if (m_alg_cmp_s2c != "none")
 			result = result + '/' + m_alg_cmp_s2c;
 	}
-	
+
 	return result;
 }
 
@@ -255,7 +258,7 @@ std::string crypto_engine::get_key_exchange_algorithm() const
 	return m_alg_kex;
 }
 
-blob crypto_engine::get_next_block(boost::asio::streambuf& buffer, bool empty)
+blob crypto_engine::get_next_block(boost::asio::streambuf &buffer, bool empty)
 {
 	blob block(m_iblocksize);
 	buffer.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
@@ -284,7 +287,7 @@ blob crypto_engine::get_next_block(boost::asio::streambuf& buffer, bool empty)
 	return block;
 }
 
-std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf& buffer, boost::system::error_code& ec)
+std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf &buffer, boost::system::error_code &ec)
 {
 	if (not m_packet)
 		m_packet = std::make_unique<ipacket>();
@@ -326,8 +329,7 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf& 
 	return complete_and_verified ? std::move(m_packet) : std::unique_ptr<ipacket>();
 }
 
-
-std::unique_ptr<boost::asio::streambuf> crypto_engine::get_next_request(opacket&& p)
+std::unique_ptr<boost::asio::streambuf> crypto_engine::get_next_request(opacket &&p)
 {
 	auto request = std::make_unique<boost::asio::streambuf>();
 
@@ -361,6 +363,4 @@ void crypto_engine::enable_compression()
 		m_decompressor.reset(new compression_helper(false));
 }
 
-}
-
-
+} // namespace pinch

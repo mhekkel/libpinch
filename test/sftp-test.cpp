@@ -13,9 +13,9 @@
 
 #include <pinch/connection.hpp>
 #include <pinch/connection_pool.hpp>
-#include <pinch/terminal_channel.hpp>
-#include <pinch/sftp_channel.hpp>
 #include <pinch/debug.hpp>
+#include <pinch/sftp_channel.hpp>
+#include <pinch/terminal_channel.hpp>
 
 #if defined(_MSC_VER)
 #pragma comment(lib, "libz")
@@ -27,7 +27,7 @@ namespace io = boost::iostreams;
 
 class client
 {
-public:
+  public:
 	client(std::shared_ptr<pinch::basic_connection> connection)
 		: m_first(true)
 	{
@@ -52,16 +52,15 @@ public:
 			else
 			{
 				m_sftp_channel->read_dir("/home/maarten",
-					[](const boost::system::error_code& ec, const std::list<std::tuple<std::string,std::string,pinch::file_attributes>>& files)
-					{
-						if (ec)
-							std::cerr << "read dir error: " << ec.message() << std::endl;
-						else
-						{
-							for (const auto& [name, longname, attr]: files)
-								std::cout << longname << std::endl;
-						}
-					});
+				                         [](const boost::system::error_code &ec, const std::list<std::tuple<std::string, std::string, pinch::file_attributes>> &files) {
+											 if (ec)
+												 std::cerr << "read dir error: " << ec.message() << std::endl;
+											 else
+											 {
+												 for (const auto &[name, longname, attr] : files)
+													 std::cout << longname << std::endl;
+											 }
+										 });
 			}
 		});
 	}
@@ -105,8 +104,8 @@ public:
 			io::copy(in, std::cout);
 
 			boost::asio::async_read(*m_channel, m_response,
-									boost::asio::transfer_at_least(1),
-									[this](const boost::system::error_code &ec, size_t bytes_transferred) {
+			                        boost::asio::transfer_at_least(1),
+			                        [this](const boost::system::error_code &ec, size_t bytes_transferred) {
 										this->received(ec, bytes_transferred);
 									});
 		}

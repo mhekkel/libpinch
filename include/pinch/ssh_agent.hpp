@@ -38,7 +38,7 @@ class ssh_private_key
 	operator bool() const { return m_impl != nullptr; }
 	bool operator==(const ssh_private_key &key) const;
 
-	friend opacket& operator<<(opacket &p, const ssh_private_key &key);
+	friend opacket &operator<<(opacket &p, const ssh_private_key &key);
 
   protected:
 	ssh_private_key_impl *m_impl;
@@ -72,7 +72,7 @@ class ssh_agent
 
 	// add a PEM encoded private key
 	void add(const std::string &private_key, const std::string &key_comment,
-			 std::function<bool(std::string &)> provide_password);
+	         std::function<bool(std::string &)> provide_password);
 
 	// for Windows only, expose the private keys via a Pageant compatible window
 	void expose_pageant(bool expose);
@@ -89,4 +89,4 @@ class ssh_agent
 	connection_list m_registered_connections;
 };
 
-}
+} // namespace pinch

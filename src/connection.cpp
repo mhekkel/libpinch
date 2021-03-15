@@ -7,14 +7,14 @@
 
 #include <iostream>
 
-#include <pinch/connection.hpp>
+#include "pinch/ssh_agent_channel.hpp"
 #include <pinch/channel.hpp>
-#include <pinch/ssh_agent.hpp>
-#include <pinch/x11_channel.hpp>
+#include <pinch/connection.hpp>
+#include <pinch/crypto-engine.hpp>
 #include <pinch/error.hpp>
 #include <pinch/port_forwarding.hpp>
-#include <pinch/crypto-engine.hpp>
-#include "pinch/ssh_agent_channel.hpp"
+#include <pinch/ssh_agent.hpp>
+#include <pinch/x11_channel.hpp>
 
 namespace pinch
 {
@@ -30,113 +30,111 @@ const std::string
 
 // --------------------------------------------------------------------
 
-// --------------------------------------------------------------------
-
 namespace detail
 {
 
-void async_connect_impl::async_connect_impl::process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec)
-{
-	std::string s;
-	bool partial;
+	void async_connect_impl::async_connect_impl::process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec)
+	{
+		std::string s;
+		bool partial;
 
-	in >> s >> partial;
+		in >> s >> partial;
 
-	private_key_hash.clear();
+		private_key_hash.clear();
 
-	if (choose_protocol(s, "publickey") == "publickey" and not private_keys.empty())
-	{
-		out = opacket(msg_userauth_request)
-				<< user << "ssh-connection"
-				<< "publickey" << false
-				<< "ssh-rsa" << private_keys.front();
-		private_keys.pop_front();
-		auth_state = auth_state_type::public_key;
-	}
-	else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and credentials_request and ++m_password_attempts <= 3)
-	{
-		out = opacket(msg_userauth_request)
-				<< user << "ssh-connection"
-				<< "keyboard-interactive"
-				<< "en"
-				<< "";
-		auth_state = auth_state_type::keyboard_interactive;
-	}
-	else if (choose_protocol(s, "password") == "password" and credentials_request and ++m_password_attempts <= 3)
-	{
-		auth_state = auth_state_type::password;
-		credentials_request(auth_state_type::password, "", "password", "en", { { "password" , false } });
-	}
-	else
-	{
-		auth_state = auth_state_type::error;
-		ec = error::make_error_code(error::no_more_auth_methods_available);
-	}
-}
-
-void async_connect_impl::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
-{
-	switch (auth_state)
-	{
-		case auth_state_type::public_key:
+		if (choose_protocol(s, "publickey") == "publickey" and not private_keys.empty())
 		{
-			out = msg_userauth_request;
-
-			std::string alg;
-			ipacket blob;
-
-			in >> alg >> blob;
-
-			out << user << "ssh-connection"
-				<< "publickey" << true << "ssh-rsa" << blob;
-
-			opacket session_id;
-			session_id << kex->session_id();
-
-			ssh_private_key pk(ssh_agent::instance().get_key(blob));
-
-			out << pk.sign(session_id, out);
-
-			// store the hash for this private key
-			private_key_hash = pk.get_hash();
-			break;
+			out = opacket(msg_userauth_request)
+				  << user << "ssh-connection"
+				  << "publickey" << false
+				  << "ssh-rsa" << private_keys.front();
+			private_keys.pop_front();
+			auth_state = auth_state_type::public_key;
 		}
-		case auth_state_type::keyboard_interactive:
+		else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and credentials_request and ++m_password_attempts <= 3)
 		{
-			std::string name, instruction, language;
-			int32_t numPrompts = 0;
-
-			in >> name >> instruction >> language >> numPrompts;
-
-			if (numPrompts == 0)
-			{
-				out = msg_userauth_info_response;
-				out << numPrompts;
-			}
-			else
-			{
-				std::vector<prompt> prompts(numPrompts);
-
-				for (auto& p : prompts)
-					in >> p.str >> p.echo;
-
-				if (prompts.empty())
-					prompts.push_back({ "iets", true });
-
-				credentials_request(auth_state_type::keyboard_interactive, name, instruction, language, prompts);
-			}
-			break;
+			out = opacket(msg_userauth_request)
+				  << user << "ssh-connection"
+				  << "keyboard-interactive"
+				  << "en"
+				  << "";
+			auth_state = auth_state_type::keyboard_interactive;
 		}
-		default:
-			ec = make_error_code(error::protocol_error);
+		else if (choose_protocol(s, "password") == "password" and credentials_request and ++m_password_attempts <= 3)
+		{
+			auth_state = auth_state_type::password;
+			credentials_request(auth_state_type::password, "", "password", "en", {{"password", false}});
+		}
+		else
+		{
+			auth_state = auth_state_type::error;
+			ec = error::make_error_code(error::no_more_auth_methods_available);
+		}
 	}
-}
+
+	void async_connect_impl::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
+	{
+		switch (auth_state)
+		{
+			case auth_state_type::public_key:
+			{
+				out = msg_userauth_request;
+
+				std::string alg;
+				ipacket blob;
+
+				in >> alg >> blob;
+
+				out << user << "ssh-connection"
+					<< "publickey" << true << "ssh-rsa" << blob;
+
+				opacket session_id;
+				session_id << kex->session_id();
+
+				ssh_private_key pk(ssh_agent::instance().get_key(blob));
+
+				out << pk.sign(session_id, out);
+
+				// store the hash for this private key
+				private_key_hash = pk.get_hash();
+				break;
+			}
+			case auth_state_type::keyboard_interactive:
+			{
+				std::string name, instruction, language;
+				int32_t numPrompts = 0;
+
+				in >> name >> instruction >> language >> numPrompts;
+
+				if (numPrompts == 0)
+				{
+					out = msg_userauth_info_response;
+					out << numPrompts;
+				}
+				else
+				{
+					std::vector<prompt> prompts(numPrompts);
+
+					for (auto &p : prompts)
+						in >> p.str >> p.echo;
+
+					if (prompts.empty())
+						prompts.push_back({"iets", true});
+
+					credentials_request(auth_state_type::keyboard_interactive, name, instruction, language, prompts);
+				}
+				break;
+			}
+			default:
+				ec = make_error_code(error::protocol_error);
+		}
+	}
 
 } // namespace detail
 
 // --------------------------------------------------------------------
 
-void basic_connection::userauth_success(const std::string& host_version, const blob& session_id, const blob& pk_hash)
+void basic_connection::userauth_success(const std::string &host_version, const blob &session_id, const blob &pk_hash)
 {
 	m_auth_state = authenticated;
 
@@ -150,7 +148,7 @@ void basic_connection::userauth_success(const std::string& host_version, const b
 	async_read();
 
 	// tell all opening channels to open
-	for (auto ch: m_channels)
+	for (auto ch : m_channels)
 		ch->open();
 }
 
@@ -158,7 +156,7 @@ void basic_connection::handle_error(const boost::system::error_code &ec)
 {
 	if (ec)
 	{
-		for (auto ch: m_channels)
+		for (auto ch : m_channels)
 			ch->error(ec.message(), "");
 
 		disconnect();
@@ -179,21 +177,20 @@ void basic_connection::disconnect()
 
 	// copy the list since calling Close will change it
 	std::list<channel_ptr> channels(m_channels);
-	for (auto ch: channels)
+	for (auto ch : channels)
 		ch->close();
 }
 
 void basic_connection::rekey()
 {
 	m_kex.reset(new key_exchange(m_host_version, m_session_id,
-		[cb = m_validate_host_key_cb, host = m_host](const std::string& alg, const blob& hash)
-		{
-			return cb ? cb(host, alg, hash) : true;
-		}));
+	                             [cb = m_validate_host_key_cb, host = m_host](const std::string &alg, const blob &hash) {
+									 return cb ? cb(host, alg, hash) : true;
+								 }));
 	async_write(m_kex->init());
 }
 
-void basic_connection::send_credentials(auth_state_type state, const std::vector<std::string>& replies)
+void basic_connection::send_credentials(auth_state_type state, const std::vector<std::string> &replies)
 {
 	switch (state)
 	{
@@ -201,7 +198,7 @@ void basic_connection::send_credentials(auth_state_type state, const std::vector
 		{
 			opacket out(msg_userauth_info_response);
 			out << replies.size();
-			for (auto& r : replies)
+			for (auto &r : replies)
 				out << r;
 			async_write(std::move(out));
 			break;
@@ -212,7 +209,8 @@ void basic_connection::send_credentials(auth_state_type state, const std::vector
 			if (replies.size() == 1)
 			{
 				opacket out(msg_userauth_request);
-				out << m_user << "ssh-connection" << "password" << false << replies[0];
+				out << m_user << "ssh-connection"
+					<< "password" << false << replies[0];
 				async_write(std::move(out));
 			}
 			else
@@ -251,7 +249,7 @@ void basic_connection::received_data(boost::system::error_code ec)
 				handle_error(ec);
 				break;
 			}
-			
+
 			if (not p)
 				break;
 
@@ -266,7 +264,7 @@ void basic_connection::received_data(boost::system::error_code ec)
 	}
 }
 
-void basic_connection::process_packet(ipacket& in)
+void basic_connection::process_packet(ipacket &in)
 {
 	// update time for keep alive
 	m_last_io = std::chrono::steady_clock::now();
@@ -274,7 +272,7 @@ void basic_connection::process_packet(ipacket& in)
 	opacket out;
 	boost::system::error_code ec;
 
-	if (not (m_kex and m_kex->process(in, out, ec)))
+	if (not(m_kex and m_kex->process(in, out, ec)))
 		switch ((message_type)in)
 		{
 			case msg_disconnect:
@@ -295,7 +293,7 @@ void basic_connection::process_packet(ipacket& in)
 				break;
 
 			case msg_kexinit:
-		 		rekey();
+				rekey();
 				m_kex->process(in, out, ec);
 				break;
 
@@ -348,7 +346,7 @@ void basic_connection::process_packet(ipacket& in)
 		async_write(std::move(out));
 }
 
-bool basic_connection::receive_packet(ipacket& packet, boost::system::error_code& ec)
+bool basic_connection::receive_packet(ipacket &packet, boost::system::error_code &ec)
 {
 	bool result = false;
 	ec = {};
@@ -376,9 +374,8 @@ bool basic_connection::receive_packet(ipacket& packet, boost::system::error_code
 				packet.clear();
 				result = false;
 				break;
-			
-			default:
-				;
+
+			default:;
 		}
 	}
 
@@ -444,7 +441,7 @@ void basic_connection::open_channel(channel_ptr ch, uint32_t channel_id)
 	{
 		// some sanity check first
 		assert(std::find_if(m_channels.begin(), m_channels.end(),
-						[channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
+		                    [channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
 		assert(not ch->is_open());
 
 		m_channels.push_back(ch);
@@ -493,9 +490,9 @@ bool basic_connection::has_open_channels()
 	return channel_open;
 }
 
-void basic_connection::handle_banner(const std::string& message, const std::string& lang)
+void basic_connection::handle_banner(const std::string &message, const std::string &lang)
 {
-	for (auto c: m_channels)
+	for (auto c : m_channels)
 		c->banner(message, lang);
 }
 
@@ -516,7 +513,7 @@ void basic_connection::keep_alive()
 }
 
 void basic_connection::forward_port(const std::string &local_address, uint16_t local_port,
-									const std::string &remote_address, uint16_t remote_port)
+                                    const std::string &remote_address, uint16_t remote_port)
 {
 	if (not m_port_forwarder)
 		m_port_forwarder.reset(new port_forward_listener(shared_from_this()));
@@ -545,56 +542,56 @@ void connection::open()
 
 		boost::asio::connect(m_next_layer, endpoints);
 
-// 		enum { start, resolving, connecting };
+		// 		enum { start, resolving, connecting };
 
-// 		auto resolver = std::make_shared<tcp::resolver>(get_executor());
-// 		tcp::resolver::endpoint_type endpoint{};
+		// 		auto resolver = std::make_shared<tcp::resolver>(get_executor());
+		// 		tcp::resolver::endpoint_type endpoint{};
 
-// 		auto handler = [](const boost::system::error_code& ec) {};
-// 		using Handler = decltype(handler);
+		// 		auto handler = [](const boost::system::error_code& ec) {};
+		// 		using Handler = decltype(handler);
 
-// 		boost::asio::async_compose<Handler,void(boost::system::error_code)>(
-// 			[
-// 				&socket = m_next_layer,
-// 				query = tcp::resolver::query(m_host, std::to_string(m_port)),
-// 				resolver,
-// 				endpoint,
-// 				state = start
-// 			]
-// 			(auto& self, const boost::system::error_code& ec = {}, tcp::resolver::iterator endpoint_iterator = {}) mutable
-// 			{
-// 				if (ec and state == connecting and endpoint_iterator != boost::asio::ip::tcp::resolver::iterator())
-// 				{
-// 					auto endpoint = *endpoint_iterator++;							
-// 					socket.async_connect(endpoint, std::move(self));
-// 					return;
-// 				}
+		// 		boost::asio::async_compose<Handler,void(boost::system::error_code)>(
+		// 			[
+		// 				&socket = m_next_layer,
+		// 				query = tcp::resolver::query(m_host, std::to_string(m_port)),
+		// 				resolver,
+		// 				endpoint,
+		// 				state = start
+		// 			]
+		// 			(auto& self, const boost::system::error_code& ec = {}, tcp::resolver::iterator endpoint_iterator = {}) mutable
+		// 			{
+		// 				if (ec and state == connecting and endpoint_iterator != boost::asio::ip::tcp::resolver::iterator())
+		// 				{
+		// 					auto endpoint = *endpoint_iterator++;
+		// 					socket.async_connect(endpoint, std::move(self));
+		// 					return;
+		// 				}
 
-// 				if (not ec)
-// 				{
-// 					switch (state)
-// 					{
-// 						case start:
-// 							state = resolving;
-// 							resolver->async_resolve(query, std::move(self));
-// 							return;
-						
-// 						case resolving:
-// 						{
-// 							state = connecting;
-// 							auto endpoint = *endpoint_iterator++;							
-// 							socket.async_connect(endpoint, std::move(self));
-// 							return;
-// 						}
+		// 				if (not ec)
+		// 				{
+		// 					switch (state)
+		// 					{
+		// 						case start:
+		// 							state = resolving;
+		// 							resolver->async_resolve(query, std::move(self));
+		// 							return;
 
-// 						case connecting:
-// 							break;
-// 					}
-// 				}
+		// 						case resolving:
+		// 						{
+		// 							state = connecting;
+		// 							auto endpoint = *endpoint_iterator++;
+		// 							socket.async_connect(endpoint, std::move(self));
+		// 							return;
+		// 						}
 
-// 				self.complete(ec);
-// 			}, handler
-// 		);
+		// 						case connecting:
+		// 							break;
+		// 					}
+		// 				}
+
+		// 				self.complete(ec);
+		// 			}, handler
+		// 		);
 	}
 }
 
@@ -602,12 +599,12 @@ void connection::open()
 
 class proxy_channel : public channel
 {
-public:
+  public:
 	proxy_channel(std::shared_ptr<basic_connection> connection, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
-		: channel(connection), m_cmd(nc_cmd)
+		: channel(connection)
+		, m_cmd(nc_cmd)
 	{
-		for (const auto& [pat, repl]: std::initializer_list<std::pair<std::string,std::string>>
-			{ { "%r", user }, { "%h", host }, { "%p", std::to_string(port)}})
+		for (const auto &[pat, repl] : std::initializer_list<std::pair<std::string, std::string>>{{"%r", user}, {"%h", host}, {"%p", std::to_string(port)}})
 		{
 			for (auto p = m_cmd.find(pat); p != std::string::npos; p = m_cmd.find(pat, p + repl.length()))
 				m_cmd.replace(p, 2, repl);
@@ -626,12 +623,16 @@ public:
 // --------------------------------------------------------------------
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(user, host, port), m_proxy(proxy), m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port))
+	: basic_connection(user, host, port)
+	, m_proxy(proxy)
+	, m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port))
 {
 }
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(user, host, port), m_proxy(proxy), m_channel(new forwarding_channel(m_proxy, host, port))
+	: basic_connection(user, host, port)
+	, m_proxy(proxy)
+	, m_channel(new forwarding_channel(m_proxy, host, port))
 {
 }
 
@@ -646,12 +647,12 @@ proxied_connection::executor_type proxied_connection::get_executor() noexcept
 	return m_channel->lowest_layer().get_executor();
 }
 
-const proxied_connection::lowest_layer_type& proxied_connection::lowest_layer() const
+const proxied_connection::lowest_layer_type &proxied_connection::lowest_layer() const
 {
 	return m_channel->lowest_layer();
 }
 
-proxied_connection::lowest_layer_type& proxied_connection::lowest_layer()
+proxied_connection::lowest_layer_type &proxied_connection::lowest_layer()
 {
 	return m_channel->lowest_layer();
 }
@@ -676,7 +677,7 @@ bool proxied_connection::validate_host_key(const std::string &pk_alg, const blob
 
 void proxied_connection::open()
 {
-	m_proxy->async_connect([](const boost::system::error_code&){}, m_channel);
+	m_proxy->async_connect([](const boost::system::error_code &) {}, m_channel);
 }
 
 bool proxied_connection::is_open() const
@@ -692,22 +693,17 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 	{
 		case wait_type::read:
 			m_channel->async_wait(channel::wait_type::read,
-				[ wait_op = std::move(op) ]
-				(const boost::system::error_code ec)
-				{
-					wait_op->complete(ec);
-				});
+			                      [wait_op = std::move(op)](const boost::system::error_code ec) {
+									  wait_op->complete(ec);
+								  });
 			break;
 
 		case wait_type::write:
 			m_channel->async_wait(channel::wait_type::write,
-				[ wait_op = std::move(op) ]
-				(const boost::system::error_code ec)
-				{
-					wait_op->complete(ec);
-				});
+			                      [wait_op = std::move(op)](const boost::system::error_code ec) {
+									  wait_op->complete(ec);
+								  });
 			break;
-
 	}
 }
 

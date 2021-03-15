@@ -6,6 +6,7 @@
 #pragma once
 
 #include "pinch/types.hpp"
+#include "pinch/ssh_agent.hpp"
 
 namespace pinch
 {

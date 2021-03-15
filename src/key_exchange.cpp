@@ -5,18 +5,18 @@
 
 #include <pinch/pinch.hpp>
 
-#include <cryptopp/gfpcrypt.h>
-#include <cryptopp/rsa.h>
-#include <cryptopp/osrng.h>
 #include <cryptopp/aes.h>
 #include <cryptopp/des.h>
-#include <cryptopp/filters.h>
-#include <cryptopp/files.h>
-#include <cryptopp/factory.h>
-#include <cryptopp/modes.h>
-#include <cryptopp/eccrypto.h>
-#include <cryptopp/oids.h>
 #include <cryptopp/dsa.h>
+#include <cryptopp/eccrypto.h>
+#include <cryptopp/factory.h>
+#include <cryptopp/files.h>
+#include <cryptopp/filters.h>
+#include <cryptopp/gfpcrypt.h>
+#include <cryptopp/modes.h>
+#include <cryptopp/oids.h>
+#include <cryptopp/osrng.h>
+#include <cryptopp/rsa.h>
 
 #include <pinch/channel.hpp>
 #include <pinch/crypto-engine.hpp>
@@ -84,7 +84,7 @@ std::string choose_protocol(const std::string &server, const std::string &client
 template <typename HAlg>
 class hash
 {
-public:
+  public:
 	hash() {}
 
 	hash &update(const CryptoPP::Integer &v)
@@ -125,7 +125,7 @@ public:
 		return result;
 	}
 
-private:
+  private:
 	hash(const hash &);
 	hash &operator=(const hash &);
 
@@ -142,7 +142,12 @@ hash<H> &operator|(hash<H> &h, T t)
 
 struct key_exchange_impl
 {
-	key_exchange_impl(key_exchange &kx) : m_kx(kx), m_host_payload(m_kx.m_host_payload), m_my_payload(m_kx.m_my_payload) {}
+	key_exchange_impl(key_exchange &kx)
+		: m_kx(kx)
+		, m_host_payload(m_kx.m_host_payload)
+		, m_my_payload(m_kx.m_my_payload)
+	{
+	}
 
 	virtual ~key_exchange_impl() = default;
 
@@ -154,14 +159,14 @@ struct key_exchange_impl
 
 		switch ((message_type)in)
 		{
-		case msg_kex_dh_reply:
-		case msg_kex_dh_gex_reply:
-			process_kex_dh_reply(in, out, ec);
-			break;
+			case msg_kex_dh_reply:
+			case msg_kex_dh_gex_reply:
+				process_kex_dh_reply(in, out, ec);
+				break;
 
-		default:
-			handled = false;
-			break;
+			default:
+				handled = false;
+				break;
 		}
 
 		return handled;
@@ -306,7 +311,7 @@ void key_exchange_impl::process_kex_dh_reply(ipacket &in, opacket &out, boost::s
 template <class HashAlgorithm>
 class key_exchange_dh_group : public key_exchange_impl
 {
-public:
+  public:
 	key_exchange_dh_group(key_exchange &kx, const Integer &p)
 		: key_exchange_impl(kx)
 	{
@@ -331,20 +336,20 @@ bool key_exchange_dh_group<HashAlgorithm>::process(ipacket &in, opacket &out, bo
 
 	switch ((message_type)in)
 	{
-	case msg_kexinit:
-		do
-		{
-			m_x.Randomize(rng, m_g, m_q - 1);
-			m_e = a_exp_b_mod_c(m_g, m_x, m_p);
-		} while (m_e < 1 or m_e >= m_p - 1);
+		case msg_kexinit:
+			do
+			{
+				m_x.Randomize(rng, m_g, m_q - 1);
+				m_e = a_exp_b_mod_c(m_g, m_x, m_p);
+			} while (m_e < 1 or m_e >= m_p - 1);
 
-		out = msg_kex_dh_init;
-		out << m_e;
-		break;
+			out = msg_kex_dh_init;
+			out << m_e;
+			break;
 
-	default:
-		handled = key_exchange_impl::process(in, out, ec);
-		break;
+		default:
+			handled = key_exchange_impl::process(in, out, ec);
+			break;
 	}
 
 	return handled;
@@ -364,8 +369,11 @@ void key_exchange_dh_group<HashAlgorithm>::calculate_hash(const std::string &hos
 template <typename HashAlgorithm>
 class key_exchange_dh_gex : public key_exchange_impl
 {
-public:
-	key_exchange_dh_gex(key_exchange &kx) : key_exchange_impl(kx) {}
+  public:
+	key_exchange_dh_gex(key_exchange &kx)
+		: key_exchange_impl(kx)
+	{
+	}
 
 	virtual bool process(ipacket &in, opacket &out, boost::system::error_code &ec);
 	virtual void calculate_hash(const std::string &host_version, ipacket &hostkey, Integer &f);
@@ -376,8 +384,8 @@ public:
 	}
 
 	static const uint32_t kMinGroupSize = 1024,
-							kPreferredGroupSize = 2048,
-							kMaxGroupSize = 8192;
+						  kPreferredGroupSize = 2048,
+						  kMaxGroupSize = 8192;
 };
 
 template <typename HashAlgorithm>
@@ -387,28 +395,28 @@ bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket &in, opacket &out, boos
 
 	switch ((message_type)in)
 	{
-	case msg_kexinit:
-		out = msg_kex_dh_gex_request;
-		out << kMinGroupSize << kPreferredGroupSize << kMaxGroupSize;
-		break;
+		case msg_kexinit:
+			out = msg_kex_dh_gex_request;
+			out << kMinGroupSize << kPreferredGroupSize << kMaxGroupSize;
+			break;
 
-	case msg_kex_dh_gex_group:
-		in >> m_p >> m_g;
-		m_q = (m_p - 1) / 2;
+		case msg_kex_dh_gex_group:
+			in >> m_p >> m_g;
+			m_q = (m_p - 1) / 2;
 
-		do
-		{
-			m_x.Randomize(rng, m_g, m_q - 1);
-			m_e = a_exp_b_mod_c(m_g, m_x, m_p);
-		} while (m_e < 1 or m_e >= m_p - 1);
+			do
+			{
+				m_x.Randomize(rng, m_g, m_q - 1);
+				m_e = a_exp_b_mod_c(m_g, m_x, m_p);
+			} while (m_e < 1 or m_e >= m_p - 1);
 
-		out = msg_kex_dh_gex_init;
-		out << m_e;
-		break;
+			out = msg_kex_dh_gex_init;
+			out << m_e;
+			break;
 
-	default:
-		handled = key_exchange_impl::process(in, out, ec);
-		break;
+		default:
+			handled = key_exchange_impl::process(in, out, ec);
+			break;
 	}
 
 	return handled;
@@ -420,8 +428,8 @@ void key_exchange_dh_gex<HashAlgorithm>::calculate_hash(const std::string &host_
 	opacket hp;
 
 	hp << kSSHVersionString << host_version << m_my_payload << m_host_payload << hostkey
-		<< kMinGroupSize << kPreferredGroupSize << kMaxGroupSize
-		<< m_p << m_g << m_e << f << m_K;
+	   << kMinGroupSize << kPreferredGroupSize << kMaxGroupSize
+	   << m_p << m_g << m_e << f << m_K;
 
 	m_H = hash<HashAlgorithm>().update(hp).final();
 }
@@ -438,12 +446,15 @@ std::string
 	key_exchange::s_alg_cmp_c2s = kCompressionAlgorithms;
 
 key_exchange::key_exchange(const std::string &host_version, verify_host_key_func verify_cb = {})
-	: m_host_version(host_version), cb_verify_host_key(verify_cb)
+	: m_host_version(host_version)
+	, cb_verify_host_key(verify_cb)
 {
 }
 
 key_exchange::key_exchange(const std::string &host_version, const blob &session_id, verify_host_key_func verify_cb = {})
-	: m_host_version(host_version), m_session_id(session_id), cb_verify_host_key(verify_cb)
+	: m_host_version(host_version)
+	, m_session_id(session_id)
+	, cb_verify_host_key(verify_cb)
 {
 }
 
@@ -458,12 +469,12 @@ bool key_exchange::process(ipacket &in, opacket &out, boost::system::error_code 
 
 	switch ((message_type)in)
 	{
-	case msg_kexinit:
-		process_kexinit(in, out, ec);
-		break;
+		case msg_kexinit:
+			process_kexinit(in, out, ec);
+			break;
 
-	default:
-		handled = m_impl ? m_impl->process(in, out, ec) : false;
+		default:
+			handled = m_impl ? m_impl->process(in, out, ec) : false;
 	}
 
 	return handled;
@@ -473,30 +484,30 @@ void key_exchange::set_algorithm(algorithm alg, direction dir, const std::string
 {
 	switch (alg)
 	{
-	case algorithm::keyexchange:
-		s_alg_kex = preferred;
-		break;
+		case algorithm::keyexchange:
+			s_alg_kex = preferred;
+			break;
 
-	case algorithm::encryption:
-		if (dir != direction::c2s)
-			s_alg_enc_s2c = preferred;
-		if (dir != direction::s2c)
-			s_alg_enc_c2s = preferred;
-		break;
+		case algorithm::encryption:
+			if (dir != direction::c2s)
+				s_alg_enc_s2c = preferred;
+			if (dir != direction::s2c)
+				s_alg_enc_c2s = preferred;
+			break;
 
-	case algorithm::verification:
-		if (dir != direction::c2s)
-			s_alg_ver_s2c = preferred;
-		if (dir != direction::s2c)
-			s_alg_ver_c2s = preferred;
-		break;
+		case algorithm::verification:
+			if (dir != direction::c2s)
+				s_alg_ver_s2c = preferred;
+			if (dir != direction::s2c)
+				s_alg_ver_c2s = preferred;
+			break;
 
-	case algorithm::compression:
-		if (dir != direction::c2s)
-			s_alg_cmp_s2c = preferred;
-		if (dir != direction::s2c)
-			s_alg_cmp_c2s = preferred;
-		break;
+		case algorithm::compression:
+			if (dir != direction::c2s)
+				s_alg_cmp_s2c = preferred;
+			if (dir != direction::s2c)
+				s_alg_cmp_c2s = preferred;
+			break;
 	}
 }
 
@@ -620,9 +631,9 @@ std::string key_exchange::get_compression_protocol(direction dir) const
 	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
 
 	return dir ==
-		direction::c2s ?
-			choose_protocol(compression_alg_c2s, s_alg_cmp_c2s) :
-			choose_protocol(compression_alg_s2c, s_alg_cmp_s2c);
+				   direction::c2s
+			   ? choose_protocol(compression_alg_c2s, s_alg_cmp_c2s)
+			   : choose_protocol(compression_alg_s2c, s_alg_cmp_s2c);
 }
 
-}
+} // namespace pinch

@@ -7,8 +7,8 @@
 
 #include <boost/asio/streambuf.hpp>
 
-#include <pinch/packet.hpp>
 #include <pinch/key_exchange.hpp>
+#include <pinch/packet.hpp>
 
 namespace pinch
 {
@@ -18,29 +18,28 @@ namespace pinch
 class crypto_engine
 {
   public:
-	crypto_engine(const crypto_engine&) = delete;
-	crypto_engine& operator=(const crypto_engine&) = delete;
+	crypto_engine(const crypto_engine &) = delete;
+	crypto_engine &operator=(const crypto_engine &) = delete;
 
 	crypto_engine();
 
 	std::string get_connection_parameters(direction dir) const;
 	std::string get_key_exchange_algorithm() const;
 
-	void newkeys(key_exchange& kex, bool authenticated);
+	void newkeys(key_exchange &kex, bool authenticated);
 	void enable_compression();
 	void reset();
 
 	std::size_t get_iblocksize() const;
 	std::size_t get_oblocksize() const;
 
-	std::unique_ptr<ipacket> get_next_packet(boost::asio::streambuf& buffer, boost::system::error_code& ec);
-	std::unique_ptr<boost::asio::streambuf> get_next_request(opacket&& p);
+	std::unique_ptr<ipacket> get_next_packet(boost::asio::streambuf &buffer, boost::system::error_code &ec);
+	std::unique_ptr<boost::asio::streambuf> get_next_request(opacket &&p);
 
-	uint32_t get_next_out_seq_nr() const		{ return m_out_seq_nr; }
+	uint32_t get_next_out_seq_nr() const { return m_out_seq_nr; }
 
   private:
-
-	blob get_next_block(boost::asio::streambuf& buffer, bool empty);
+	blob get_next_block(boost::asio::streambuf &buffer, bool empty);
 
 	std::size_t m_iblocksize = 8, m_oblocksize = 8;
 	uint32_t m_in_seq_nr = 0, m_out_seq_nr = 0;
@@ -61,4 +60,4 @@ class crypto_engine
 	std::unique_ptr<ipacket> m_packet;
 };
 
-}
+} // namespace pinch

@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include <pinch/pinch.hpp>
-#include <pinch/connection.hpp>
 #include <pinch/channel.hpp>
+#include <pinch/connection.hpp>
+#include <pinch/pinch.hpp>
 
 namespace pinch
 {
@@ -30,4 +30,4 @@ class ssh_agent_channel : public channel
 	ipacket m_packet;
 };
 
-}
+} // namespace pinch

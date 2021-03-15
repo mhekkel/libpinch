@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <pinch/pinch.hpp>
 #include <pinch/channel.hpp>
+#include <pinch/pinch.hpp>
 
 namespace pinch
 {
@@ -14,27 +14,27 @@ namespace pinch
 namespace error
 {
 
-enum sftp_error
-{
-	ssh_fx_ok,
-	ssh_fx_eof,
-	ssh_fx_no_such_file,
-	ssh_fx_permission_denied,
-	ssh_fx_failure,
-	ssh_fx_bad_message,
-	ssh_fx_no_connection,
-	ssh_fx_connection_lost,
-	ssh_fx_op_unsupported
-};
+	enum sftp_error
+	{
+		ssh_fx_ok,
+		ssh_fx_eof,
+		ssh_fx_no_such_file,
+		ssh_fx_permission_denied,
+		ssh_fx_failure,
+		ssh_fx_bad_message,
+		ssh_fx_no_connection,
+		ssh_fx_connection_lost,
+		ssh_fx_op_unsupported
+	};
 
-boost::system::error_category &sftp_category();
+	boost::system::error_category &sftp_category();
 
-inline boost::system::error_code make_error_code(sftp_error e)
-{
-	return boost::system::error_code(static_cast<int>(e), sftp_category());
-}
+	inline boost::system::error_code make_error_code(sftp_error e)
+	{
+		return boost::system::error_code(static_cast<int>(e), sftp_category());
+	}
 
-}
+} // namespace error
 
 // --------------------------------------------------------------------
 
@@ -54,66 +54,66 @@ struct file_attributes
 namespace detail
 {
 
-class sftp_operation : public operation
-{
-  public:
-	uint32_t m_id;
-	std::string m_handle;
-	bool m_completed = false;
-
-	bool is_complete() const { return m_completed; }
-
-	virtual opacket process(ipacket& p)
+	class sftp_operation : public operation
 	{
-		return {};
-	}
-};
+	  public:
+		uint32_t m_id;
+		std::string m_handle;
+		bool m_completed = false;
 
-class sftp_readdir_op : public sftp_operation
-{
-  public:
-	boost::system::error_code m_ec;
-	std::list<std::tuple<std::string,std::string,file_attributes>> m_files;
+		bool is_complete() const { return m_completed; }
 
-	virtual opacket process(ipacket& p) override;
-};
+		virtual opacket process(ipacket &p)
+		{
+			return {};
+		}
+	};
 
-template <typename Handler, typename IoExecutor>
-class sftp_readdir_handler : public sftp_readdir_op
-{
-  public:
-	sftp_readdir_handler(Handler&& h, const IoExecutor& io_ex, uint32_t id)
-		: m_handler(std::forward<Handler>(h))
-		, m_io_executor(io_ex)
+	class sftp_readdir_op : public sftp_operation
 	{
-		m_id = id;
-		handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
-	}
+	  public:
+		boost::system::error_code m_ec;
+		std::list<std::tuple<std::string, std::string, file_attributes>> m_files;
 
-	virtual void complete(const boost::system::error_code& ec = {}, std::size_t bytes_transferred = 0) override
+		virtual opacket process(ipacket &p) override;
+	};
+
+	template <typename Handler, typename IoExecutor>
+	class sftp_readdir_handler : public sftp_readdir_op
 	{
-		handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
+	  public:
+		sftp_readdir_handler(Handler &&h, const IoExecutor &io_ex, uint32_t id)
+			: m_handler(std::forward<Handler>(h))
+			, m_io_executor(io_ex)
+		{
+			m_id = id;
+			handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
+		}
 
-		binder<Handler, boost::system::error_code, std::list<std::tuple<std::string, std::string, file_attributes>>>
-			handler(m_handler, m_ec, m_files);
+		virtual void complete(const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) override
+		{
+			handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
 
-		w.complete(handler, handler.m_handler);
+			binder<Handler, boost::system::error_code, std::list<std::tuple<std::string, std::string, file_attributes>>>
+				handler(m_handler, m_ec, m_files);
 
-		m_completed = true;
-	}
+			w.complete(handler, handler.m_handler);
 
-  private:
-	Handler m_handler;
-	IoExecutor m_io_executor;
-};
+			m_completed = true;
+		}
 
-}
+	  private:
+		Handler m_handler;
+		IoExecutor m_io_executor;
+	};
+
+} // namespace detail
 
 // --------------------------------------------------------------------
 
 class sftp_channel : public channel
 {
-public:
+  public:
 	sftp_channel(std::shared_ptr<basic_connection> connection);
 	~sftp_channel();
 
@@ -124,8 +124,7 @@ public:
 	auto read_dir(const std::string &path, Handler &&handler)
 	{
 		return boost::asio::async_initiate<Handler, void(boost::system::error_code)>(
-			async_readdir_impl{}, handler, this, m_request_id++, path
-		);
+			async_readdir_impl{}, handler, this, m_request_id++, path);
 	}
 
 	//	template<typename Handler>
@@ -134,8 +133,7 @@ public:
 	//	template<typename Handler>
 	//	void			write_file(const std::string& path, Handler&& handler);
 
-private:
-
+  private:
 	virtual void receive_data(const char *data, size_t size) override;
 	void process_packet();
 
@@ -145,34 +143,34 @@ private:
 		send_data(std::move(p));
 	}
 
-	void opendir(uint32_t request_id, const std::string& path);
+	void opendir(uint32_t request_id, const std::string &path);
 
 	uint32_t m_request_id;
 	uint32_t m_version;
 	ipacket m_packet;
 
-	std::list<detail::sftp_operation*> m_sftp_ops;
+	std::list<detail::sftp_operation *> m_sftp_ops;
 
-	template<typename OpHandler = detail::sftp_operation>
-	OpHandler* fetch_op(uint32_t id)
+	template <typename OpHandler = detail::sftp_operation>
+	OpHandler *fetch_op(uint32_t id)
 	{
-		for (auto op: m_sftp_ops)
+		for (auto op : m_sftp_ops)
 		{
 			if (op->m_id != id)
 				continue;
-			
-			return dynamic_cast<OpHandler*>(op);
+
+			return dynamic_cast<OpHandler *>(op);
 		}
 
 		return nullptr;
 	}
 
 	// --------------------------------------------------------------------
-	
+
 	struct async_readdir_impl
 	{
-		template<typename Handler>
-		void operator()(Handler&& handler, sftp_channel* ch, uint32_t request_id, const std::string& path)
+		template <typename Handler>
+		void operator()(Handler &&handler, sftp_channel *ch, uint32_t request_id, const std::string &path)
 		{
 			ch->m_sftp_ops.push_back(new detail::sftp_readdir_handler(std::move(handler), ch->get_executor(), request_id));
 			ch->opendir(request_id, path);
@@ -180,7 +178,7 @@ private:
 	};
 };
 
-}
+} // namespace pinch
 
 // --------------------------------------------------------------------
 //
