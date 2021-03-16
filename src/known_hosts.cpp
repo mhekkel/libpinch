@@ -5,6 +5,8 @@
 
 #include <pinch/pinch.hpp>
 
+#include <istream>
+
 #include <pinch/digest.hpp>
 #include <pinch/known_hosts.hpp>
 
