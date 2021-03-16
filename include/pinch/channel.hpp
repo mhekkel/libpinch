@@ -433,7 +433,6 @@ class channel : public std::enable_shared_from_this<channel>
 	uint32_t m_my_window_size;
 	uint32_t m_host_window_size;
 
-	// std::deque<basic_write_op *> m_pending;
 	std::deque<char> m_received;
 	std::deque<detail::read_channel_op *> m_read_ops;
 	std::deque<detail::write_channel_op *> m_write_ops;

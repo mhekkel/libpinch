@@ -48,11 +48,11 @@ class forwarding_channel : public channel
 {
   public:
 	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
-	                   const std::string &local_addr, uint16_t local_port,
-	                   const std::string &remote_addr, uint16_t remote_port);
+		const std::string &local_addr, uint16_t local_port,
+		const std::string &remote_addr, uint16_t remote_port);
 
 	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
-	                   const std::string &remote_addr, uint16_t remote_port)
+		const std::string &remote_addr, uint16_t remote_port)
 		: forwarding_channel(inConnection, "::1", 80, remote_addr, remote_port)
 	{
 	}

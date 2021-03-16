@@ -24,13 +24,13 @@ class connection_pool
 
 	// get a proxied connection
 	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, uint16_t port,
-	                                      const std::string &proxy_user, const std::string &proxy_host,
-	                                      uint16_t proxy_port, const std::string &proxy_cmd = {});
+		const std::string &proxy_user, const std::string &proxy_host,
+		uint16_t proxy_port, const std::string &proxy_cmd = {});
 
 	// register a default proxy for a connection
 	void register_proxy(const std::string &destination_host, uint16_t destination_port,
-	                    const std::string &proxy_user, const std::string &proxy_host,
-	                    uint16_t proxy_port, const std::string &proxy_cmd);
+		const std::string &proxy_user, const std::string &proxy_host,
+		uint16_t proxy_port, const std::string &proxy_cmd);
 
 	void disconnect_all();
 	bool has_open_connections();

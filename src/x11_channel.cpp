@@ -41,18 +41,18 @@ struct x11_socket_impl : public x11_socket_impl_base
 	virtual void async_read(std::shared_ptr<x11_channel> channel, boost::asio::streambuf &response)
 	{
 		boost::asio::async_read(m_socket, response, boost::asio::transfer_at_least(1),
-		                        [channel](const boost::system::error_code &ec, std::size_t bytes_transferred) {
-									channel->receive_raw(ec, bytes_transferred);
-								});
+			[channel](const boost::system::error_code &ec, std::size_t bytes_transferred) {
+				channel->receive_raw(ec, bytes_transferred);
+			});
 	}
 
 	virtual void async_write(channel_ptr channel, std::shared_ptr<boost::asio::streambuf> data)
 	{
 		boost::asio::async_write(m_socket, *data,
-		                         [channel, data](const boost::system::error_code &ec, size_t) {
-									 if (ec)
-										 channel->close();
-								 });
+			[channel, data](const boost::system::error_code &ec, size_t) {
+				if (ec)
+					channel->close();
+			});
 	}
 
 	SOCKET m_socket;
@@ -229,10 +229,10 @@ void x11_channel::receive_raw(const boost::system::error_code &ec, size_t)
 				break;
 
 			send_data(buffer, k,
-			          [self](const boost::system::error_code &ec, size_t) {
-						  if (ec)
-							  self->close();
-					  });
+				[self](const boost::system::error_code &ec, size_t) {
+					if (ec)
+						self->close();
+				});
 		}
 
 		if (m_impl)
