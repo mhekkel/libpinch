@@ -200,7 +200,7 @@ int main()
 	auto& known_hosts = pinch::known_hosts::instance();
 	known_hosts.set_host_file("/home/maarten/.ssh/known_hosts");
 	known_hosts.register_handler(
-		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key) {
+		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
 			std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
 					  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
 			return pinch::host_key_reply::trust_once;

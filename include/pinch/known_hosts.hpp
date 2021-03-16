@@ -30,6 +30,17 @@ enum class host_key_reply
 	trusted		///< Trust the key and store it
 };
 
+/// \brief The status for a host key's name/alg/key combo.
+enum class host_key_state
+{
+	no_match,	 ///< The host key is not known at all
+	keys_differ, ///< There is a known host key, but the key values differ
+	match		 ///< The key is known
+};
+
+/// \brief The callback signature
+using validate_callback_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)>;
+
 /// \brief The class known_hosts is used to keep track of already trusted host keys.
 
 class known_hosts
@@ -67,8 +78,8 @@ class known_hosts
 	{
 		static_assert(std::is_assignable_v<validate_callback_type, decltype(handler)>, "Invalid handler");
 
-		m_validate_cb = [&executor, this, handler = std::move(handler)](const std::string &host_name, const std::string &algorithm, const pinch::blob &key) {
-			return async_validate(host_name, algorithm, key, handler, executor);
+		m_validate_cb = [&executor, this, handler = std::move(handler)](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state) {
+			return async_validate(host_name, algorithm, key, state, handler, executor);
 		};
 	}
 
@@ -81,14 +92,12 @@ class known_hosts
 	known_hosts(const known_hosts &) = delete;
 	known_hosts &operator=(const known_hosts &) = delete;
 
-	using validate_callback_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key)>;
-
 	/// \brief async validate support
 	template <typename Handler, typename Executor>
-	host_key_reply async_validate(const std::string &host_name, const std::string &algorithm, const pinch::blob &key, Handler &&handler, Executor &executor)
+	host_key_reply async_validate(const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state, Handler &&handler, Executor &executor)
 	{
 		std::packaged_task<host_key_reply()> validate_task(
-			[handler = std::move(handler), host_name, algorithm, key] { return handler(host_name, algorithm, key); });
+			[handler = std::move(handler), host_name, algorithm, key, state] { return handler(host_name, algorithm, key, state); });
 
 		auto result = validate_task.get_future();
 
@@ -105,7 +114,7 @@ class known_hosts
 		std::string m_algorithm;
 		blob m_key;
 
-		bool compare(const std::string &host_name, const std::string &algorithm, const pinch::blob &key) const;
+		host_key_state compare(const std::string &host_name, const std::string &algorithm, const pinch::blob &key) const;
 	};
 
 	std::filesystem::path m_host_file;
