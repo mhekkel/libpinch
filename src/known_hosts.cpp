@@ -85,7 +85,6 @@ void known_hosts::add_host_key(const std::string &host, const std::string &algor
 
 	std::string name = "|1|" + encode_base64(salt) + '|';
 
-	salt.insert(salt.end(), key.begin(), key.end());
 	name += encode_base64(hmac_sha1(host, salt));
 
 	m_host_keys.emplace_back(host_key{name, algorithm, key});
