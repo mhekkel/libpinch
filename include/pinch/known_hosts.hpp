@@ -124,10 +124,10 @@ class known_hosts
 
 	/// \brief async validate support
 	template <typename Handler, typename Executor>
-	host_key_reply async_validate(const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state, Handler &&handler, Executor &executor)
+	host_key_reply async_validate(const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state, Handler &handler, Executor &executor)
 	{
 		std::packaged_task<host_key_reply()> validate_task(
-			[handler = std::move(handler), host_name, algorithm, key, state] { return handler(host_name, algorithm, key, state); });
+			[&] { return handler(host_name, algorithm, key, state); });
 
 		auto result = validate_task.get_future();
 

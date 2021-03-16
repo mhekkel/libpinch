@@ -58,13 +58,18 @@ struct prompt
 	bool echo;
 };
 
+/// \brief The type of the callback to provide a single password
+///
+/// The result of this callback should be the password as string
+
+using provide_password_callback_type = std::function<std::string()>;
+
 /// \brief The type of the callback to provide credential information
 ///
-/// The callback should in return call send_credentials of the connection class
-/// to supply the answers to the requests in the call.
+/// The result of this callback should be the vector of requested values as strings.
 
 using provide_credentials_callback_type =
-	std::function<void(auth_state_type state, const std::string &name,
+	std::function<std::vector<std::string>(const std::string &name,
 		const std::string &instruction, const std::string &lang,
 		const std::vector<prompt> &prompts)>;
 
@@ -96,7 +101,6 @@ namespace detail
 		boost::asio::streambuf &response;
 		std::shared_ptr<basic_connection> conn;
 		std::string user;
-		provide_credentials_callback_type credentials_request;
 		int m_password_attempts = 0;
 
 		state_type state = state_type::connect;
@@ -278,14 +282,55 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		return m_private_key_hash == pk_hash;
 	}
 
-	void set_provide_credentials_callback(
-		const provide_credentials_callback_type &cb)
+	std::string provide_password()
 	{
-		m_provide_credentials_cb = cb;
+		return m_provide_password_handler();
 	}
 
-	void send_credentials(auth_state_type state,
-		const std::vector<std::string> &replies);
+	template <typename Handler>
+	void set_provide_password_callback(Handler &&handler)
+	{
+		static_assert(std::is_assignable_v<provide_password_callback_type, decltype(handler)>, "Invalid handler");
+
+		m_provide_password_handler = handler;
+	}
+
+	template <typename Handler, typename Executor>
+	void set_provide_password_callback(Handler handler, Executor &executor)
+	{
+		static_assert(std::is_assignable_v<provide_password_callback_type, decltype(handler)>, "Invalid handler");
+
+		m_provide_password_handler = [&executor, this, handler = std::move(handler)]() {
+			return async_provide_password(handler, executor);
+		};
+	}
+
+	std::vector<std::string> provide_credentials(const std::string &name,
+		const std::string &instruction, const std::string &lang,
+		const std::vector<prompt> &prompts)
+	{
+		return m_provide_credentials_handler(name, instruction, lang, prompts);
+	}
+
+	template <typename Handler>
+	void set_provide_credentials_callback(Handler &&handler)
+	{
+		static_assert(std::is_assignable_v<provide_credentials_callback_type, decltype(handler)>, "Invalid handler");
+
+		m_provide_credentials_handler = handler;
+	}
+
+	template <typename Handler, typename Executor>
+	void set_provide_credentials_callback(Handler handler, Executor &executor)
+	{
+		static_assert(std::is_assignable_v<provide_credentials_callback_type, decltype(handler)>, "Invalid handler");
+
+		m_provide_credentials_handler = [&executor, this, handler = std::move(handler)](const std::string &name,
+											const std::string &instruction, const std::string &lang,
+											const std::vector<prompt> &prompts) {
+			return async_provide_credentials(name, instruction, lang, prompts, handler, executor);
+		};
+	}
 
 	virtual bool is_connected() const { return m_auth_state == authenticated; }
 
@@ -300,7 +345,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			case authenticated:
 				assert(false);
 				handler(error::make_error_code(error::protocol_error));
-				// handler()
 				break;
 
 			case handshake:
@@ -311,8 +355,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				m_auth_state = handshake;
 				m_channels.push_back(channel);
 				boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-					detail::async_connect_impl{m_response, this->shared_from_this(),
-						m_user, m_provide_credentials_cb},
+					detail::async_connect_impl{m_response, this->shared_from_this(), m_user},
 					handler, *this);
 		}
 	}
@@ -371,6 +414,42 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	void handle_banner(const std::string &message, const std::string &lang);
 
+	// --------------------------------------------------------------------
+
+	/// \brief async password support
+	template <typename Handler, typename Executor>
+	std::string async_provide_password(Handler &handler, Executor &executor)
+	{
+		std::packaged_task<std::string()> validate_task(
+			[&] { return handler(); });
+
+		auto result = validate_task.get_future();
+
+		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
+
+		result.wait();
+
+		return result.get();
+	}
+
+	/// \brief async credentials support
+	template <typename Handler, typename Executor>
+	std::vector<std::string> async_provide_credentials(const std::string &name,
+		const std::string &instruction, const std::string &lang, const std::vector<prompt> &prompts,
+		Handler &handler, Executor &executor)
+	{
+		std::packaged_task<std::vector<std::string>()> validate_task(
+			[&] { return handler(name, instruction, lang, prompts); });
+
+		auto result = validate_task.get_future();
+
+		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
+
+		result.wait();
+
+		return result.get();
+	}
+
 	std::string m_user;
 	std::string m_host;
 	uint16_t m_port;
@@ -394,7 +473,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	blob m_private_key_hash;
 	boost::asio::streambuf m_response;
 
-	provide_credentials_callback_type m_provide_credentials_cb;
+	provide_password_callback_type m_provide_password_handler;
+	provide_credentials_callback_type m_provide_credentials_handler;
 
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;
@@ -650,7 +730,7 @@ namespace detail
 
 				state = state_type::rekeying;
 
-				auto& known_hosts_inst = known_hosts::instance();
+				auto &known_hosts_inst = known_hosts::instance();
 				kex = std::make_unique<key_exchange>(host_version,
 					std::bind(&known_hosts::validate, std::ref(known_hosts_inst), conn->m_host, std::placeholders::_1, std::placeholders::_2));
 

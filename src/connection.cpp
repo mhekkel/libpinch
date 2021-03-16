@@ -51,7 +51,7 @@ namespace detail
 			private_keys.pop_front();
 			auth_state = auth_state_type::public_key;
 		}
-		else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and credentials_request and ++m_password_attempts <= 3)
+		else if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and ++m_password_attempts <= 3)
 		{
 			out = opacket(msg_userauth_request)
 				  << user << "ssh-connection"
@@ -60,10 +60,22 @@ namespace detail
 				  << "";
 			auth_state = auth_state_type::keyboard_interactive;
 		}
-		else if (choose_protocol(s, "password") == "password" and credentials_request and ++m_password_attempts <= 3)
+		else if (choose_protocol(s, "password") == "password" and ++m_password_attempts <= 3)
 		{
-			auth_state = auth_state_type::password;
-			credentials_request(auth_state_type::password, "", "password", "en", {{"password", false}});
+			auto password = conn->provide_password();
+
+			if (password.empty())
+			{
+				m_password_attempts = 4;
+				ec = error::make_error_code(error::auth_cancelled_by_user);
+			}
+			else
+			{
+				auth_state = auth_state_type::password;
+				out = opacket(msg_userauth_request)
+					<< conn->m_user << "ssh-connection"
+					<< "password" << false << password;
+			}
 		}
 		else
 		{
@@ -99,6 +111,7 @@ namespace detail
 				private_key_hash = pk.get_hash();
 				break;
 			}
+
 			case auth_state_type::keyboard_interactive:
 			{
 				std::string name, instruction, language;
@@ -118,10 +131,21 @@ namespace detail
 					for (auto &p : prompts)
 						in >> p.str >> p.echo;
 
-					if (prompts.empty())
-						prompts.push_back({"iets", true});
+					auto replies = conn->provide_credentials(name, instruction, language, prompts);
 
-					credentials_request(auth_state_type::keyboard_interactive, name, instruction, language, prompts);
+					if (replies.empty())
+					{
+						m_password_attempts = 4;
+						ec = error::make_error_code(error::auth_cancelled_by_user);
+					}
+					else
+					{
+						out = opacket(msg_userauth_info_response)
+							<< replies.size();
+
+						for (auto &r : replies)
+							out << r;
+					}
 				}
 				break;
 			}
@@ -183,44 +207,10 @@ void basic_connection::disconnect()
 
 void basic_connection::rekey()
 {
-	auto& known_hosts_inst = known_hosts::instance();
+	auto &known_hosts_inst = known_hosts::instance();
 	m_kex.reset(new key_exchange(m_host_version, m_session_id,
 		std::bind(&known_hosts::validate, std::ref(known_hosts_inst), m_host, std::placeholders::_1, std::placeholders::_2)));
 	async_write(m_kex->init());
-}
-
-void basic_connection::send_credentials(auth_state_type state, const std::vector<std::string> &replies)
-{
-	switch (state)
-	{
-		case auth_state_type::keyboard_interactive:
-		{
-			opacket out(msg_userauth_info_response);
-			out << replies.size();
-			for (auto &r : replies)
-				out << r;
-			async_write(std::move(out));
-			break;
-		}
-
-		case auth_state_type::password:
-		{
-			if (replies.size() == 1)
-			{
-				opacket out(msg_userauth_request);
-				out << m_user << "ssh-connection"
-					<< "password" << false << replies[0];
-				async_write(std::move(out));
-			}
-			else
-				handle_error(error::make_error_code(error::auth_cancelled_by_user));
-			break;
-		}
-
-		default:
-			handle_error(error::make_error_code(error::auth_cancelled_by_user));
-			break;
-	}
 }
 
 // the read loop, this routine keeps calling itself until an error condition is met
@@ -440,7 +430,7 @@ void basic_connection::open_channel(channel_ptr ch, uint32_t channel_id)
 	{
 		// some sanity check first
 		assert(std::find_if(m_channels.begin(), m_channels.end(),
-		                    [channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
+				   [channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
 		assert(not ch->is_open());
 
 		m_channels.push_back(ch);
@@ -512,7 +502,7 @@ void basic_connection::keep_alive()
 }
 
 void basic_connection::forward_port(const std::string &local_address, uint16_t local_port,
-                                    const std::string &remote_address, uint16_t remote_port)
+	const std::string &remote_address, uint16_t remote_port)
 {
 	if (not m_port_forwarder)
 		m_port_forwarder.reset(new port_forward_listener(shared_from_this()));
@@ -681,16 +671,16 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 	{
 		case wait_type::read:
 			m_channel->async_wait(channel::wait_type::read,
-			                      [wait_op = std::move(op)](const boost::system::error_code ec) {
-									  wait_op->complete(ec);
-								  });
+				[wait_op = std::move(op)](const boost::system::error_code ec) {
+					wait_op->complete(ec);
+				});
 			break;
 
 		case wait_type::write:
 			m_channel->async_wait(channel::wait_type::write,
-			                      [wait_op = std::move(op)](const boost::system::error_code ec) {
-									  wait_op->complete(ec);
-								  });
+				[wait_op = std::move(op)](const boost::system::error_code ec) {
+					wait_op->complete(ec);
+				});
 			break;
 	}
 }
