@@ -92,6 +92,7 @@ OBJECTS = \
 	$(OBJDIR)/connection_pool.lo \
 	$(OBJDIR)/crypto-engine.lo \
 	$(OBJDIR)/debug.lo \
+	$(OBJDIR)/digest.lo \
 	$(OBJDIR)/error.lo \
 	$(OBJDIR)/key_exchange.lo \
 	$(OBJDIR)/known_hosts.lo \
@@ -167,6 +168,7 @@ HEADERS = \
 	connection.hpp \
 	connection_pool.hpp \
 	debug.hpp \
+	digest.hpp \
 	detail/ssh_agent_impl.hpp \
 	error.hpp \
 	key_exchange.hpp \

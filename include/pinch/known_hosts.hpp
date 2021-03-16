@@ -17,23 +17,24 @@
 #include <type_traits>
 
 /// \file This file contains the class known_hosts which is used to keep track of
-/// already validated host keys.
+/// already trusted host keys.
 
 namespace pinch
 {
 
-/// \brief Callback type for validating host keys
-///
-/// the signature is bool validate_host_key(host, alg, key) and the callback
-/// should return true
+/// \brief The reply from the validate callback.
+enum class host_key_reply
+{
+	reject,		///< Do not trust this host key and abort connecting
+	trust_once,	///< Trust the host key, but do not store it for future use
+	trusted		///< Trust the key and store it
+};
 
-/// \brief The class known_hosts is used to keep track of
-/// 	   already validated host keys.
+/// \brief The class known_hosts is used to keep track of already trusted host keys.
 
 class known_hosts
 {
   public:
-
 	/// \brief known_hosts is a singleton
 	static known_hosts &instance()
 	{
@@ -57,6 +58,9 @@ class known_hosts
 	}
 
 	/// \brief register a function that will return whether a host key is valid, but from possibly another thread
+	///
+	/// The callback \a handler will be called using the executor, potentially running a separate thread.
+	/// All I/O will be blocked in this thread until a reply is received.
 
 	template <typename Handler, typename Executor>
 	void register_handler(Handler &&handler, Executor &executor)
@@ -68,29 +72,27 @@ class known_hosts
 		};
 	}
 
+	/// \brief Return true if the host/algorithm/key pair should be trusted
 	bool validate(const std::string &host, const std::string &algorithm, const blob &key);
 
   private:
-
 	known_hosts() {}
 
 	known_hosts(const known_hosts &) = delete;
 	known_hosts &operator=(const known_hosts &) = delete;
 
-	using validate_callback_type = std::function<bool(const std::string &host, const std::string &algorithm, const blob &key)>;
+	using validate_callback_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key)>;
 
 	/// \brief async validate support
 	template <typename Handler, typename Executor>
-	bool async_validate(const std::string &host_name, const std::string &algorithm, const pinch::blob &key, Handler &&handler, Executor &executor)
+	host_key_reply async_validate(const std::string &host_name, const std::string &algorithm, const pinch::blob &key, Handler &&handler, Executor &executor)
 	{
-		std::packaged_task<bool()> validate_task(
+		std::packaged_task<host_key_reply()> validate_task(
 			[handler = std::move(handler), host_name, algorithm, key] { return handler(host_name, algorithm, key); });
 
 		auto result = validate_task.get_future();
 
-		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable {
-			task();
-		});
+		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
 
 		result.wait();
 
@@ -99,9 +101,11 @@ class known_hosts
 
 	struct host_key
 	{
-		std::string name;
-		std::string algorithm;
-		blob key;
+		std::string m_host_name;
+		std::string m_algorithm;
+		blob m_key;
+
+		bool compare(const std::string &host_name, const std::string &algorithm, const pinch::blob &key) const;
 	};
 
 	std::filesystem::path m_host_file;
@@ -110,4 +114,5 @@ class known_hosts
 
 	static std::unique_ptr<known_hosts> s_instance;
 };
+
 } // namespace pinch
