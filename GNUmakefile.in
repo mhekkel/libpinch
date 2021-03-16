@@ -94,6 +94,7 @@ OBJECTS = \
 	$(OBJDIR)/debug.lo \
 	$(OBJDIR)/error.lo \
 	$(OBJDIR)/key_exchange.lo \
+	$(OBJDIR)/known_hosts.lo \
 	$(OBJDIR)/packet.lo \
 	$(OBJDIR)/port_forwarding.lo \
 	$(OBJDIR)/posix_ssh_agent_impl.lo \
@@ -169,6 +170,7 @@ HEADERS = \
 	detail/ssh_agent_impl.hpp \
 	error.hpp \
 	key_exchange.hpp \
+	known_hosts.hpp \
 	packet.hpp \
 	port_forwarding.hpp \
 	proxy_cmd.hpp \

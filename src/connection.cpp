@@ -183,10 +183,9 @@ void basic_connection::disconnect()
 
 void basic_connection::rekey()
 {
+	auto& known_hosts_inst = known_hosts::instance();
 	m_kex.reset(new key_exchange(m_host_version, m_session_id,
-	                             [cb = m_validate_host_key_cb, host = m_host](const std::string &alg, const blob &hash) {
-									 return cb ? cb(host, alg, hash) : true;
-								 }));
+		std::bind(&known_hosts::validate, std::ref(known_hosts_inst), m_host, std::placeholders::_1, std::placeholders::_2)));
 	async_write(m_kex->init());
 }
 
@@ -662,17 +661,6 @@ void proxied_connection::disconnect()
 	basic_connection::disconnect();
 
 	m_channel->close();
-}
-
-void proxied_connection::set_validate_callback(const validate_callback_type &cb)
-{
-	m_proxy->set_validate_callback(cb);
-	basic_connection::set_validate_callback(cb);
-}
-
-bool proxied_connection::validate_host_key(const std::string &pk_alg, const blob &host_key)
-{
-	return m_validate_host_key_cb and m_validate_host_key_cb(m_host, pk_alg, host_key);
 }
 
 void proxied_connection::open()
