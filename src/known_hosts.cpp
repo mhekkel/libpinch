@@ -37,7 +37,7 @@ host_key_state known_hosts::host_key::compare(const std::string &host_name, cons
 	else if (host_name == m_host_name)
 		result = host_key_state::match;
 	
-	if (result == host_key_state::match and (m_algorithm != algorithm or m_key != key))
+	if (result == host_key_state::match and m_algorithm == algorithm and m_key != key)
 		result = host_key_state::keys_differ;
 	
 	return result;
@@ -78,6 +78,18 @@ void known_hosts::set_host_file(fs::path host_file)
 	}
 }
 
+void known_hosts::add_host_key(const std::string &host, const std::string &algorithm, const blob &key)
+{
+	blob salt = random_hash();
+
+	std::string name = "|1|" + encode_base64(salt) + '|';
+	
+	salt.insert(salt.end(), key.begin(), key.end());
+	name += encode_base64(hmac_sha1(host, salt));
+
+	m_host_keys.emplace_back(host_key{name, algorithm, key});
+}
+
 bool known_hosts::validate(const std::string &host, const std::string &algorithm, const blob &key)
 {
 	bool result = false;
@@ -86,17 +98,23 @@ bool known_hosts::validate(const std::string &host, const std::string &algorithm
 	for (auto& hk: m_host_keys)
 	{
 		state = hk.compare(host, algorithm, key);
-		if (state == host_key_state::no_match)
-			continue;
-		break;
+		
+		if (state == host_key_state::match)
+		{
+			result = true;
+			break;
+		}
+
+		if (state == host_key_state::keys_differ)
+			break;
 	}
 
-	if (state != host_key_state::no_match and m_validate_cb)
+	if (not result and m_validate_cb)
 	{
 		switch (m_validate_cb(host, algorithm, key, state))
 		{
 			case host_key_reply::trusted:
-				m_host_keys.emplace_back(host_key{ host, algorithm, key });
+				add_host_key(host, algorithm, key);
 
 			case host_key_reply::trust_once:
 				result = true;

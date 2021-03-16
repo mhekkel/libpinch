@@ -248,6 +248,11 @@ std::string encode_base64(std::string_view data, size_t wrap_width)
 	return result;
 }
 
+std::string encode_base64(const blob& data)
+{
+	return encode_base64(std::string_view(reinterpret_cast<const char*>(data.data()), data.size()), 0);
+}
+
 blob decode_base64(std::string_view data)
 {
 	size_t n = data.length();

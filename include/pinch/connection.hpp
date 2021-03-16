@@ -790,7 +790,7 @@ namespace detail
 	template <typename Self>
 	void async_connect_impl::failed(Self &self, boost::system::error_code ec)
 	{
-		conn->disconnect();
+		conn->handle_error(ec);
 		self.complete(ec);
 	}
 

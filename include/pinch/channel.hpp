@@ -250,7 +250,7 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 		using handler_type = detail::open_channel_handler<Handler, executor_type>;
 
-		assert(m_open_handler == nullptr);
+		// assert(m_open_handler == nullptr);
 		m_open_handler.reset(new handler_type(std::move(handler), get_executor()));
 
 		if (m_connection->is_connected())
