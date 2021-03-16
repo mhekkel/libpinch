@@ -23,7 +23,7 @@
 namespace pinch
 {
 
-/// \brief The reply from the validate callback.
+/// \brief The reply from the accept_host_key callback.
 enum class host_key_reply
 {
 	reject,     ///< Do not trust this host key and abort connecting
@@ -40,7 +40,7 @@ enum class host_key_state
 };
 
 /// \brief The callback signature
-using validate_callback_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)>;
+using accept_host_key_handler_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)>;
 
 /// \brief The class known_hosts is used to keep track of already trusted host keys.
 
@@ -78,35 +78,9 @@ class known_hosts
 	/// \brief Add a single host key, \a key is the binary, decoded key
 	void add_host_key(const std::string &host, const std::string &algorithm, const blob &key);
 
-	/// \brief register a function that will return whether a host key
-	/// should be considered known.
-	///
-	/// The callback \a handler will be called in the boost::io_context thread.
-
-	template <typename Handler>
-	void register_handler(Handler &&handler)
-	{
-		static_assert(std::is_assignable_v<validate_callback_type, decltype(handler)>, "Invalid handler");
-		m_validate_cb = handler;
-	}
-
-	/// \brief register a function that will return whether a host key is valid, but from possibly another thread
-	///
-	/// The callback \a handler will be called using the executor, potentially running a separate thread.
-	/// All I/O will be blocked in this thread until a reply is received.
-
-	template <typename Handler, typename Executor>
-	void register_handler(Handler &&handler, Executor &executor)
-	{
-		static_assert(std::is_assignable_v<validate_callback_type, decltype(handler)>, "Invalid handler");
-
-		m_validate_cb = [&executor, this, handler = std::move(handler)](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state) {
-			return async_validate(host_name, algorithm, key, state, handler, executor);
-		};
-	}
-
 	/// \brief Return true if the host/algorithm/key pair should be trusted
-	bool validate(const std::string &host, const std::string &algorithm, const blob &key);
+	bool accept_host_key(const std::string &host, const std::string &algorithm, const blob &key,
+		accept_host_key_handler_type& handler);
 
 	/// \brief making the known_hosts iterable, but const only
 	using iterator = std::vector<host_key>::const_iterator;
@@ -122,24 +96,7 @@ class known_hosts
 	known_hosts(const known_hosts &) = delete;
 	known_hosts &operator=(const known_hosts &) = delete;
 
-	/// \brief async validate support
-	template <typename Handler, typename Executor>
-	host_key_reply async_validate(const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state, Handler &handler, Executor &executor)
-	{
-		std::packaged_task<host_key_reply()> validate_task(
-			[&] { return handler(host_name, algorithm, key, state); });
-
-		auto result = validate_task.get_future();
-
-		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
-
-		result.wait();
-
-		return result.get();
-	}
-
 	std::vector<host_key> m_host_keys;
-	validate_callback_type m_validate_cb;
 
 	static std::unique_ptr<known_hosts> s_instance;
 };

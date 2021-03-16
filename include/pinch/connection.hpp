@@ -277,9 +277,49 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	}
 
   public:
+	/// \brief Returns true if the connection uses the public key \a pk_hash
 	bool uses_private_key(const blob &pk_hash)
 	{
 		return m_private_key_hash == pk_hash;
+	}
+
+	/// \brief Return true if the connection should accept the host key \a key
+	/// and algorithm \a algorithm when connecting to host \a host
+	///
+	/// This function delegates the question to known_hosts first which will in
+	/// turn call the registered callback when needed. The reason for this route
+	/// is to allow per-connection validation, making feedback to the user easier.
+
+	bool accept_host_key(const std::string &algorithm, const blob &key)
+	{
+		return known_hosts::instance().accept_host_key(m_host, algorithm, key, m_accept_host_key_handler);
+	}
+
+	/// \brief register a function that will return whether a host key
+	/// should be considered known.
+	///
+	/// The callback \a handler will be called in the boost::io_context thread.
+
+	template <typename Handler>
+	void set_accept_host_key_handler(Handler &&handler)
+	{
+		static_assert(std::is_assignable_v<accept_host_key_handler_type, decltype(handler)>, "Invalid handler");
+		m_accept_host_key_handler = handler;
+	}
+
+	/// \brief register a function that will return whether a host key is valid, but from possibly another thread
+	///
+	/// The callback \a handler will be called using the executor, potentially running a separate thread.
+	/// All I/O will be blocked in this thread until a reply is received.
+
+	template <typename Handler, typename Executor>
+	void set_accept_host_key_handler(Handler &&handler, Executor &executor)
+	{
+		static_assert(std::is_assignable_v<accept_host_key_handler_type, decltype(handler)>, "Invalid handler");
+
+		m_accept_host_key_handler = [&executor, this, handler = std::move(handler)](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state) {
+			return async_accept_host_key(host_name, algorithm, key, state, handler, executor);
+		};
 	}
 
 	std::string provide_password()
@@ -416,6 +456,23 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	// --------------------------------------------------------------------
 
+	/// \brief async accept_host_key support
+	template <typename Handler, typename Executor>
+	host_key_reply async_accept_host_key(const std::string &host_name, const std::string &algorithm,
+		const pinch::blob &key, host_key_state state, Handler &handler, Executor &executor)
+	{
+		std::packaged_task<host_key_reply()> validate_task(
+			[&] { return handler(host_name, algorithm, key, state); });
+
+		auto result = validate_task.get_future();
+
+		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
+
+		result.wait();
+
+		return result.get();
+	}
+
 	/// \brief async password support
 	template <typename Handler, typename Executor>
 	std::string async_provide_password(Handler &handler, Executor &executor)
@@ -475,6 +532,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	provide_password_callback_type m_provide_password_handler;
 	provide_credentials_callback_type m_provide_credentials_handler;
+	accept_host_key_handler_type m_accept_host_key_handler;
 
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;
@@ -730,9 +788,8 @@ namespace detail
 
 				state = state_type::rekeying;
 
-				auto &known_hosts_inst = known_hosts::instance();
 				kex = std::make_unique<key_exchange>(host_version,
-					std::bind(&known_hosts::validate, std::ref(known_hosts_inst), conn->m_host, std::placeholders::_1, std::placeholders::_2));
+					std::bind(&connection::accept_host_key, conn, std::placeholders::_1, std::placeholders::_2));
 
 				conn->async_write(kex->init());
 

@@ -207,9 +207,8 @@ void basic_connection::disconnect()
 
 void basic_connection::rekey()
 {
-	auto &known_hosts_inst = known_hosts::instance();
 	m_kex.reset(new key_exchange(m_host_version, m_session_id,
-		std::bind(&known_hosts::validate, std::ref(known_hosts_inst), m_host, std::placeholders::_1, std::placeholders::_2)));
+		std::bind(&connection::accept_host_key, this, std::placeholders::_1, std::placeholders::_2)));
 	async_write(m_kex->init());
 }
 

@@ -175,8 +175,8 @@ int main()
 	my_executor executor{&io_context, &queue};
 
 	// auto conn = pool.get("maarten", "localhost", 2022);
-	// auto conn = pool.get("maarten", "s4", 22);
-	auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
+	auto conn = pool.get("maarten", "s4", 22);
+	// auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
 
 	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
 	auto channel = std::make_shared<pinch::terminal_channel>(conn);
@@ -199,7 +199,7 @@ int main()
 
 	auto& known_hosts = pinch::known_hosts::instance();
 	// known_hosts.load_host_file("/home/maarten/.ssh/known_hosts");
-	known_hosts.register_handler(
+	conn->set_accept_host_key_handler(
 		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
 			std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
 					  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;

@@ -10,8 +10,6 @@
 #include <pinch/digest.hpp>
 #include <pinch/known_hosts.hpp>
 
-namespace fs = std::filesystem;
-
 namespace pinch
 {
 
@@ -93,7 +91,8 @@ void known_hosts::add_host_key(const std::string &host, const std::string &algor
 	m_host_keys.emplace_back(host_key{name, algorithm, key});
 }
 
-bool known_hosts::validate(const std::string &host, const std::string &algorithm, const blob &key)
+bool known_hosts::accept_host_key(const std::string &host, const std::string &algorithm, const blob &key,
+	accept_host_key_handler_type& handler)
 {
 	bool result = false;
 	host_key_state state = host_key_state::no_match;
@@ -112,9 +111,9 @@ bool known_hosts::validate(const std::string &host, const std::string &algorithm
 			break;
 	}
 
-	if (not result and m_validate_cb)
+	if (not result and handler)
 	{
-		switch (m_validate_cb(host, algorithm, key, state))
+		switch (handler(host, algorithm, key, state))
 		{
 			case host_key_reply::trusted:
 				add_host_key(host, algorithm, key);
