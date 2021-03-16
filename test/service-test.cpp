@@ -198,7 +198,7 @@ int main()
 	// auto validate = std::bind(async_validate<decltype(v_cb), my_executor>, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, v_cb, executor);
 
 	auto& known_hosts = pinch::known_hosts::instance();
-	known_hosts.set_host_file("/home/maarten/.ssh/known_hosts");
+	// known_hosts.load_host_file("/home/maarten/.ssh/known_hosts");
 	known_hosts.register_handler(
 		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
 			std::cout << "validating " << host_name << " with algo " << algorithm << std::endl

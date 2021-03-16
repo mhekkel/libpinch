@@ -10,7 +10,6 @@
 
 #include <boost/asio/dispatch.hpp>
 
-#include <filesystem>
 #include <functional>
 #include <future>
 #include <string>
@@ -64,8 +63,11 @@ class known_hosts
 		return *s_instance;
 	}
 
-	/// \brief Set the host file
-	void set_host_file(std::filesystem::path host_file);
+	/// \brief Read a host file (in openssh format)
+	void load_host_file(std::istream &host_file);
+
+	/// \brief Write a host file (in openssh format)
+	void save_host_file(std::ostream &host_file);
 
 	/// \brief Add a single host key, \a key is the base64 encoded key
 	void add_host_key(const std::string &host, const std::string &algorithm, const std::string &key)
@@ -136,7 +138,6 @@ class known_hosts
 		return result.get();
 	}
 
-	std::filesystem::path m_host_file;
 	std::vector<host_key> m_host_keys;
 	validate_callback_type m_validate_cb;
 

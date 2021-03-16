@@ -5,8 +5,6 @@
 
 #include <pinch/pinch.hpp>
 
-#include <fstream>
-
 #include <pinch/digest.hpp>
 #include <pinch/known_hosts.hpp>
 
@@ -36,32 +34,26 @@ host_key_state known_hosts::host_key::compare(const std::string &host_name, cons
 	}
 	else if (host_name == m_host_name)
 		result = host_key_state::match;
-	
+
 	if (result == host_key_state::match and m_algorithm == algorithm and m_key != key)
 		result = host_key_state::keys_differ;
-	
+
 	return result;
 }
 
 // --------------------------------------------------------------------
 
-void known_hosts::set_host_file(fs::path host_file)
+void known_hosts::load_host_file(std::istream& file)
 {
-	m_host_file = host_file;
-
 	m_host_keys.clear();
 
-	std::ifstream file(host_file);
-	if (not file.is_open())
-		throw std::runtime_error("Could not open host file " + host_file.string());
-	
 	std::string line;
 	while (std::getline(file, line))
 	{
 		auto t1 = line.find(' ');
 		if (t1 == std::string::npos)
 			continue;
-		
+
 		auto t2 = line.find(' ', t1 + 1);
 		if (t2 == std::string::npos)
 			continue;
@@ -71,19 +63,28 @@ void known_hosts::set_host_file(fs::path host_file)
 			m_host_keys.emplace_back(host_key{
 				line.substr(0, t1),
 				line.substr(t1 + 1, t2 - t1 - 1),
-				decode_base64(line.substr(t2 + 1))
-			});
+				decode_base64(line.substr(t2 + 1))});
 		}
-		catch (...) { }
+		catch (...)
+		{
+		}
 	}
 }
+
+void known_hosts::save_host_file(std::ostream& file)
+{
+	for (auto& kh: m_host_keys)
+		file << kh.m_host_name << ' ' << kh.m_algorithm << ' ' << encode_base64(kh.m_key) << std::endl;
+}
+
+// --------------------------------------------------------------------
 
 void known_hosts::add_host_key(const std::string &host, const std::string &algorithm, const blob &key)
 {
 	blob salt = random_hash();
 
 	std::string name = "|1|" + encode_base64(salt) + '|';
-	
+
 	salt.insert(salt.end(), key.begin(), key.end());
 	name += encode_base64(hmac_sha1(host, salt));
 
@@ -95,10 +96,10 @@ bool known_hosts::validate(const std::string &host, const std::string &algorithm
 	bool result = false;
 	host_key_state state = host_key_state::no_match;
 
-	for (auto& hk: m_host_keys)
+	for (auto &hk : m_host_keys)
 	{
 		state = hk.compare(host, algorithm, key);
-		
+
 		if (state == host_key_state::match)
 		{
 			result = true;
