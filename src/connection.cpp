@@ -33,7 +33,7 @@ const std::string
 namespace detail
 {
 
-	void async_connect_impl::async_connect_impl::process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec)
+	void async_open_connection_impl::async_open_connection_impl::process_userauth_failure(ipacket &in, opacket &out, boost::system::error_code &ec)
 	{
 		std::string s;
 		bool partial;
@@ -73,8 +73,8 @@ namespace detail
 			{
 				auth_state = auth_state_type::password;
 				out = opacket(msg_userauth_request)
-					<< conn->m_user << "ssh-connection"
-					<< "password" << false << password;
+					  << conn->m_user << "ssh-connection"
+					  << "password" << false << password;
 			}
 		}
 		else
@@ -84,7 +84,7 @@ namespace detail
 		}
 	}
 
-	void async_connect_impl::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
+	void async_open_connection_impl::process_userauth_info_request(ipacket &in, opacket &out, boost::system::error_code &ec)
 	{
 		switch (auth_state)
 		{
@@ -141,7 +141,7 @@ namespace detail
 					else
 					{
 						out = opacket(msg_userauth_info_response)
-							<< replies.size();
+							  << replies.size();
 
 						for (auto &r : replies)
 							out << r;
@@ -183,7 +183,7 @@ void basic_connection::handle_error(const boost::system::error_code &ec)
 		for (auto ch : m_channels)
 			ch->error(ec.message(), "");
 
-		disconnect();
+		close();
 	}
 }
 
@@ -195,7 +195,7 @@ void basic_connection::reset()
 	m_crypto_engine.reset();
 }
 
-void basic_connection::disconnect()
+void basic_connection::close()
 {
 	reset();
 
@@ -248,7 +248,7 @@ void basic_connection::received_data(boost::system::error_code ec)
 	}
 	catch (...)
 	{
-		disconnect();
+		close();
 	}
 }
 
@@ -277,7 +277,7 @@ void basic_connection::process_packet(ipacket &in)
 				break;
 
 			case msg_service_request:
-				disconnect();
+				close();
 				break;
 
 			case msg_kexinit:
@@ -349,11 +349,11 @@ bool basic_connection::receive_packet(ipacket &packet, boost::system::error_code
 		switch ((message_type)packet)
 		{
 			case msg_disconnect:
-				disconnect();
+				close();
 				break;
 
 			case msg_service_request:
-				disconnect();
+				close();
 				break;
 
 			case msg_ignore:
@@ -519,67 +519,28 @@ void basic_connection::forward_socks5(const std::string &local_address, uint16_t
 
 void connection::open()
 {
-	if (not is_open())
+	assert(false);
+	// async_open([this](const boost::system::error_code& ec) {
+	// 	handle_error(ec);
+	// });
+}
+
+void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
+{
+	if (m_next_layer.is_open())
+		op->complete({});
+	else
 	{
 		using namespace boost::asio::ip;
 
 		// synchronous for now...
-
 		tcp::resolver resolver(get_executor());
 		tcp::resolver::results_type endpoints = resolver.resolve(m_host, std::to_string(m_port));
 
-		boost::asio::connect(m_next_layer, endpoints);
-
-		// 		enum { start, resolving, connecting };
-
-		// 		auto resolver = std::make_shared<tcp::resolver>(get_executor());
-		// 		tcp::resolver::endpoint_type endpoint{};
-
-		// 		auto handler = [](const boost::system::error_code& ec) {};
-		// 		using Handler = decltype(handler);
-
-		// 		boost::asio::async_compose<Handler,void(boost::system::error_code)>(
-		// 			[
-		// 				&socket = m_next_layer,
-		// 				query = tcp::resolver::query(m_host, std::to_string(m_port)),
-		// 				resolver,
-		// 				endpoint,
-		// 				state = start
-		// 			]
-		// 			(auto& self, const boost::system::error_code& ec = {}, tcp::resolver::iterator endpoint_iterator = {}) mutable
-		// 			{
-		// 				if (ec and state == connecting and endpoint_iterator != boost::asio::ip::tcp::resolver::iterator())
-		// 				{
-		// 					auto endpoint = *endpoint_iterator++;
-		// 					socket.async_connect(endpoint, std::move(self));
-		// 					return;
-		// 				}
-
-		// 				if (not ec)
-		// 				{
-		// 					switch (state)
-		// 					{
-		// 						case start:
-		// 							state = resolving;
-		// 							resolver->async_resolve(query, std::move(self));
-		// 							return;
-
-		// 						case resolving:
-		// 						{
-		// 							state = connecting;
-		// 							auto endpoint = *endpoint_iterator++;
-		// 							socket.async_connect(endpoint, std::move(self));
-		// 							return;
-		// 						}
-
-		// 						case connecting:
-		// 							break;
-		// 					}
-		// 				}
-
-		// 				self.complete(ec);
-		// 			}, handler
-		// 		);
+		boost::asio::async_connect(m_next_layer, endpoints,
+			[self = shared_from_this(), op = std::move(op)](const boost::system::error_code &ec, tcp::resolver::endpoint_type) {
+				op->complete(ec);
+			});
 	}
 }
 
@@ -645,21 +606,46 @@ proxied_connection::lowest_layer_type &proxied_connection::lowest_layer()
 	return m_channel->lowest_layer();
 }
 
-void proxied_connection::disconnect()
+void proxied_connection::close()
 {
-	basic_connection::disconnect();
+	basic_connection::close();
 
 	m_channel->close();
 }
 
 void proxied_connection::open()
 {
-	m_proxy->async_connect([](const boost::system::error_code &) {}, m_channel);
+	assert(false);
+	// m_proxy->async_open([](const boost::system::error_code &) {}, m_channel);
 }
 
-bool proxied_connection::is_open() const
+bool proxied_connection::next_layer_is_open() const
 {
 	return m_channel->is_open();
+}
+
+void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
+{
+	if (m_channel->is_open())
+		op->complete({});
+	else
+	{
+		using namespace std::placeholders;
+
+		if (m_accept_host_key_handler)
+		{
+			m_proxy->set_accept_host_key_handler([this]
+				(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)
+				{
+					return this->m_accept_host_key_handler(host, algorithm, key, state);
+				});
+		}
+
+		m_channel->async_open(
+			[op = std::move(op)](const boost::system::error_code &ec) {
+				op->complete(ec);
+			});
+	}
 }
 
 void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
@@ -668,6 +654,13 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 
 	switch (op->m_type)
 	{
+		// case wait_type::open:
+		// 	m_channel->async_wait(channel::wait_type::open,
+		// 		[wait_op = std::move(op)](const boost::system::error_code ec) {
+		// 			wait_op->complete(ec);
+		// 		});
+		// 	break;
+
 		case wait_type::read:
 			m_channel->async_wait(channel::wait_type::read,
 				[wait_op = std::move(op)](const boost::system::error_code ec) {

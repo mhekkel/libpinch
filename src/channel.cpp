@@ -71,14 +71,14 @@ void channel::closed()
 	m_wait_ops.clear();
 }
 
-// void channel::disconnect(bool disconnectProxy)
+// void channel::close(bool disconnectProxy)
 // {
-// 	m_connection->disconnect();
+// 	m_connection->close();
 
 // 	auto proxy = m_connection->get_proxy();
 
 // 	if (proxy != nullptr and disconnectProxy)
-// 		proxy->disconnect();
+// 		proxy->close();
 // }
 
 void channel::succeeded()

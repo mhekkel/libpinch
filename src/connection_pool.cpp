@@ -144,7 +144,7 @@ void connection_pool::disconnect_all()
 	m_io_context.stop();
 
 	for (auto& e: m_entries)
-		e.connection->disconnect();
+		e.connection->close();
 }
 
 bool connection_pool::has_open_connections()
@@ -153,7 +153,7 @@ bool connection_pool::has_open_connections()
 
 	for (auto &e : m_entries)
 	{
-		if (e.connection->is_connected())
+		if (e.connection->is_open())
 		{
 			connection_open = true;
 			break;
@@ -169,7 +169,7 @@ bool connection_pool::has_open_channels()
 
 	for (auto &e : m_entries)
 	{
-		if (e.connection->is_connected() and e.connection->has_open_channels())
+		if (e.connection->is_open() and e.connection->has_open_channels())
 		{
 			channel_open = true;
 			break;

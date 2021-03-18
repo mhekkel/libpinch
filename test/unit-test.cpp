@@ -39,7 +39,7 @@ void SetStdinEcho(bool enable)
 // 	// 	std::cout << std::endl;
 
 // 	// 	if (password.empty())
-// 	// 		connection->disconnect();
+// 	// 		connection->close();
 // 	// 	else
 // 	// 		connection->response({ password });
 // 	// });
@@ -56,7 +56,7 @@ void SetStdinEcho(bool enable)
 // 	// ch->open_with_pty(80, 24, "xterm", false, false, "", [ch, connection](boost::system::error_code ec) {
 // 	// 	std::cout << ec.message() << std::endl;
 
-// 	// 	connection->disconnect();
+// 	// 	connection->close();
 // 	// });
 
 //     auto work = boost::asio::make_work_guard(io_service);

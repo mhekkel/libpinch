@@ -232,7 +232,7 @@ void ssh_agent::update()
 		for (std::shared_ptr<basic_connection> connection : connections)
 		{
 			if (connection->uses_private_key(hash))
-				connection->disconnect();
+				connection->close();
 		}
 	}
 }

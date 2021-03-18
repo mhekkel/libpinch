@@ -81,16 +81,18 @@ namespace detail
 	/// \brief enum used in connection::async_wait
 	enum class connection_wait_type
 	{
+		open,
 		read,
 		write
 	};
 
 	/// \brief internal class used for the handshake in setting up a connection
-	struct async_connect_impl
+	struct async_open_connection_impl
 	{
 		enum class state_type
 		{
 			connect,
+			open_next,
 			start,
 			wrote_version,
 			reading,
@@ -118,9 +120,6 @@ namespace detail
 		void operator()(Self &self, boost::system::error_code ec = {},
 			std::size_t bytes_transferred = 0);
 
-		template <typename Self>
-		void failed(Self &self, boost::system::error_code ec);
-
 		void process_userauth_failure(ipacket &in, opacket &out,
 			boost::system::error_code &ec);
 		void process_userauth_info_request(ipacket &in, opacket &out,
@@ -132,7 +131,6 @@ namespace detail
 	class wait_connection_op : public operation
 	{
 	  public:
-		boost::system::error_code m_ec;
 		connection_wait_type m_type;
 	};
 
@@ -152,8 +150,7 @@ namespace detail
 		virtual void complete(const boost::system::error_code &ec = {},
 			std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
-
+			binder<Handler, boost::system::error_code> handler(m_handler, ec);
 			m_work.complete(handler, handler.m_handler);
 		}
 
@@ -173,6 +170,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	basic_connection(const basic_connection &) = delete;
 	basic_connection &operator=(const basic_connection &) = delete;
 
+	virtual ~basic_connection() {}
+
 	/// The type of the lowest layer.
 	using tcp_socket_type = boost::asio::ip::tcp::socket;
 	using lowest_layer_type = typename tcp_socket_type::lowest_layer_type;
@@ -184,16 +183,37 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	virtual lowest_layer_type &lowest_layer() = 0;
 	virtual const lowest_layer_type &lowest_layer() const = 0;
 
+	/// \brief Return the proxy for this connection, or null if this is a direct connection
+	virtual basic_connection *get_proxy() const
+	{
+		return nullptr;
+	}
+
 	virtual void open() = 0;
-	virtual bool is_open() const = 0;
 
-	using wait_type = detail::connection_wait_type;
+	virtual bool is_open() const
+	{
+		return next_layer_is_open() and m_auth_state == authenticated;
+	}
 
-	virtual ~basic_connection() {}
-
-	virtual void disconnect();
+	virtual void close();
 
 	void rekey();
+	void keep_alive();
+
+  protected:
+	virtual bool next_layer_is_open() const = 0;
+
+	template <typename Handler>
+	auto async_open_next_layer(Handler &&handler)
+	{
+		return boost::asio::async_initiate<Handler,
+			void(boost::system::error_code)>(
+			async_open_next_layer_impl{}, handler, this);
+	}
+
+  public:
+	using wait_type = detail::connection_wait_type;
 
 	template <typename Handler>
 	auto async_wait(wait_type type, Handler &&handler)
@@ -248,8 +268,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	void forward_agent(bool forward) { m_forward_agent = forward; }
 
-	void keep_alive();
-
 	void forward_port(const std::string &local_address, uint16_t local_port,
 		const std::string &remote_address, uint16_t remote_port);
 
@@ -265,18 +283,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		return m_crypto_engine.get_key_exchange_algorithm();
 	}
 
-  private:
-	void async_read()
-	{
-		boost::asio::async_read(
-			*this, m_response, boost::asio::transfer_at_least(1),
-			[self = this->shared_from_this()](const boost::system::error_code &ec,
-				size_t bytes_transferred) {
-				self->received_data(ec);
-			});
-	}
-
-  public:
 	/// \brief Returns true if the connection uses the public key \a pk_hash
 	bool uses_private_key(const blob &pk_hash)
 	{
@@ -372,13 +378,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		};
 	}
 
-	virtual bool is_connected() const { return m_auth_state == authenticated; }
-
 	// callbacks to be installed by owning object
-	friend struct detail::async_connect_impl;
+	friend struct detail::async_open_connection_impl;
 
 	template <typename Handler>
-	void async_connect(Handler &&handler, channel_ptr channel)
+	void async_open(Handler &&handler, channel_ptr channel)
 	{
 		switch (m_auth_state)
 		{
@@ -395,7 +399,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				m_auth_state = handshake;
 				m_channels.push_back(channel);
 				boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-					detail::async_connect_impl{m_response, this->shared_from_this(), m_user},
+					detail::async_open_connection_impl{m_response, this->shared_from_this(), m_user},
 					handler, *this);
 		}
 	}
@@ -443,6 +447,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	{
 	}
 
+	virtual void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) = 0;
+
 	bool receive_packet(ipacket &packet, boost::system::error_code &ec);
 
 	void received_data(boost::system::error_code ec);
@@ -456,6 +462,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	// --------------------------------------------------------------------
 
+  protected:
 	/// \brief async accept_host_key support
 	template <typename Handler, typename Executor>
 	host_key_reply async_accept_host_key(const std::string &host_name, const std::string &algorithm,
@@ -538,10 +545,19 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	bool m_forward_agent;
 	std::shared_ptr<port_forward_listener> m_port_forwarder;
 
+	// what is waiting
+	std::deque<detail::wait_connection_op *> m_waiting_ops;
+
 	// for rekeying
 	std::unique_ptr<key_exchange> m_kex;
 
 	// --------------------------------------------------------------------
+
+	struct async_open_next_layer_impl
+	{
+		template <typename Handler>
+		void operator()(Handler &&handler, basic_connection *connection);
+	};
 
 	struct async_read_impl
 	{
@@ -563,6 +579,17 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		void operator()(Handler &&handler, basic_connection *connection,
 			wait_type type);
 	};
+
+  private:
+	void async_read()
+	{
+		boost::asio::async_read(
+			*this, m_response, boost::asio::transfer_at_least(1),
+			[self = this->shared_from_this()](const boost::system::error_code &ec,
+				size_t bytes_transferred) {
+				self->received_data(ec);
+			});
+	}
 };
 
 // --------------------------------------------------------------------
@@ -601,18 +628,25 @@ class connection : public basic_connection
 		return m_next_layer.lowest_layer();
 	}
 
-	virtual void disconnect() override
+	virtual void close() override
 	{
-		basic_connection::disconnect();
+		basic_connection::close();
 
 		m_next_layer.close();
 	}
 
 	virtual void open() override;
 
-	virtual bool is_open() const override { return m_next_layer.is_open(); }
+	virtual bool next_layer_is_open() const override
+	{
+		return m_next_layer.is_open();
+	}
 
   private:
+	void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) override;
+
+	friend async_open_next_layer_impl;
+
 	boost::asio::ip::tcp::socket m_next_layer;
 };
 
@@ -644,15 +678,23 @@ class proxied_connection : public basic_connection
 
 	lowest_layer_type &lowest_layer() override;
 
-	virtual void disconnect() override;
+	basic_connection *get_proxy() const override
+	{
+		return m_proxy.get();
+	}
+
+	virtual void close() override;
 
 	virtual void open() override;
-	virtual bool is_open() const override;
+
+	virtual bool next_layer_is_open() const override;
 
   private:
 	friend async_wait_impl;
+	friend async_open_next_layer_impl;
 
 	void do_wait(std::unique_ptr<detail::wait_connection_op> op);
+	void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) override;
 
 	std::shared_ptr<basic_connection> m_proxy;
 	std::shared_ptr<channel> m_channel;
@@ -660,6 +702,14 @@ class proxied_connection : public basic_connection
 };
 
 // --------------------------------------------------------------------
+
+template <typename Handler>
+void basic_connection::async_open_next_layer_impl::operator()(Handler &&handler, basic_connection *connection)
+{
+	connection->open_next_layer(
+		std::unique_ptr<detail::wait_connection_op>(
+			new detail::wait_connection_handler(std::move(handler), connection->get_executor(), wait_type::open)));
+}
 
 template <typename Handler, typename MutableBufferSequence>
 void basic_connection::async_read_impl::operator()(
@@ -740,20 +790,32 @@ namespace detail
 {
 
 	template <typename Self>
-	void async_connect_impl::operator()(Self &self, boost::system::error_code ec,
+	void async_open_connection_impl::operator()(Self &self, boost::system::error_code ec,
 		std::size_t bytes_transferred)
 	{
+		auto complete = [&self, conn = this->conn](const boost::system::error_code& ec)
+		{
+			conn->handle_error(ec);
+			self.complete(ec);
+		};
+
 		if (ec)
 		{
-			failed(self, ec);
+			complete(ec);
 			return;
 		}
 
 		switch (state)
 		{
 			case state_type::connect:
-				if (not conn->is_open())
-					conn->open();
+				if (not conn->next_layer_is_open())
+				{
+					state = state_type::open_next;
+					conn->async_open_next_layer(std::move(self));
+					return;
+				}
+
+			case state_type::open_next:
 				state = state_type::start;
 				conn->async_wait(connection::wait_type::write, std::move(self));
 				return;
@@ -781,8 +843,7 @@ namespace detail
 
 				if (host_version.substr(0, 7) != "SSH-2.0")
 				{
-					failed(self,
-						error::make_error_code(error::protocol_version_not_supported));
+					self.complete(error::make_error_code(error::protocol_version_not_supported));
 					return;
 				}
 
@@ -818,7 +879,7 @@ namespace detail
 
 						if (ec)
 						{
-							failed(self, ec);
+							complete(ec);
 							return;
 						}
 
@@ -846,7 +907,7 @@ namespace detail
 
 					if (ec)
 					{
-						failed(self, ec);
+						complete(ec);
 						return;
 					}
 
@@ -911,7 +972,7 @@ namespace detail
 
 					if (ec)
 					{
-						failed(self, ec);
+						complete(ec);
 						return;
 					}
 
@@ -922,13 +983,6 @@ namespace detail
 				}
 			}
 		}
-	}
-
-	template <typename Self>
-	void async_connect_impl::failed(Self &self, boost::system::error_code ec)
-	{
-		conn->handle_error(ec);
-		self.complete(ec);
 	}
 
 } // namespace detail

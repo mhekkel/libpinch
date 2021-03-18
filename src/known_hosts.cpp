@@ -79,6 +79,11 @@ void known_hosts::save_host_file(std::ostream& file)
 
 // --------------------------------------------------------------------
 
+void known_hosts::add_host_key(const std::string &host, const std::string &algorithm, const std::string &key)
+{
+	m_host_keys.emplace_back(host_key{host, algorithm, decode_base64(key)});
+}
+
 void known_hosts::add_host_key(const std::string &host, const std::string &algorithm, const blob &key)
 {
 	blob salt = random_hash();

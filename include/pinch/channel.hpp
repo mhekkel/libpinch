@@ -37,8 +37,6 @@ namespace detail
 
 	class open_channel_op : public operation
 	{
-	  public:
-		boost::system::error_code m_ec;
 	};
 
 	template <typename Handler, typename IoExecutor>
@@ -52,7 +50,7 @@ namespace detail
 		virtual void complete(const boost::system::error_code &ec,
 		                      std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
+			binder<Handler, boost::system::error_code> handler(m_handler, ec);
 
 			m_work.complete(handler, handler.m_handler);
 		}
@@ -66,7 +64,6 @@ namespace detail
 	class read_channel_op : public operation
 	{
 	  public:
-		boost::system::error_code m_ec;
 		std::size_t m_bytes_transferred = 0;
 
 		virtual std::deque<char>::iterator
@@ -88,7 +85,7 @@ namespace detail
 		                      std::size_t bytes_transferred = 0) override
 		{
 			binder<Handler, boost::system::error_code, std::size_t> handler(
-				m_handler, m_ec, m_bytes_transferred);
+				m_handler, ec, m_bytes_transferred);
 
 			m_work.complete(handler, handler.m_handler);
 		}
@@ -131,7 +128,6 @@ namespace detail
 	class write_channel_op : public operation
 	{
 	  public:
-		boost::system::error_code m_ec;
 		std::size_t m_bytes_transferred = 0;
 
 		virtual bool empty() const = 0;
@@ -153,7 +149,7 @@ namespace detail
 		                      std::size_t bytes_transferred = 0) override
 		{
 			binder<Handler, boost::system::error_code, std::size_t> handler(
-				m_handler, m_ec, m_bytes_transferred);
+				m_handler, ec, m_bytes_transferred);
 
 			m_work.complete(handler, handler.m_handler);
 		}
@@ -184,7 +180,6 @@ namespace detail
 	class wait_channel_op : public operation
 	{
 	  public:
-		boost::system::error_code m_ec;
 		channel_wait_type m_type;
 	};
 
@@ -203,7 +198,7 @@ namespace detail
 		virtual void complete(const boost::system::error_code &ec = {},
 		                      std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, boost::system::error_code> handler(m_handler, m_ec);
+			binder<Handler, boost::system::error_code> handler(m_handler, ec);
 
 			m_work.complete(handler, handler.m_handler);
 		}
@@ -253,13 +248,21 @@ class channel : public std::enable_shared_from_this<channel>
 		// assert(m_open_handler == nullptr);
 		m_open_handler.reset(new handler_type(std::move(handler), get_executor()));
 
-		if (m_connection->is_connected())
+		if (m_connection->is_open())
 			this->open();
 		else
-			m_connection->async_connect(
-				[self = shared_from_this()](const boost::system::error_code &ec) {
+			m_connection->async_open(
+				[self = shared_from_this(), this](const boost::system::error_code &ec) {
 					if (ec)
+					{
+						if (m_open_handler)
+						{
+							m_open_handler->complete(ec);
+							m_open_handler.reset();
+						}
+
 						self->error(ec.message(), "");
+					}
 				},
 				shared_from_this());
 	}
