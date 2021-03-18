@@ -31,6 +31,8 @@ void channel::open()
 
 void channel::opened()
 {
+	if (m_my_channel_id == 0)
+		m_my_channel_id = s_next_channel_id++;
 }
 
 void channel::close()
