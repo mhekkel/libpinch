@@ -171,9 +171,19 @@ void basic_connection::userauth_success(const std::string &host_version, const b
 	// start the read loop
 	async_read();
 
-	// tell all opening channels to open
-	for (auto ch : m_channels)
-		ch->open();
+	// tell all the waiting ops
+	auto wait_ops = m_waiting_ops;
+
+	for (auto &op : wait_ops)
+	{
+		if (op->m_type != wait_type::open)
+			continue;
+
+		m_waiting_ops.erase(std::find(m_waiting_ops.begin(), m_waiting_ops.end(), op));
+
+		op->complete();
+		delete op;
+	}
 }
 
 void basic_connection::handle_error(const boost::system::error_code &ec)

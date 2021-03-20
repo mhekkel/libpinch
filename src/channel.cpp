@@ -24,26 +24,19 @@ void channel::setup(ipacket &in)
 
 void channel::open()
 {
-	m_my_window_size = kWindowSize;
-	m_my_channel_id = s_next_channel_id++;
-	m_connection->open_channel(shared_from_this(), m_my_channel_id);
+	async_open([](boost::system::error_code){});
 }
 
 void channel::opened()
 {
 	if (m_my_channel_id == 0)
 		m_my_channel_id = s_next_channel_id++;
+
+	check_wait();
 }
 
 void channel::close()
 {
-	if (m_open_handler)
-	{
-		std::unique_ptr<detail::open_channel_op> handler;
-		std::swap(m_open_handler, handler);
-		handler->complete(make_error_code(error::by_application), 0);
-	}
-
 	m_connection->close_channel(shared_from_this(), m_host_channel_id);
 }
 
@@ -188,14 +181,6 @@ void channel::process(ipacket &in)
 			m_channel_open = true;
 			m_eof = false;
 			opened();
-
-			if (m_open_handler)
-			{
-				std::unique_ptr<detail::open_channel_op> handler;
-				std::swap(m_open_handler, handler);
-				handler->complete(boost::system::error_code(), 0);
-			}
-
 			check_wait();
 			break;
 
@@ -209,13 +194,6 @@ void channel::process(ipacket &in)
 			error(reason, "en");
 
 			m_connection->close_channel(shared_from_this(), 0);
-
-			if (m_open_handler)
-			{
-				auto handler = std::move(m_open_handler);
-				handler->complete(error::make_error_code(error::connection_lost));
-			}
-
 			break;
 		}
 
@@ -405,6 +383,16 @@ void channel::check_wait()
 	{
 		switch (op->m_type)
 		{
+			case wait_type::open:
+				if (is_open())
+				{
+					m_wait_ops.erase(std::find(m_wait_ops.begin(), m_wait_ops.end(), op));
+
+					op->complete();
+					delete op;
+				}
+				break;
+
 			case wait_type::read:
 				if (is_open() and m_my_window_size > 0)
 				{

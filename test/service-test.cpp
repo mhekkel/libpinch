@@ -174,9 +174,9 @@ int main()
 	my_queue queue;
 	my_executor executor{&io_context, &queue};
 
-	// auto conn = pool.get("maarten", "localhost", 2022);
+	auto conn = pool.get("maarten", "localhost", 2022);
 	// auto conn = pool.get("maarten", "s4", 22);
-	auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
+	// auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
 
 	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
 	auto channel = std::make_shared<pinch::terminal_channel>(conn);
@@ -199,13 +199,20 @@ int main()
 
 	auto& known_hosts = pinch::known_hosts::instance();
 	// known_hosts.load_host_file("/home/maarten/.ssh/known_hosts");
+	// conn->set_accept_host_key_handler(
+	// 	[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
+	// 		std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
+	// 				  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
+	// 		return pinch::host_key_reply::trust_once;
+	// 	},
+	// 	executor);
+
 	conn->set_accept_host_key_handler(
 		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
 			std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
 					  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
 			return pinch::host_key_reply::trust_once;
-		},
-		executor);
+		});
 
 	auto open_cb = boost::asio::bind_executor(executor,
 		[t = channel, conn](const boost::system::error_code &ec) {

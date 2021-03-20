@@ -91,13 +91,15 @@ namespace detail
 	{
 		enum class state_type
 		{
+			start,
 			connect,
 			open_next,
-			start,
+			handshake,
 			wrote_version,
 			reading,
 			rekeying,
-			authenticating
+			authenticating,
+			wait
 		};
 
 		boost::asio::streambuf &response;
@@ -105,7 +107,7 @@ namespace detail
 		std::string user;
 		int m_password_attempts = 0;
 
-		state_type state = state_type::connect;
+		state_type state = state_type::start;
 		auth_state_type auth_state = auth_state_type::none;
 
 		std::string host_version;
@@ -382,26 +384,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	friend struct detail::async_open_connection_impl;
 
 	template <typename Handler>
-	void async_open(Handler &&handler, channel_ptr channel)
+	auto async_open(Handler &&handler)
 	{
-		switch (m_auth_state)
-		{
-			case authenticated:
-				assert(false);
-				handler(error::make_error_code(error::protocol_error));
-				break;
-
-			case handshake:
-				m_channels.push_back(channel);
-				break;
-
-			case none:
-				m_auth_state = handshake;
-				m_channels.push_back(channel);
-				boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-					detail::async_open_connection_impl{m_response, this->shared_from_this(), m_user},
-					handler, *this);
-		}
+		boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+			detail::async_open_connection_impl{m_response, this->shared_from_this(), m_user},
+			handler, *this);
 	}
 
 	virtual void handle_error(const boost::system::error_code &ec);
@@ -759,6 +746,16 @@ void basic_connection::async_wait_impl::operator()(
 
 	switch (type)
 	{
+		case wait_type::open:
+			if (c)
+				c->next_layer().async_wait(boost::asio::socket_base::wait_read,
+					std::move(handler));
+			else
+				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(
+					new detail::wait_connection_handler(std::move(handler),
+						pc->get_executor(), type)));
+			break;
+
 		case wait_type::read:
 			if (c)
 				c->next_layer().async_wait(boost::asio::socket_base::wait_read,
@@ -805,64 +802,88 @@ namespace detail
 			return;
 		}
 
-		switch (state)
+		for (;;)
 		{
-			case state_type::connect:
-				if (not conn->next_layer_is_open())
+
+			switch (state)
+			{
+				case state_type::start:
+					switch (conn->m_auth_state)
+					{
+						case connection::none:
+							conn->m_auth_state = connection::handshake; 
+							state = state_type::connect;
+							break;
+						
+						case connection::handshake:
+							state = state_type::wait;
+							conn->async_wait(connection_wait_type::open, std::move(self));
+							return;
+						
+						case connection::authenticated:
+							self.complete({});
+							break;
+					}
+					break;
+				
+				case state_type::wait:
+					self.complete({});
+					break;
+
+				case state_type::connect:
+					if (not conn->next_layer_is_open())
+					{
+						state = state_type::open_next;
+						conn->async_open_next_layer(std::move(self));
+						return;
+					}
+
+				case state_type::open_next:
+					state = state_type::handshake;
+					conn->async_wait(connection::wait_type::write, std::move(self));
+					return;
+
+				case state_type::handshake:
 				{
-					state = state_type::open_next;
-					conn->async_open_next_layer(std::move(self));
+					std::ostream out(request.get());
+					out << kSSHVersionString << "\r\n";
+					state = state_type::wrote_version;
+					boost::asio::async_write(*conn, *request, std::move(self));
 					return;
 				}
 
-			case state_type::open_next:
-				state = state_type::start;
-				conn->async_wait(connection::wait_type::write, std::move(self));
-				return;
+				case state_type::wrote_version:
+					state = state_type::reading;
+					boost::asio::async_read_until(*conn, response, "\n", std::move(self));
+					return;
 
-			case state_type::start:
-			{
-				std::ostream out(request.get());
-				out << kSSHVersionString << "\r\n";
-				state = state_type::wrote_version;
-				boost::asio::async_write(*conn, *request, std::move(self));
-				return;
-			}
-
-			case state_type::wrote_version:
-				state = state_type::reading;
-				boost::asio::async_read_until(*conn, response, "\n", std::move(self));
-				return;
-
-			case state_type::reading:
-			{
-				std::istream response_stream(&response);
-				std::getline(response_stream, host_version);
-				while (std::isspace(host_version.back()))
-					host_version.pop_back();
-
-				if (host_version.substr(0, 7) != "SSH-2.0")
+				case state_type::reading:
 				{
-					self.complete(error::make_error_code(error::protocol_version_not_supported));
+					std::istream response_stream(&response);
+					std::getline(response_stream, host_version);
+					while (std::isspace(host_version.back()))
+						host_version.pop_back();
+
+					if (host_version.substr(0, 7) != "SSH-2.0")
+					{
+						self.complete(error::make_error_code(error::protocol_version_not_supported));
+						return;
+					}
+
+					state = state_type::rekeying;
+
+					kex = std::make_unique<key_exchange>(host_version,
+						std::bind(&connection::accept_host_key, conn, std::placeholders::_1, std::placeholders::_2));
+
+					conn->async_write(kex->init());
+
+					boost::asio::async_read(*conn, response,
+						boost::asio::transfer_at_least(8),
+						std::move(self));
 					return;
 				}
 
-				state = state_type::rekeying;
-
-				kex = std::make_unique<key_exchange>(host_version,
-					std::bind(&connection::accept_host_key, conn, std::placeholders::_1, std::placeholders::_2));
-
-				conn->async_write(kex->init());
-
-				boost::asio::async_read(*conn, response,
-					boost::asio::transfer_at_least(8),
-					std::move(self));
-				return;
-			}
-
-			case state_type::rekeying:
-			{
-				for (;;)
+				case state_type::rekeying:
 				{
 					if (not conn->receive_packet(*packet, ec) and not ec)
 					{
@@ -915,12 +936,10 @@ namespace detail
 						conn->async_write(std::move(out));
 
 					packet->clear();
+					break;
 				}
-			}
 
-			case state_type::authenticating:
-			{
-				for (;;)
+				case state_type::authenticating:
 				{
 					if (not conn->receive_packet(*packet, ec) and not ec)
 					{
@@ -980,6 +999,7 @@ namespace detail
 						conn->async_write(std::move(out));
 
 					packet->clear();
+					break;
 				}
 			}
 		}

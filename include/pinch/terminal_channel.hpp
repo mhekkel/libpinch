@@ -21,7 +21,7 @@ class terminal_channel : public channel
 	virtual void opened();
 
 	template <typename Handler>
-	void open_with_pty(uint32_t width, uint32_t height,
+	auto open_with_pty(uint32_t width, uint32_t height,
 	                   const std::string &terminal_type,
 	                   bool forward_agent, bool forward_x11,
 	                   const std::string &ssh_command,
@@ -34,7 +34,7 @@ class terminal_channel : public channel
 		m_forward_x11 = forward_x11;
 		m_command = ssh_command;
 
-		async_open(std::move(handler));
+		return async_open(std::move(handler));
 	}
 
 	void open_with_pty(uint32_t width, uint32_t height,

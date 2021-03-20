@@ -31,6 +31,7 @@ namespace detail
 
 	enum class channel_wait_type
 	{
+		open,
 		read,
 		write
 	};
@@ -241,30 +242,39 @@ class channel : public std::enable_shared_from_this<channel>
 	typedef std::list<environment_variable> environment;
 
 	template <typename Handler>
-	void async_open(Handler &&handler)
+	auto async_open(Handler &&handler)
 	{
-		using handler_type = detail::open_channel_handler<Handler, executor_type>;
+		enum { start, open_connection, open_channel };
 
-		// assert(m_open_handler == nullptr);
-		m_open_handler.reset(new handler_type(std::move(handler), get_executor()));
-
-		if (m_connection->is_open())
-			this->open();
-		else
-			m_connection->async_open(
-				[self = shared_from_this(), this](const boost::system::error_code &ec) {
-					if (ec)
+		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+			[
+				state = start, this, me = shared_from_this()
+			]
+			(auto& self, const boost::system::error_code ec = {}, std::size_t = {}) mutable
+			{
+				if (not ec)
+				{
+					if (state == start and not m_connection->is_open())
 					{
-						if (m_open_handler)
-						{
-							m_open_handler->complete(ec);
-							m_open_handler.reset();
-						}
-
-						self->error(ec.message(), "");
+						state = open_connection;
+						m_connection->async_open(std::move(self));
+						return;
 					}
-				},
-				shared_from_this());
+
+					if (state == open_connection)
+					{
+						state = open_channel;
+						m_my_window_size = kWindowSize;
+						m_my_channel_id = s_next_channel_id++;
+						m_connection->open_channel(shared_from_this(), m_my_channel_id);
+						async_wait(wait_type::open, std::move(self));
+						return;
+					}
+				}
+
+				self.complete(ec);
+			}, handler
+		);
 	}
 
 	void open();
@@ -427,7 +437,6 @@ class channel : public std::enable_shared_from_this<channel>
 
   protected:
 	std::shared_ptr<basic_connection> m_connection;
-	std::unique_ptr<detail::open_channel_op> m_open_handler;
 
 	uint32_t m_max_send_packet_size;
 	bool m_channel_open = false;
