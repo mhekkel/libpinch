@@ -97,7 +97,6 @@ x11_channel::~x11_channel()
 
 void x11_channel::opened()
 {
-std::cerr << my_channel_id() << ' ' << "x11 channel opened" << std::endl;
 	channel::opened();
 
 	try
@@ -142,14 +141,12 @@ std::cerr << my_channel_id() << ' ' << "x11 channel opened" << std::endl;
 
 void x11_channel::closed()
 {
-std::cerr << my_channel_id() << ' ' << "x11 channel closed" << std::endl;
 	m_impl.reset(nullptr);
 	channel::closed();
 }
 
 void x11_channel::receive_data(const char *data, size_t size)
 {
-std::cerr << my_channel_id() << ' ' << "x11 channel received " << size << " bytes of data" << std::endl;
 	std::shared_ptr<boost::asio::streambuf> request(new boost::asio::streambuf);
 	std::ostream out(request.get());
 
@@ -217,7 +214,6 @@ bool x11_channel::check_validation()
 
 void x11_channel::receive_raw(const boost::system::error_code &ec, size_t size)
 {
-std::cerr << my_channel_id() << ' ' << "x11 channel received raw " << size << " bytes of data" << std::endl;
 	if (ec)
 		close();
 	else
@@ -232,8 +228,6 @@ std::cerr << my_channel_id() << ' ' << "x11 channel received raw " << size << " 
 			size_t k = static_cast<size_t>(in.readsome(buffer, sizeof(buffer)));
 			if (k == 0)
 				break;
-
-std::cerr << my_channel_id() << ' ' << "transfer " << k << " bytes of data" << std::endl;
 
 			send_data(buffer, k,
 				[self](const boost::system::error_code &ec, size_t) {
