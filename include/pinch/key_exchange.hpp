@@ -26,7 +26,6 @@ std::string choose_protocol(const std::string &server, const std::string &client
 
 // --------------------------------------------------------------------
 
-using verify_host_key_func = std::function<bool(const std::string &, const blob &)>;
 struct key_exchange_impl;
 
 class key_exchange
@@ -35,8 +34,8 @@ class key_exchange
 	// configure before connecting
 	static void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
 
-	key_exchange(const std::string &host_version, verify_host_key_func verify_cb);
-	key_exchange(const std::string &host_version, const blob &session_id, verify_host_key_func verify_cb);
+	key_exchange(const std::string &host_version);
+	key_exchange(const std::string &host_version, const blob &session_id);
 	~key_exchange();
 
 	key_exchange(const key_exchange &) = delete;
@@ -66,6 +65,9 @@ class key_exchange
 
 	ipacket host_payload() const;
 
+	const std::string& get_host_key_pk_type() const	{ return m_pk_type; }
+	const blob& get_host_key() const { return m_host_key; }
+
   protected:
 	friend struct key_exchange_impl;
 
@@ -77,7 +79,9 @@ class key_exchange
 	blob m_session_id;
 	blob m_host_payload, m_my_payload;
 	bool m_first_kex_packet_follows;
-	verify_host_key_func cb_verify_host_key;
+	
+	std::string m_pk_type;
+	blob m_host_key;
 
 	// --------------------------------------------------------------------
 

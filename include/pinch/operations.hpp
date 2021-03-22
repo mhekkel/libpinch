@@ -118,3 +118,51 @@ struct binder
 };
 
 } // namespace pinch::detail
+
+// --------------------------------------------------------------------
+/// \brief A wrapper around a function to receive the result async
+
+template<typename Handler, typename Executor, typename ...Args, typename Function>
+auto async_function_wrapper(Handler &&handler, Executor &executor, Function func, Args... args)
+{
+	using result_type = decltype(func(args...));
+
+	enum state { start, running };
+
+	std::packaged_task<result_type()> task(std::bind(func, args...));
+	std::future<result_type> result = task.get_future();
+
+	return boost::asio::async_compose<Handler, void(boost::system::error_code, result_type)>(
+		[
+			task = std::move(task),
+			result = std::move(result),
+			state = start,
+			executor
+		]
+		(auto& self, boost::system::error_code ec = {}, result_type r = {}) mutable
+		{
+			std::cout << " async handler in thread: " << std::this_thread::get_id() << std::endl;
+			if (not ec)
+			{
+				if (state == start)
+				{
+					state = running;
+					task();
+					boost::asio::dispatch(executor, std::move(self));
+					return;
+				}
+
+				try
+				{
+					r = result.get();
+				}
+				catch (...)
+				{
+					ec = pinch::error::make_error_code(pinch::error::by_application);
+				}
+			}
+
+			self.complete(ec, r);
+		}, handler, executor
+	);
+}

@@ -46,6 +46,17 @@ enum class auth_state_type
 	error
 };
 
+/// \brief The reply from the accept_host_key callback.
+enum class host_key_reply
+{
+	reject,     ///< Do not trust this host key and abort connecting
+	trust_once, ///< Trust the host key, but do not store it for future use
+	trusted     ///< Trust the key and store it
+};
+
+/// \brief The callback signature for accepting unknown or invalid host keys
+using accept_host_key_handler_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)>;
+
 /// \brief keyboard interactive support
 ///
 /// This is used in the credentials callback, the str field contains the string
@@ -98,6 +109,7 @@ namespace detail
 			wrote_version,
 			reading,
 			rekeying,
+			check_host_key,
 			authenticating,
 			wait
 		};
@@ -300,7 +312,26 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	bool accept_host_key(const std::string &algorithm, const blob &key)
 	{
-		return known_hosts::instance().accept_host_key(m_host, algorithm, key, m_accept_host_key_handler);
+		auto state = known_hosts::instance().accept_host_key(m_host, algorithm, key);
+
+		bool result = state == host_key_state::match;
+		if (not result and m_accept_host_key_handler)
+		{
+			switch (m_accept_host_key_handler(m_host, algorithm, key, state))
+			{
+				case host_key_reply::trusted:
+					known_hosts::instance().add_host_key(m_host, algorithm, key);
+
+				case host_key_reply::trust_once:
+					result = true;
+					break;
+
+				default:
+					break;
+			}
+		}
+		
+		return result;
 	}
 
 	/// \brief register a function that will return whether a host key
@@ -325,9 +356,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	{
 		static_assert(std::is_assignable_v<accept_host_key_handler_type, decltype(handler)>, "Invalid handler");
 
-		m_accept_host_key_handler = [&executor, this, handler = std::move(handler)](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state) {
-			return async_accept_host_key(host_name, algorithm, key, state, handler, executor);
-		};
+		// m_accept_host_key_handler = [&executor, this, handler = std::move(handler)](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, host_key_state state) {
+		// 	return async_accept_host_key(host_name, algorithm, key, state, handler, executor);
+		// };
 	}
 
 	std::string provide_password()
@@ -450,37 +481,31 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	// --------------------------------------------------------------------
 
   protected:
+
 	/// \brief async accept_host_key support
-	template <typename Handler, typename Executor>
-	host_key_reply async_accept_host_key(const std::string &host_name, const std::string &algorithm,
-		const pinch::blob &key, host_key_state state, Handler &handler, Executor &executor)
+	template <typename Handler>
+	auto async_check_host_key(const std::string &algorithm, const pinch::blob &key, Handler &&handler)
 	{
-		std::packaged_task<host_key_reply()> validate_task(
-			[&] { return handler(host_name, algorithm, key, state); });
-
-		auto result = validate_task.get_future();
-
-		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
-
-		result.wait();
-
-		return result.get();
+		using namespace std::placeholders;
+		auto executor = boost::asio::get_associated_executor(m_accept_host_key_handler);
+		return async_function_wrapper(handler, executor, std::bind(&basic_connection::accept_host_key, this, _1, _2), algorithm, key);
 	}
 
 	/// \brief async password support
 	template <typename Handler, typename Executor>
 	std::string async_provide_password(Handler &handler, Executor &executor)
 	{
-		std::packaged_task<std::string()> validate_task(
-			[&] { return handler(); });
+		return "";
+		// std::packaged_task<std::string()> validate_task(
+		// 	[&] { return handler(); });
 
-		auto result = validate_task.get_future();
+		// auto result = validate_task.get_future();
 
-		boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
+		// boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable { task(); });
 
-		result.wait();
+		// result.wait();
 
-		return result.get();
+		// return result.get();
 	}
 
 	/// \brief async credentials support
@@ -804,7 +829,6 @@ namespace detail
 
 		for (;;)
 		{
-
 			switch (state)
 			{
 				case state_type::start:
@@ -872,8 +896,7 @@ namespace detail
 
 					state = state_type::rekeying;
 
-					kex = std::make_unique<key_exchange>(host_version,
-						std::bind(&connection::accept_host_key, conn, std::placeholders::_1, std::placeholders::_2));
+					kex = std::make_unique<key_exchange>(host_version);
 
 					conn->async_write(kex->init());
 
@@ -896,31 +919,12 @@ namespace detail
 					opacket out;
 					if (*packet == msg_newkeys)
 					{
-						conn->newkeys(*kex, ec);
-
-						if (ec)
-						{
-							complete(ec);
-							return;
-						}
-
-						state = state_type::authenticating;
-
-						out = msg_service_request;
-						out << "ssh-userauth";
-
-						// we might not be known yet
-						ssh_agent::instance().register_connection(conn);
-
-						// fetch the private keys
-						for (auto &pk : ssh_agent::instance())
-						{
-							opacket blob;
-							blob << pk;
-							private_keys.push_back(blob);
-						}
+						state = state_type::check_host_key;
+						conn->async_check_host_key(kex->get_host_key_pk_type(), kex->get_host_key(), std::move(self));
+						return;
 					}
-					else if (not kex->process(*packet, out, ec))
+					
+					if (not kex->process(*packet, out, ec))
 					{
 						if (not ec)
 							ec = error::make_error_code(error::key_exchange_failed);
@@ -936,6 +940,35 @@ namespace detail
 						conn->async_write(std::move(out));
 
 					packet->clear();
+					break;
+				}
+
+				case state_type::check_host_key:
+				{
+					conn->newkeys(*kex, ec);
+
+					if (ec)
+					{
+						complete(ec);
+						return;
+					}
+
+					state = state_type::authenticating;
+
+					opacket out = msg_service_request;
+					out << "ssh-userauth";
+					conn->async_write(std::move(out));
+
+					// we might not be known yet
+					ssh_agent::instance().register_connection(conn);
+
+					// fetch the private keys
+					for (auto &pk : ssh_agent::instance())
+					{
+						opacket blob;
+						blob << pk;
+						private_keys.push_back(blob);
+					}
 					break;
 				}
 

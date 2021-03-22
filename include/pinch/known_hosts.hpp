@@ -21,14 +21,6 @@
 namespace pinch
 {
 
-/// \brief The reply from the accept_host_key callback.
-enum class host_key_reply
-{
-	reject,     ///< Do not trust this host key and abort connecting
-	trust_once, ///< Trust the host key, but do not store it for future use
-	trusted     ///< Trust the key and store it
-};
-
 /// \brief The status for a host key's name/alg/key combo.
 enum class host_key_state
 {
@@ -36,9 +28,6 @@ enum class host_key_state
 	keys_differ, ///< There is a known host key, but the key values differ
 	match        ///< The key is known
 };
-
-/// \brief The callback signature
-using accept_host_key_handler_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)>;
 
 /// \brief The class known_hosts is used to keep track of already trusted host keys.
 
@@ -76,8 +65,7 @@ class known_hosts
 	void add_host_key(const std::string &host, const std::string &algorithm, const blob &key);
 
 	/// \brief Return true if the host/algorithm/key pair should be trusted
-	bool accept_host_key(const std::string &host, const std::string &algorithm, const blob &key,
-		accept_host_key_handler_type& handler);
+	host_key_state accept_host_key(const std::string &host, const std::string &algorithm, const blob &key);
 
 	/// \brief making the known_hosts iterable, but const only
 	using iterator = std::vector<host_key>::const_iterator;

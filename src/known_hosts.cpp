@@ -95,43 +95,19 @@ void known_hosts::add_host_key(const std::string &host, const std::string &algor
 	m_host_keys.emplace_back(host_key{name, algorithm, key});
 }
 
-bool known_hosts::accept_host_key(const std::string &host, const std::string &algorithm, const blob &key,
-	accept_host_key_handler_type& handler)
+host_key_state known_hosts::accept_host_key(const std::string &host, const std::string &algorithm, const blob &key)
 {
-	bool result = false;
 	host_key_state state = host_key_state::no_match;
 
 	for (auto &hk : m_host_keys)
 	{
 		state = hk.compare(host, algorithm, key);
 
-		if (state == host_key_state::match)
-		{
-			result = true;
-			break;
-		}
-
-		if (state == host_key_state::keys_differ)
+		if (state == host_key_state::match or state == host_key_state::keys_differ)
 			break;
 	}
 
-	if (not result and handler)
-	{
-		switch (handler(host, algorithm, key, state))
-		{
-			case host_key_reply::trusted:
-				add_host_key(host, algorithm, key);
-
-			case host_key_reply::trust_once:
-				result = true;
-				break;
-
-			default:
-				break;
-		}
-	}
-
-	return result;
+	return state;
 }
 
 } // namespace pinch

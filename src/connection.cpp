@@ -217,8 +217,7 @@ void basic_connection::close()
 
 void basic_connection::rekey()
 {
-	m_kex.reset(new key_exchange(m_host_version, m_session_id,
-		std::bind(&connection::accept_host_key, this, std::placeholders::_1, std::placeholders::_2)));
+	m_kex.reset(new key_exchange(m_host_version, m_session_id));
 	async_write(m_kex->init());
 }
 

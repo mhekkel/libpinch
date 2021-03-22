@@ -42,7 +42,7 @@ class my_queue
 	struct handler_impl : public handler_base
 	{
 		handler_impl(Handler &&handler)
-			: m_handler(std::move(handler))
+			: m_handler(std::forward<Handler>(handler))
 		{
 		}
 
@@ -62,16 +62,38 @@ class my_queue
 		m_cv.notify_one();
 	}
 
-	void execute_one()
+	// void execute_one()
+	// {
+	// 	std::unique_lock lock(m_mutex);
+	// 	m_cv.wait_for(lock, std::chrono::milliseconds(100));
+	// 	if (not m_q.empty())
+	// 	{
+	// 		auto task = std::move(m_q.front());
+	// 		m_q.pop_front();
+	// 		lock.release();
+
+	// 		task->execute();
+	// 	}
+	// }
+
+	void run()
 	{
-		std::unique_lock lock(m_mutex);
-		m_cv.wait_for(lock, std::chrono::milliseconds(100));
-		if (not m_q.empty())
+		for (;;)
 		{
-			m_q.front()->execute();
-			m_q.pop_front();
+			{
+				std::unique_lock lock(m_mutex);
+				m_cv.wait_for(lock, std::chrono::milliseconds(100));
+			}
+
+			if (not m_q.empty())
+			{
+				auto task = std::move(m_q.front());
+				m_q.pop_front();
+				task->execute();
+			}
 		}
 	}
+
 
 	std::mutex m_mutex;
 	std::condition_variable m_cv;
@@ -107,7 +129,7 @@ class my_executor
 	}
 
 	template <class F>
-	void execute(F f) const
+	void execute(F &&f) const
 	{
 		m_queue->submit(std::move(f));
 	}
@@ -157,6 +179,61 @@ bool async_validate(const std::string &host_name, const std::string &algorithm, 
 	return result.get();
 }
 
+
+// another attempt to fetch a result asynchronously
+
+bool validate_host_key(const std::string& host, const std::string& algo, const pinch::blob &blob)
+{
+	std::cout << " validate_host_key in thread: " << std::this_thread::get_id() << std::endl;
+	return true;
+}
+
+template<typename Handler, typename Executor, typename ...Args, typename Function>
+auto async_val(Handler &&handler, Executor &executor, Function func, Args... args)
+{
+	using result_type = decltype(func(args...));
+
+	enum state { start, running };
+
+	std::packaged_task<result_type()> task(std::bind(func, args...));
+	std::future<result_type> result = task.get_future();
+
+	return boost::asio::async_compose<Handler, void(boost::system::error_code, result_type)>(
+		[
+			task = std::move(task),
+			result = std::move(result),
+			state = start,
+			executor
+		]
+		(auto& self, boost::system::error_code ec = {}, result_type r = {}) mutable
+		{
+			std::cout << " async handler in thread: " << std::this_thread::get_id() << std::endl;
+			if (not ec)
+			{
+				if (state == start)
+				{
+					state = running;
+					task();
+					boost::asio::dispatch(executor, std::move(self));
+					return;
+				}
+
+				try
+				{
+					r = result.get();
+				}
+				catch (...)
+				{
+					ec = pinch::error::make_error_code(pinch::error::host_key_not_verifiable);
+				}
+			}
+
+			self.complete(ec, r);
+		}, handler, executor
+	);
+}
+
+
 // --------------------------------------------------------------------
 
 int main()
@@ -197,22 +274,22 @@ int main()
 
 	// auto validate = std::bind(async_validate<decltype(v_cb), my_executor>, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, v_cb, executor);
 
-	auto& known_hosts = pinch::known_hosts::instance();
+	auto &known_hosts = pinch::known_hosts::instance();
 	// known_hosts.load_host_file("/home/maarten/.ssh/known_hosts");
-	// conn->set_accept_host_key_handler(
-	// 	[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
-	// 		std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
-	// 				  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
-	// 		return pinch::host_key_reply::trust_once;
-	// 	},
-	// 	executor);
-
 	conn->set_accept_host_key_handler(
 		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
 			std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
 					  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
 			return pinch::host_key_reply::trust_once;
-		});
+		},
+		executor);
+
+	// conn->set_accept_host_key_handler(
+	// 	[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
+	// 		std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
+	// 				  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
+	// 		return pinch::host_key_reply::trust_once;
+	// 	});
 
 	auto open_cb = boost::asio::bind_executor(executor,
 		[t = channel, conn](const boost::system::error_code &ec) {
@@ -237,13 +314,19 @@ int main()
 		}
 	});
 
+	auto vh = [](boost::system::error_code ec, bool b) 
+	{
+		std::cout << "vh handler, ec = " << ec.message()
+				  << " thread: " << std::this_thread::get_id() << std::endl
+				  << "b is " << std::boolalpha << b << std::endl;
+	};
+
+	async_val(std::move(vh), executor, &validate_host_key, "s4", "sha-rsa", pinch::blob{});
+
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
 	sigset.async_wait([&io_context](boost::system::error_code, int signal) { io_context.stop(); });
 
-	for (;;)
-	{
-		queue.execute_one();
-	}
+	queue.run();
 
 	if (t.joinable())
 		t.join();
