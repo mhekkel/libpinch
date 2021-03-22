@@ -127,7 +127,7 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 {
 	using result_type = decltype(func(args...));
 
-	enum state { start, running };
+	enum state { start, running, fetch };
 
 	std::packaged_task<result_type()> task(std::bind(func, args...));
 	std::future<result_type> result = task.get_future();
@@ -146,6 +146,13 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 				if (state == start)
 				{
 					state = running;
+					boost::asio::dispatch(executor, std::move(self));
+					return;
+				}
+
+				if (state == running)
+				{
+					state = fetch;
 					task();
 					boost::asio::dispatch(executor, std::move(self));
 					return;
@@ -162,6 +169,6 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 			}
 
 			self.complete(ec, r);
-		}, handler, executor
+		}, handler
 	);
 }

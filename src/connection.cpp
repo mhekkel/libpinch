@@ -422,19 +422,17 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 	async_open_next_layer(yield[ec]);
 	async_wait(wait_type::write, yield[ec]);
 
-	{
-		boost::asio::streambuf buffer;
-		std::ostream out(&buffer);
-		out << kSSHVersionString << "\r\n";
-		boost::asio::async_write(*this, buffer, yield[ec]);
-	}
+	boost::asio::streambuf buffer;
+	std::ostream os(&buffer);
+	os << kSSHVersionString << "\r\n";
+	boost::asio::async_write(*this, buffer, yield[ec]);
 
 	boost::asio::async_read_until(*this, m_response, "\n", yield[ec]);
 
 	std::string host_version;
 	{
-		std::istream in(&m_response);
-		std::getline(in, host_version);
+		std::istream is(&m_response);
+		std::getline(is, host_version);
 	}
 
 	while (std::isspace(host_version.back()))
@@ -451,17 +449,17 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 
 	boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(8), yield[ec]);
 
-	ipacket packet;
+	ipacket in;
 
 	for (;;)
 	{
-		if (not receive_packet(packet, ec) and not ec)
+		if (not receive_packet(in, ec) and not ec)
 		{
 			boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), yield[ec]);
 			continue;
 		}
 
-		if (packet == msg_newkeys)
+		if (in == msg_newkeys)
 		{
 			if (async_check_host_key(kex->get_host_key_pk_type(), kex->get_host_key(), yield[ec]))
 				break;
@@ -471,7 +469,7 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 		}
 
 		opacket out;
-		if (kex->process(packet, out, ec))
+		if (kex->process(in, out, ec))
 		{
 			if (out)
 				async_write(std::move(out));
@@ -509,13 +507,13 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 
 	for (;;)
 	{
-		if (not receive_packet(packet, ec) and not ec)
+		if (not receive_packet(in, ec) and not ec)
 		{
 			boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), yield[ec]);
 			continue;
 		}
 
-		switch ((message_type)packet)
+		switch ((message_type)in)
 		{
 			case msg_service_accept:
 				out = msg_userauth_request;
@@ -529,7 +527,7 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 				std::string s;
 				bool partial;
 
-				packet >> s >> partial;
+				in >> s >> partial;
 
 				private_key_hash.clear();
 
@@ -582,7 +580,7 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 			case msg_userauth_banner:
 			{
 				std::string msg, lang;
-				packet >> msg >> lang;
+				in >> msg >> lang;
 				handle_banner(msg, lang);
 				break;
 			}
@@ -595,7 +593,7 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 					std::string alg;
 					ipacket blob;
 
-					packet >> alg >> blob;
+					in >> alg >> blob;
 
 					out << m_user << "ssh-connection"
 						<< "publickey" << true << "ssh-rsa" << blob;
@@ -619,7 +617,7 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 					std::string name, instruction, language;
 					int32_t numPrompts = 0;
 
-					packet >> name >> instruction >> language >> numPrompts;
+					in >> name >> instruction >> language >> numPrompts;
 
 					if (numPrompts == 0)
 					{
@@ -631,7 +629,7 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 						std::vector<prompt> prompts(numPrompts);
 
 						for (auto &p : prompts)
-							packet >> p.str >> p.echo;
+							in >> p.str >> p.echo;
 
 						auto replies = async_provide_credentials(name, instruction, language, prompts, yield[ec]);
 
@@ -661,7 +659,7 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 
 			default:
 #if DEBUG
-				std::cerr << "Unexpected packet: " << packet << std::endl;
+				std::cerr << "Unexpected packet: " << in << std::endl;
 #endif
 				break;
 		}

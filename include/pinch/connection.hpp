@@ -100,51 +100,6 @@ namespace detail
 		write
 	};
 
-	/// \brief internal class used for the handshake in setting up a connection
-	struct async_open_connection_impl
-	{
-		enum class state_type
-		{
-			start,
-			connect,
-			open_next,
-			handshake,
-			wrote_version,
-			reading,
-			rekeying,
-			check_host_key,
-			authenticating,
-			authenticating2,
-			password,
-			wait
-		};
-
-		boost::asio::streambuf &response;
-		std::shared_ptr<basic_connection> conn;
-		std::string user;
-		int m_password_attempts = 0;
-
-		state_type state = state_type::start;
-		auth_state_type auth_state = auth_state_type::none;
-
-		std::string host_version;
-		std::unique_ptr<boost::asio::streambuf> request =
-			std::make_unique<boost::asio::streambuf>();
-		std::unique_ptr<ipacket> packet = std::make_unique<ipacket>();
-		std::unique_ptr<key_exchange> kex;
-		std::deque<opacket> private_keys;
-		blob private_key_hash;
-
-		template <typename Self>
-		void operator()(Self &self, boost::system::error_code ec = {},
-			std::size_t bytes_transferred = 0);
-
-		void process_userauth_failure(ipacket &in, opacket &out,
-			boost::system::error_code &ec);
-		void process_userauth_info_request(ipacket &in, opacket &out,
-			boost::system::error_code &ec);
-	};
-
 	// --------------------------------------------------------------------
 
 	class open_connection_op : public operation
@@ -448,17 +403,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		m_provide_credentials_handler = boost::asio::bind_executor(executor, std::move(handler));
 	}
 
-	// // callbacks to be installed by owning object
-	friend struct detail::async_open_connection_impl;
-
-	// template <typename Handler>
-	// auto async_open(Handler &&handler)
-	// {
-	// 	boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-	// 		detail::async_open_connection_impl{m_response, this->shared_from_this(), m_user},
-	// 		handler, *this);
-	// }
-
 	virtual void handle_error(const boost::system::error_code &ec);
 	void reset();
 
@@ -517,7 +461,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	// --------------------------------------------------------------------
 
-  protected:
+//   protected:
+public:
 	/// \brief async accept_host_key support
 	template <typename Handler>
 	auto async_check_host_key(const std::string &algorithm, const pinch::blob &key, Handler &&handler)
@@ -528,7 +473,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	/// \brief async password support
 	template <typename Handler>
-	std::string async_provide_password(Handler &&handler)
+	auto async_provide_password(Handler &&handler)
 	{
 		auto executor = boost::asio::get_associated_executor(m_provide_password_handler);
 		return async_function_wrapper(std::move(handler), executor, std::bind(&basic_connection::provide_password, this));
@@ -536,7 +481,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	/// \brief async credentials support
 	template <typename Handler>
-	std::vector<std::string> async_provide_credentials(const std::string &name, const std::string &instruction,
+	auto async_provide_credentials(const std::string &name, const std::string &instruction,
 		const std::string &lang, const std::vector<prompt> &prompts, Handler &&handler)
 	{
 		auto executor = boost::asio::get_associated_executor(m_provide_credentials_handler);
@@ -859,6 +804,3 @@ void basic_connection::async_wait_impl::operator()(
 
 } // namespace pinch
 
-// --------------------------------------------------------------------
-
-#include <pinch/detail/handshake.ipp>
