@@ -477,9 +477,8 @@ void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, 
 			continue;
 		}
 
-		if (not ec)
-			ec = error::make_error_code(error::key_exchange_failed);
-		break;
+		op->complete(ec ? ec : error::make_error_code(error::key_exchange_failed));
+		return;
 	}
 
 	newkeys(*kex, ec);

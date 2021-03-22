@@ -303,6 +303,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		return m_private_key_hash == pk_hash;
 	}
 
+	template<typename Executor>
+	void set_callback_executor(Executor executor)
+	{
+		m_callback_executor = executor;
+	}
+
 	/// \brief Return true if the connection should accept the host key \a key
 	/// and algorithm \a algorithm when connecting to host \a host
 	///
@@ -467,7 +473,9 @@ public:
 	template <typename Handler>
 	auto async_check_host_key(const std::string &algorithm, const pinch::blob &key, Handler &&handler)
 	{
-		auto executor = boost::asio::get_associated_executor(m_accept_host_key_handler);
+		auto executor = m_callback_executor;
+		if (not executor)
+			executor = boost::asio::get_associated_executor(m_accept_host_key_handler);
 		return async_function_wrapper(std::move(handler), executor, std::bind(&basic_connection::accept_host_key, this, std::placeholders::_1, std::placeholders::_2), algorithm, key);
 	}
 
@@ -475,7 +483,9 @@ public:
 	template <typename Handler>
 	auto async_provide_password(Handler &&handler)
 	{
-		auto executor = boost::asio::get_associated_executor(m_provide_password_handler);
+		auto executor = m_callback_executor;
+		if (not executor)
+			executor = boost::asio::get_associated_executor(m_provide_password_handler);
 		return async_function_wrapper(std::move(handler), executor, std::bind(&basic_connection::provide_password, this));
 	}
 
@@ -484,7 +494,9 @@ public:
 	auto async_provide_credentials(const std::string &name, const std::string &instruction,
 		const std::string &lang, const std::vector<prompt> &prompts, Handler &&handler)
 	{
-		auto executor = boost::asio::get_associated_executor(m_provide_credentials_handler);
+		auto executor = m_callback_executor;
+		if (not executor)
+			executor = boost::asio::get_associated_executor(m_provide_credentials_handler);
 		return async_function_wrapper(std::move(handler), executor,
 			std::bind(&basic_connection::provide_credentials, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4),
 			name, instruction, lang, prompts);
@@ -516,6 +528,7 @@ public:
 	provide_password_callback_type m_provide_password_handler;
 	provide_credentials_callback_type m_provide_credentials_handler;
 	accept_host_key_handler_type m_accept_host_key_handler;
+	boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t> m_callback_executor;
 
 	std::list<channel_ptr> m_channels;
 	bool m_forward_agent;

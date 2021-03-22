@@ -137,7 +137,7 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 			task = std::move(task),
 			result = std::move(result),
 			state = start,
-			executor
+			&executor
 		]
 		(auto& self, boost::system::error_code ec = {}, result_type r = {}) mutable
 		{
@@ -146,7 +146,7 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 				if (state == start)
 				{
 					state = running;
-					boost::asio::dispatch(executor, std::move(self));
+					executor.execute(std::move(self));
 					return;
 				}
 

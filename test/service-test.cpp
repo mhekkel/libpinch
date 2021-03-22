@@ -300,6 +300,8 @@ int main()
 
 	// auto validate = std::bind(async_validate<decltype(v_cb), my_executor>, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, v_cb, executor);
 
+	conn->set_callback_executor(executor);
+
 	auto &known_hosts = pinch::known_hosts::instance();
 	// known_hosts.load_host_file("/home/maarten/.ssh/known_hosts");
 	conn->set_accept_host_key_handler(
