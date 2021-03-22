@@ -486,9 +486,41 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	template <typename Handler>
 	auto async_check_host_key(const std::string &algorithm, const pinch::blob &key, Handler &&handler)
 	{
-		using namespace std::placeholders;
-		auto executor = boost::asio::get_associated_executor(m_accept_host_key_handler);
-		return async_function_wrapper(handler, executor, std::bind(&basic_connection::accept_host_key, this, _1, _2), algorithm, key);
+		enum { start, running };
+
+std::cerr << "Starting async accept host key in thread " << std::this_thread::get_id() << std::endl;
+
+		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
+			[
+				state = start, this, &algorithm, &key
+			]
+			(auto& self, boost::system::error_code ec = {}) mutable
+			{
+std::cerr << "Inside async accept host key in thread " << std::this_thread::get_id() << std::endl;
+
+				if (not ec and state == start)
+				{
+					state = running;
+
+					auto r = known_hosts::instance().accept_host_key(m_host, algorithm, key);
+
+					if (r != host_key_state::match)
+					{
+						if (not m_accept_host_key_handler)
+							ec = error::make_error_code(error::host_key_not_verifiable);
+						else
+						{
+							// auto cb = []()
+
+							// auto r1 = m_accept_host_key_handler(m_host, algorithm, key, r);
+							// if (r1 == host_key_reply::reject)
+							// 	ec = error::make_error_code(error::host_key_not_verifiable);
+						}
+					}
+				}
+				self.complete(ec);
+			}, handler
+		);
 	}
 
 	/// \brief async password support
