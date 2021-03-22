@@ -278,8 +278,8 @@ int main()
 	my_executor executor{&io_context, &queue};
 
 	// auto conn = pool.get("maarten", "localhost", 2022);
-	// auto conn = pool.get("maarten", "s4", 22);
-	auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
+	auto conn = pool.get("maartenx", "s4", 22);
+	// auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
 
 	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
 	auto channel = std::make_shared<pinch::terminal_channel>(conn);
@@ -340,23 +340,23 @@ int main()
 		}
 	});
 
-	auto vh = [](boost::system::error_code ec, bool b) {
-		std::cout << "vh handler, ec = " << ec.message()
-				  << " thread: 0x" << std::hex << std::this_thread::get_id() << std::endl
-				  << "b is " << std::boolalpha << b << std::endl;
-	};
+	// auto vh = [](boost::system::error_code ec, bool b) {
+	// 	std::cout << "vh handler, ec = " << ec.message()
+	// 			  << " thread: 0x" << std::hex << std::this_thread::get_id() << std::endl
+	// 			  << "b is " << std::boolalpha << b << std::endl;
+	// };
 
-	async_val(std::move(vh), executor, &validate_host_key, "s4", "sha-rsa", pinch::blob{});
+	// async_val(std::move(vh), executor, &validate_host_key, "s4", "sha-rsa", pinch::blob{});
 
-	AsyncImpl impl;
-	async_ask_password(std::move(impl), executor);
+	// AsyncImpl impl;
+	// async_ask_password(std::move(impl), executor);
 
 	conn->set_provide_password_callback(boost::asio::bind_executor(executor, &provide_password));
-	conn->async_provide_password([](boost::system::error_code ec, std::string pw)
-	{
-		std::cout << "And the password is " << pw << std::endl
-				  << "  ==> in thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
-	});
+	// conn->async_provide_password([](boost::system::error_code ec, std::string pw)
+	// {
+	// 	std::cout << "And the password is " << pw << std::endl
+	// 			  << "  ==> in thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
+	// });
 
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
 	sigset.async_wait([&io_context](boost::system::error_code, int signal) { io_context.stop(); });
