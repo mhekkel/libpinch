@@ -141,7 +141,6 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 		]
 		(auto& self, boost::system::error_code ec = {}, result_type r = {}) mutable
 		{
-			std::cout << " async handler in thread: " << std::this_thread::get_id() << std::endl;
 			if (not ec)
 			{
 				if (state == start)

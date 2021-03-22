@@ -47,6 +47,10 @@ dnl and now for the semantic version
 LIBPINCH_SEMANTIC_VERSION=libpinch_version
 AC_SUBST(LIBPINCH_SEMANTIC_VERSION)
 
+AC_SEARCH_LIBS([dlopen], [dl dld], [], [
+  AC_MSG_ERROR([unable to find the dlopen() function])
+])
+
 AX_PTHREAD
 
 AC_ARG_VAR([DEBUG], [Build a debug version of the application])
@@ -56,6 +60,17 @@ AX_BOOST_ASIO
 AX_BOOST_DATE_TIME
 AX_BOOST_REGEX
 AX_BOOST_IOSTREAMS
+AX_BOOST_THREAD
+AX_BOOST_COROUTINE
+# AX_BOOST_CONTEXT2
+
+AC_SEARCH_LIBS([exit], [boost_context], [
+		BOOST_CONTEXT_LIB="-lboost_context"
+		AC_SUBST(BOOST_CONTEXT_LIB)
+	], [
+  AC_MSG_ERROR([unable to find the boost_context library])
+])
+
 
 dnl Check for libcryptopp
 AC_ARG_WITH([cryptopp],

@@ -20,6 +20,9 @@ LIBS				= @PTHREAD_LIBS@ \
 					  @BOOST_IOSTREAMS_LIB@ \
 					  @BOOST_DATE_TIME_LIB@ \
 					  @BOOST_REGEX_LIB@ \
+					  @BOOST_COROUTINE_LIB@ \
+					  @BOOST_THREAD_LIB@ \
+					  @BOOST_CONTEXT_LIB@ \
 					  @CRYPTOPP_LIBS@ \
 					  @LIBS@
 

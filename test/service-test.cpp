@@ -207,7 +207,6 @@ auto async_val(Handler &&handler, Executor &executor, Function func, Args... arg
 		]
 		(auto& self, boost::system::error_code ec = {}, result_type r = {}) mutable
 		{
-			std::cout << " async handler in thread: " << std::this_thread::get_id() << std::endl;
 			if (not ec)
 			{
 				if (state == start)
@@ -233,6 +232,24 @@ auto async_val(Handler &&handler, Executor &executor, Function func, Args... arg
 	);
 }
 
+std::string provide_password()
+{
+	return "sssh... geheim!";
+}
+
+template<typename Handler, typename Executor>
+auto async_ask_password(Handler&& handler, Executor& executor)
+{
+	return async_function_wrapper(std::move(handler), executor, &provide_password);
+}
+
+struct AsyncImpl
+{
+	void operator()(boost::system::error_code ec, std::string password)
+	{
+		std::cout << "And the password is " << password << std::endl;
+	}
+};
 
 // --------------------------------------------------------------------
 
@@ -322,6 +339,12 @@ int main()
 	};
 
 	async_val(std::move(vh), executor, &validate_host_key, "s4", "sha-rsa", pinch::blob{});
+
+
+
+	AsyncImpl impl;
+	async_ask_password(std::move(impl), executor);
+
 
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
 	sigset.async_wait([&io_context](boost::system::error_code, int signal) { io_context.stop(); });
