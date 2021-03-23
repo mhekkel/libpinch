@@ -383,19 +383,18 @@ void basic_connection::keep_alive()
 	}
 }
 
-void basic_connection::forward_port(const std::string &local_address, uint16_t local_port,
-	const std::string &remote_address, uint16_t remote_port)
+void basic_connection::forward_port(uint16_t local_port, const std::string &remote_address, uint16_t remote_port)
 {
 	if (not m_port_forwarder)
 		m_port_forwarder.reset(new port_forward_listener(shared_from_this()));
-	m_port_forwarder->forward_port(local_address, local_port, remote_address, remote_port);
+	m_port_forwarder->forward_port(local_port, remote_address, remote_port);
 }
 
-void basic_connection::forward_socks5(const std::string &local_address, uint16_t local_port)
+void basic_connection::forward_socks5(uint16_t local_port)
 {
 	if (not m_port_forwarder)
 		m_port_forwarder.reset(new port_forward_listener(shared_from_this()));
-	m_port_forwarder->forward_socks5(local_address, local_port);
+	m_port_forwarder->forward_socks5(local_port);
 }
 
 // --------------------------------------------------------------------

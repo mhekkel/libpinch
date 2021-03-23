@@ -284,10 +284,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	void forward_agent(bool forward) { m_forward_agent = forward; }
 
-	void forward_port(const std::string &local_address, uint16_t local_port,
-		const std::string &remote_address, uint16_t remote_port);
+	void forward_port(uint16_t local_port, const std::string &remote_address, uint16_t remote_port);
 
-	void forward_socks5(const std::string &local_address, uint16_t local_port);
+	void forward_socks5(uint16_t local_port);
 
 	std::string get_connection_parameters(direction dir) const
 	{

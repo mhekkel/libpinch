@@ -194,6 +194,7 @@ void channel::process(ipacket &in)
 			error(reason, "en");
 
 			m_connection->close_channel(shared_from_this(), 0);
+			closed();
 			break;
 		}
 

@@ -220,8 +220,6 @@ opacket &opacket::operator<<(const CryptoPP::Integer &v)
 	m_data.insert(m_data.end(), l, uint8_t(0));
 	v.Encode(m_data.data() + s, l, CryptoPP::Integer::SIGNED);
 
-	assert(n + l + sizeof(uint32_t) == m_data.size());
-
 	return *this;
 }
 

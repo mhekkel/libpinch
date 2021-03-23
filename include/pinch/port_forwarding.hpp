@@ -21,10 +21,8 @@ class port_forward_listener
 	port_forward_listener(std::shared_ptr<basic_connection> connection);
 	~port_forward_listener();
 
-	void forward_port(
-		const std::string &local_addr, uint16_t local_port,
-		const std::string &remote_addr, uint16_t remote_port);
-	void forward_socks5(const std::string &local_addr, uint16_t local_port);
+	void forward_port(uint16_t local_port, const std::string &remote_addr, uint16_t remote_port);
+	void forward_socks5(uint16_t local_port);
 
 	void remove_port_forward(uint16_t local_port);
 	void connection_closed();
@@ -36,10 +34,8 @@ class port_forward_listener
 	port_forward_listener &
 	operator=(const port_forward_listener &);
 
-	typedef std::list<bound_port *> bound_port_list;
-
 	std::shared_ptr<basic_connection> m_connection;
-	bound_port_list m_bound_ports;
+	std::vector<std::shared_ptr<bound_port>> m_bound_ports;
 };
 
 // --------------------------------------------------------------------
@@ -48,12 +44,11 @@ class forwarding_channel : public channel
 {
   public:
 	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
-		const std::string &local_addr, uint16_t local_port,
-		const std::string &remote_addr, uint16_t remote_port);
+		uint16_t local_port, const std::string &remote_addr, uint16_t remote_port);
 
 	forwarding_channel(std::shared_ptr<basic_connection> inConnection,
 		const std::string &remote_addr, uint16_t remote_port)
-		: forwarding_channel(inConnection, "::1", 80, remote_addr, remote_port)
+		: forwarding_channel(inConnection, 80, remote_addr, remote_port)
 	{
 	}
 
@@ -68,7 +63,6 @@ class forwarding_channel : public channel
   protected:
 	std::string m_remote_address;
 	uint16_t m_remote_port;
-	std::string m_local_address;
 	uint16_t m_local_port;
 };
 
