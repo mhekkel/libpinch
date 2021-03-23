@@ -19,3 +19,4 @@ test/sftp-test
 doc/bin/
 doc/html/
 doc/autodoc.xml
+test/coro-test

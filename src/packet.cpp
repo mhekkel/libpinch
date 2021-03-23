@@ -214,8 +214,6 @@ opacket &opacket::operator<<(const char *v[])
 
 opacket &opacket::operator<<(const CryptoPP::Integer &v)
 {
-	uint32_t n = m_data.size();
-
 	uint32_t l = v.MinEncodedSize(CryptoPP::Integer::SIGNED);
 	operator<<(l);
 	uint32_t s = m_data.size();

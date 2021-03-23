@@ -11,7 +11,9 @@
 #include <chrono>
 #include <deque>
 #include <memory>
+// #include <coroutine>
 
+// #include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/spawn.hpp>
 
 #include <pinch/crypto-engine.hpp>
@@ -589,7 +591,8 @@ public:
 	}
 
 	void do_open(std::unique_ptr<detail::open_connection_op> op);
-	void do_open2(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield);
+	void do_open_2(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield);
+	// boost::asio::awaitable<void> do_open_3(std::unique_ptr<detail::open_connection_op> op);
 
 	std::unique_ptr<detail::open_connection_op> m_open_op;
 };
