@@ -413,7 +413,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	virtual void handle_error(const boost::system::error_code &ec);
 	void reset();
 
-	void newkeys(key_exchange &kex, boost::system::error_code &ec)
+	void newkeys(key_exchange &kex)
 	{
 		m_crypto_engine.newkeys(kex, m_auth_state == authenticated);
 	}
@@ -590,7 +590,7 @@ public:
 	}
 
 	void do_open(std::unique_ptr<detail::open_connection_op> op);
-	void do_open_2(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield);
+	void do_handshake(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield);
 	// boost::asio::awaitable<void> do_open_3(std::unique_ptr<detail::open_connection_op> op);
 
 	std::unique_ptr<detail::open_connection_op> m_open_op;

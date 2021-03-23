@@ -277,8 +277,8 @@ int main()
 	my_queue queue;
 	my_executor executor{&io_context, &queue};
 
-	// auto conn = pool.get("maarten", "localhost", 2022);
-	auto conn = pool.get("maartenx", "s4", 22);
+	auto conn = pool.get("maarten", "localhost", 2022);
+	// auto conn = pool.get("maartenx", "s4", 22);
 	// auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
 
 	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
