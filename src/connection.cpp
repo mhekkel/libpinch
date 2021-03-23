@@ -405,9 +405,9 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 {
 	boost::system::error_code ec;
 
-	if (m_auth_state == connection::authenticated)
+	if (m_auth_state == authenticated)
 		op->complete(ec);
-	else if (m_auth_state == connection::handshake)
+	else if (m_auth_state == handshake)
 		async_wait(detail::connection_wait_type::open, [op = std::move(op)](boost::system::error_code ec) { op->complete(ec); });
 	else
 		boost::asio::spawn(get_executor(), [op = std::move(op), this](boost::asio::yield_context yield) mutable {
@@ -417,6 +417,8 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 
 void basic_connection::do_open2(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield)
 {
+	m_auth_state = handshake;
+
 	boost::system::error_code ec;
 
 	async_open_next_layer(yield[ec]);

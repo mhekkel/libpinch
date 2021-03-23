@@ -254,21 +254,27 @@ class channel : public std::enable_shared_from_this<channel>
 			{
 				if (not ec)
 				{
-					if (state == start and not m_connection->is_open())
+					switch (state)
 					{
-						state = open_connection;
-						m_connection->async_open(std::move(self));
-						return;
-					}
+						case start:
+							if (not m_connection->is_open())
+							{
+								state = open_connection;
+								m_connection->async_open(std::move(self));
+								return;
+							}
 
-					if (state == open_connection)
-					{
-						state = open_channel;
-						m_my_window_size = kWindowSize;
-						m_my_channel_id = s_next_channel_id++;
-						m_connection->open_channel(shared_from_this(), m_my_channel_id);
-						async_wait(wait_type::open, std::move(self));
-						return;
+						// fall through
+						case open_connection:
+							state = open_channel;
+							m_my_window_size = kWindowSize;
+							m_my_channel_id = s_next_channel_id++;
+							m_connection->open_channel(shared_from_this(), m_my_channel_id);
+							async_wait(wait_type::open, std::move(self));
+							return;
+
+						case open_channel:
+							break;
 					}
 				}
 
