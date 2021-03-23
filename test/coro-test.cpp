@@ -150,7 +150,7 @@ std::string provide_password()
 template<typename Handler, typename Executor>
 auto async_provide_password(Executor &executor, Handler &&handler)
 {
-	return async_function_wrapper(std::move(handler), executor, &provide_password);
+	return pinch::async_function_wrapper(std::move(handler), executor, &provide_password);
 }
 
 void run_coro(my_executor& executor, boost::asio::yield_context yield)
@@ -167,7 +167,7 @@ template<typename Handler, typename Provider>
 auto async_provide_password_2(Provider &provider, Handler &&handler)
 {
 	auto executor = boost::asio::get_associated_executor(provider);
-	return async_function_wrapper(std::move(handler), executor, provider);
+	return pinch::async_function_wrapper(std::move(handler), executor, provider);
 }
 
 template<typename Provider>

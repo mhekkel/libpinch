@@ -87,7 +87,6 @@ namespace detail
 			, m_io_executor(io_ex)
 		{
 			m_id = id;
-			handler_work<Handler, IoExecutor>::start(m_handler, m_io_executor);
 		}
 
 		virtual void complete(const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) override

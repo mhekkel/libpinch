@@ -41,7 +41,7 @@ void basic_connection::userauth_success(const std::string &host_version, const b
 	m_private_key_hash = pk_hash;
 
 	// start the read loop
-	async_read();
+	read_loop();
 
 	// tell all the waiting ops
 	auto wait_ops = m_waiting_ops;
@@ -90,7 +90,7 @@ void basic_connection::rekey()
 
 // the read loop, this routine keeps calling itself until an error condition is met
 
-void basic_connection::received_data(boost::system::error_code ec)
+void basic_connection::read_loop(boost::system::error_code ec, std::size_t bytes_transferred)
 {
 	if (ec)
 	{
@@ -120,7 +120,9 @@ void basic_connection::received_data(boost::system::error_code ec)
 			process_packet(*p);
 		}
 
-		async_read();
+		using namespace std::placeholders;
+		boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1),
+			std::bind(&basic_connection::read_loop, this, _1, _2));
 	}
 	catch (...)
 	{
@@ -181,7 +183,7 @@ void basic_connection::process_packet(ipacket &in)
 			case msg_channel_request:
 			case msg_channel_success:
 			case msg_channel_failure:
-				process_channel(in, out, ec);
+				process_channel(in);
 				break;
 
 			case msg_global_request:
@@ -279,7 +281,7 @@ void basic_connection::process_channel_open(ipacket &in, opacket &out)
 	}
 }
 
-void basic_connection::process_channel(ipacket &in, opacket &out, boost::system::error_code &ec)
+void basic_connection::process_channel(ipacket &in)
 {
 	try
 	{
@@ -297,7 +299,6 @@ void basic_connection::process_channel(ipacket &in, opacket &out, boost::system:
 	}
 	catch (...)
 	{
-		// ec = boost::system::error_code::
 	}
 }
 
