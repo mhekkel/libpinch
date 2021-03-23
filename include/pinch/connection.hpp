@@ -188,20 +188,17 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	virtual lowest_layer_type &lowest_layer() = 0;
 	virtual const lowest_layer_type &lowest_layer() const = 0;
 
-	/// \brief The io_context
-	virtual boost::asio::io_context &get_io_context() = 0;
-
-	/// \brief Return the proxy for this connection, or null if this is a direct connection
-	virtual basic_connection *get_proxy() const
-	{
-		return nullptr;
-	}
-
-	virtual void open() = 0;
-
 	virtual bool is_open() const
 	{
 		return next_layer_is_open() and m_auth_state == authenticated;
+	}
+
+	template <typename Handler>
+	auto async_open(Handler &&handler)
+	{
+		return boost::asio::async_initiate<
+			Handler, void(boost::system::error_code, std::size_t)>(
+			async_open_impl{}, handler, this);
 	}
 
 	virtual void close();
@@ -221,14 +218,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	}
 
   public:
-	template <typename Handler>
-	auto async_open(Handler &&handler)
-	{
-		return boost::asio::async_initiate<
-			Handler, void(boost::system::error_code, std::size_t)>(
-			async_open_impl{}, handler, this);
-	}
-
 	using wait_type = detail::connection_wait_type;
 
 	template <typename Handler>
@@ -282,6 +271,24 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			});
 	}
 
+	template <typename ConstBufferSequence, typename WriteHandler>
+	auto async_write_some(const ConstBufferSequence &buffers,
+		WriteHandler &&handler)
+	{
+		return boost::asio::async_initiate<
+			WriteHandler, void(boost::system::error_code, std::size_t)>(
+			async_write_impl{}, handler, this, buffers);
+	}
+
+	template <typename MutableBufferSequence, typename ReadHandler>
+	auto async_read_some(const MutableBufferSequence &buffers,
+		ReadHandler &&handler)
+	{
+		return boost::asio::async_initiate<
+			ReadHandler, void(boost::system::error_code, std::size_t)>(
+			async_read_impl{}, handler, this, buffers);
+	}
+
 	void forward_agent(bool forward) { m_forward_agent = forward; }
 
 	void forward_port(uint16_t local_port, const std::string &remote_address, uint16_t remote_port);
@@ -313,9 +320,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \brief Return true if the connection should accept the host key \a key
 	/// and algorithm \a algorithm when connecting to host \a host
 	///
-	/// This function delegates the question to known_hosts first which will in
-	/// turn call the registered callback when needed. The reason for this route
-	/// is to allow per-connection validation, making feedback to the user easier.
+	/// This function delegates the question to known_hosts first. If the key
+	/// is unknown or changed, the registered callback is asked what to do.
 
 	bool accept_host_key(const std::string &algorithm, const blob &key)
 	{
@@ -410,39 +416,10 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		m_provide_credentials_handler = boost::asio::bind_executor(executor, std::move(handler));
 	}
 
-	virtual void handle_error(const boost::system::error_code &ec);
-	void reset();
-
-	void newkeys(key_exchange &kex)
-	{
-		m_crypto_engine.newkeys(kex, m_auth_state == authenticated);
-	}
-
-	void userauth_success(const std::string &host_version, const blob &session_id,
-		const blob &pk_hash);
-
 	void open_channel(channel_ptr ch, uint32_t id);
 	void close_channel(channel_ptr ch, uint32_t id);
 
 	bool has_open_channels();
-
-	template <typename MutableBufferSequence, typename ReadHandler>
-	auto async_read_some(const MutableBufferSequence &buffers,
-		ReadHandler &&handler)
-	{
-		return boost::asio::async_initiate<
-			ReadHandler, void(boost::system::error_code, std::size_t)>(
-			async_read_impl{}, handler, this, buffers);
-	}
-
-	template <typename ConstBufferSequence, typename WriteHandler>
-	auto async_write_some(const ConstBufferSequence &buffers,
-		WriteHandler &&handler)
-	{
-		return boost::asio::async_initiate<
-			WriteHandler, void(boost::system::error_code, std::size_t)>(
-			async_write_impl{}, handler, this, buffers);
-	}
 
   protected:
 	basic_connection(const std::string &user, const std::string &host,
@@ -454,6 +431,16 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	}
 
 	virtual void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) = 0;
+
+	virtual void handle_error(const boost::system::error_code &ec);
+
+	void newkeys(key_exchange &kex)
+	{
+		m_crypto_engine.newkeys(kex, m_auth_state == authenticated);
+	}
+
+	void userauth_success(const std::string &host_version, const blob &session_id,
+		const blob &pk_hash);
 
 	bool receive_packet(ipacket &packet, boost::system::error_code &ec);
 
@@ -468,8 +455,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	// --------------------------------------------------------------------
 
-//   protected:
-public:
 	/// \brief async accept_host_key support
 	template <typename Handler>
 	auto async_check_host_key(const std::string &algorithm, const pinch::blob &key, Handler &&handler)
@@ -607,7 +592,6 @@ class connection : public basic_connection
 		, m_io_context(io_context)
 		, m_next_layer(m_io_context)
 	{
-		reset();
 	}
 
 	/// The type of the next layer.
@@ -639,16 +623,9 @@ class connection : public basic_connection
 		m_next_layer.close();
 	}
 
-	virtual void open() override;
-
 	virtual bool next_layer_is_open() const override
 	{
 		return m_next_layer.is_open();
-	}
-
-	boost::asio::io_context &get_io_context() override
-	{
-		return m_io_context;
 	}
 
   private:
@@ -688,21 +665,9 @@ class proxied_connection : public basic_connection
 
 	lowest_layer_type &lowest_layer() override;
 
-	basic_connection *get_proxy() const override
-	{
-		return m_proxy.get();
-	}
-
 	virtual void close() override;
 
-	virtual void open() override;
-
 	virtual bool next_layer_is_open() const override;
-
-	boost::asio::io_context &get_io_context() override
-	{
-		return m_proxy->get_io_context();
-	}
 
   private:
 	friend async_wait_impl;

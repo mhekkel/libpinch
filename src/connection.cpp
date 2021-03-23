@@ -69,17 +69,12 @@ void basic_connection::handle_error(const boost::system::error_code &ec)
 	}
 }
 
-void basic_connection::reset()
+void basic_connection::close()
 {
 	m_auth_state = none;
 	m_private_key_hash.clear();
 	m_session_id.clear();
 	m_crypto_engine.reset();
-}
-
-void basic_connection::close()
-{
-	reset();
 
 	// copy the list since calling Close will change it
 	std::list<channel_ptr> channels(m_channels);
@@ -955,14 +950,6 @@ boost::asio::awaitable<void> basic_connection::do_open_3(std::unique_ptr<detail:
 
 // --------------------------------------------------------------------
 
-void connection::open()
-{
-	assert(false);
-	// async_open([this](const boost::system::error_code& ec) {
-	// 	handle_error(ec);
-	// });
-}
-
 void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
 {
 	if (m_next_layer.is_open())
@@ -1049,12 +1036,6 @@ void proxied_connection::close()
 	basic_connection::close();
 
 	m_channel->close();
-}
-
-void proxied_connection::open()
-{
-	assert(false);
-	// m_proxy->async_open([](const boost::system::error_code &) {}, m_channel);
 }
 
 bool proxied_connection::next_layer_is_open() const
