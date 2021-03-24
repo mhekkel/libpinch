@@ -11,15 +11,15 @@
 /// The class channel implements the concept of a bare SSH channel.
 /// It uses the pinch::connection class to send and receive data.
 
+#include <pinch/pinch.hpp>
+
 #include <pinch/connection.hpp>
 #include <pinch/operations.hpp>
-#include <pinch/pinch.hpp>
 
 namespace pinch
 {
 
-class basic_connection;
-
+/// \brief Constant values for the packet and window size
 const uint32_t kMaxPacketSize = 0x8000, kWindowSize = 4 * kMaxPacketSize;
 
 // --------------------------------------------------------------------
@@ -29,12 +29,15 @@ namespace detail
 
 	// --------------------------------------------------------------------
 
+	/// \brief Channel wait types
 	enum class channel_wait_type
 	{
 		open,
 		read,
 		write
 	};
+
+	/// \brief internal classes to implement asynchronous operations
 
 	class open_channel_op : public operation
 	{
@@ -213,33 +216,49 @@ namespace detail
 } // namespace detail
 
 // --------------------------------------------------------------------
+/// \brief channel is the base class for implementing SSH channels
+///
+/// The channel class implements AsyncReadStream and AsyncWriteStream.
 
 class channel : public std::enable_shared_from_this<channel>
 {
   public:
-	/// The type of the lowest layer.
+	/// \brief The type of the lowest layer.
 	using tcp_socket_type = boost::asio::ip::tcp::socket;
 	using lowest_layer_type = typename tcp_socket_type::lowest_layer_type;
 
-	/// The type of the executor associated with the object.
+	/// \brief The type of the executor associated with the object.
 	using executor_type = typename lowest_layer_type::executor_type;
 
+	/// \brief required for AsyncReadStream and AsyncWriteStream
 	executor_type get_executor() noexcept { return m_connection->get_executor(); }
 
+	/// \brief Access to the lowest layer (the socket)
 	const lowest_layer_type &lowest_layer() const
 	{
 		return m_connection->lowest_layer();
 	}
 
+	/// \brief Access to the lowest layer (the socket)
 	lowest_layer_type &lowest_layer() { return m_connection->lowest_layer(); }
 
+	/// \brief When opening a channel and requesting a pty, environmental variables can be specified
+	///
+	/// Note that virtually all enviromental variables are now ignored by the servers.
 	struct environment_variable
 	{
 		std::string name;
 		std::string value;
 	};
 
-	typedef std::list<environment_variable> environment;
+	/// \brief The list of environmental variables together form an environment
+	using environment = std::vector<environment_variable>;
+
+	/// \brief Asynchronously open a channel
+	///
+	/// This call will open the underlying connection if needed and then
+	/// sends out a request to the server to open a new SSH channel. Once
+	/// this has finished successfully, the \a handler is called.
 
 	template <typename Handler>
 	auto async_open(Handler &&handler)
@@ -283,12 +302,16 @@ class channel : public std::enable_shared_from_this<channel>
 		);
 	}
 
+	/// \brief Shortcut for async_open, without a handler. Still async though
 	void open();
-	void close();
-	// void disconnect(bool disconnectProxy = false);
 
+	/// \brief Close the channel
+	void close();
+
+	/// \brief local copy of the wait_type specified above
 	using wait_type = detail::channel_wait_type;
 
+	/// \brief Wait asynchronously for the event in \a type
 	template <typename Handler>
 	auto async_wait(wait_type type, Handler &&handler)
 	{
@@ -297,32 +320,68 @@ class channel : public std::enable_shared_from_this<channel>
 			async_wait_impl{}, handler, this, type);
 	}
 
+  protected:
+
+	/// \brief File the packet that will be sent when opening a channel
+	///
+	/// Certain channels need additional info in their msg_open packet
 	virtual void fill_open_opacket(opacket &out);
 
+	/// \brief Notification callback that this channel has opened
 	virtual void opened();
+
+	/// \brief Notification callback that this channel has closed
 	virtual void closed();
+
+	/// \brief Notification callback that this channel has reached end-of-file
 	virtual void end_of_file();
 
+	/// \brief Notification callback that the channel request was handled successfully
 	virtual void succeeded(); // the request succeeded
+
+  public:
+	/// \brief Open the channel and allocate a pseudo terminal device to it
+	///
+	/// Terminal applications need a pty to function properly. Use this to
+	/// allocate it. You can specify width and height of the terminal as well as
+	/// additonal info.
+	///
+	/// \param width			The width of the terminal, in characters
+	/// \param height			The height of the terminal, in lines
+	/// \param terminal_type	The terminal type to use, like vt100 or xterm
+	/// \param forward_agent	If true, an SSH agent forwarding channel is created
+	/// \param forward_x11		If true, an X11 forwarding channel is created
+	/// \param env				The list of environmental variables to set
 
 	void open_pty(uint32_t width, uint32_t height,
 	              const std::string &terminal_type, bool forward_agent,
 	              bool forward_x11, const environment &env);
 
+	/// \brief Send a request to the server, along with a command to execute
+	///
+	/// An exec_channel uses this to execute a command at the server side.
 	void send_request_and_command(const std::string &request,
 	                              const std::string &command);
 
+	/// \brief Send a signal to the process at the server
 	void send_signal(const std::string &inSignal);
 
+	/// \brief The local channel ID for this channel
 	uint32_t my_channel_id() const { return m_my_channel_id; }
 
+	/// \brief Access to the underlying connection class
 	basic_connection &get_connection() const { return *m_connection; }
 
+	/// \brief Return whether this channel is actually open
 	bool is_open() const { return m_channel_open; }
 
-	typedef std::function<void(const std::string &, const std::string &)>
-		message_callback_type;
+	/// \brief The callback type for message handlers.
+	using message_callback_type = std::function<void(const std::string &, const std::string &)>;
 
+	/// \brief Set the handlers for the three sources of messages
+	///
+	/// Events in a connection or channel may produce different kinds of
+	/// text messages.
 	void set_message_callbacks(message_callback_type banner_handler,
 	                           message_callback_type message_handler,
 	                           message_callback_type error_handler)
@@ -332,12 +391,19 @@ class channel : public std::enable_shared_from_this<channel>
 		m_error_handler = error_handler;
 	}
 
+  protected:
+
+	/// \brief will call the banner handler
 	virtual void banner(const std::string &msg, const std::string &lang);
+	/// \brief will call the message handler
 	virtual void message(const std::string &msg, const std::string &lang);
+	/// \brief will call the error handler
 	virtual void error(const std::string &msg, const std::string &lang);
 
+	/// \brief dispatch an incomming channel message
 	virtual void process(ipacket &in);
 
+  public:
 	// --------------------------------------------------------------------
 
 	template <typename MutableBufferSequence, typename ReadHandler>
@@ -411,6 +477,8 @@ class channel : public std::enable_shared_from_this<channel>
 	}
 
   protected:
+
+	/// \brief Constructor taking a \a connection
 	channel(std::shared_ptr<basic_connection> connection)
 		: m_connection(connection), m_max_send_packet_size(0),
 		  m_channel_open(false), m_my_channel_id(0), m_host_channel_id(0),
@@ -422,11 +490,10 @@ class channel : public std::enable_shared_from_this<channel>
 			close();
 	}
 
+	/// \brief The channel type to communicate to the server.
 	virtual std::string channel_type() const { return "session"; }
 
-	virtual void setup(ipacket &in);
-
-	// low level
+	// low level stuff
 	void send_pending(const boost::system::error_code &ec = {});
 	void push_received();
 	void check_wait();

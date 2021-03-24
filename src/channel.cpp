@@ -17,11 +17,6 @@ void channel::fill_open_opacket(opacket &out)
 	out << channel_type() << m_my_channel_id << kWindowSize << kMaxPacketSize;
 }
 
-void channel::setup(ipacket &in)
-{
-	in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
-}
-
 void channel::open()
 {
 	async_open([](boost::system::error_code){});
@@ -171,7 +166,7 @@ void channel::process(ipacket &in)
 	switch ((message_type)in)
 	{
 		case msg_channel_open_confirmation:
-			setup(in);
+			in >> m_host_channel_id >> m_host_window_size >> m_max_send_packet_size;
 			m_channel_open = true;
 			m_eof = false;
 			opened();
