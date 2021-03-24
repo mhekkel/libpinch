@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "pinch/types.hpp"
 #include "pinch/ssh_agent.hpp"
+#include "pinch/types.hpp"
 
 namespace pinch
 {
@@ -43,4 +43,4 @@ class ssh_private_key_impl
 
 void expose_pageant(bool expose);
 
-}
+} // namespace pinch

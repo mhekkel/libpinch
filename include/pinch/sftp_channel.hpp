@@ -61,8 +61,6 @@ namespace detail
 	{
 	  public:
 		int m_version;
-
-
 	};
 
 	template <typename Handler, typename IoExecutor>

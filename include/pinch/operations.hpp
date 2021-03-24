@@ -55,7 +55,7 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 				if (state == start)
 				{
 					state = running;
-					boost::asio::post(executor, std::move(self));
+					executor.execute(std::move(self));
 					return;
 				}
 
@@ -79,7 +79,7 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 
 			self.complete(ec, r);
 		},
-		handler);
+		executor);
 }
 
 // --------------------------------------------------------------------

@@ -5,9 +5,10 @@
 
 #pragma once
 
+#include <pinch/pinch.hpp>
+
 #include <pinch/channel.hpp>
 #include <pinch/connection.hpp>
-#include <pinch/pinch.hpp>
 
 namespace pinch
 {
@@ -15,7 +16,7 @@ namespace pinch
 class basic_connection;
 
 // --------------------------------------------------------------------
-// ssh_agent_channel is used for forwarding the ssh-agent over a connection
+// ssh_agent_channel is used to forward the ssh-agent over a connection
 
 class ssh_agent_channel : public channel
 {
