@@ -289,8 +289,10 @@ blob crypto_engine::get_next_block(boost::asio::streambuf &buffer, bool empty)
 
 std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf &buffer, boost::system::error_code &ec)
 {
+	std::lock_guard lock(m_in_mutex);
+
 	if (not m_packet)
-		m_packet = std::make_unique<ipacket>();
+		m_packet = std::make_unique<ipacket>(m_in_seq_nr);
 
 	bool complete_and_verified = false;
 
@@ -331,6 +333,8 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf &
 
 std::unique_ptr<boost::asio::streambuf> crypto_engine::get_next_request(opacket &&p)
 {
+	std::lock_guard lock(m_out_mutex);
+
 	auto request = std::make_unique<boost::asio::streambuf>();
 
 	if (m_compressor)

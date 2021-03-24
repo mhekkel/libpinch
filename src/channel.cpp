@@ -86,12 +86,6 @@ void channel::end_of_file()
 	push_received();
 }
 
-void channel::keep_alive()
-{
-	if (is_open())
-		m_connection->keep_alive();
-}
-
 // std::string channel::get_connection_parameters(direction dir) const
 // {
 // 	return is_open() ? m_connection->get_connection_parameters(dir) : "";

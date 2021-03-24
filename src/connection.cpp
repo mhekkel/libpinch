@@ -21,10 +21,6 @@ namespace pinch
 
 // --------------------------------------------------------------------
 
-const auto kKeepAliveInterval = std::chrono::seconds(60); // 60 seconds, should be ok?
-
-// --------------------------------------------------------------------
-
 const std::string
 	kSSHVersionString("SSH-2.0-libpinch");
 
@@ -56,6 +52,11 @@ void basic_connection::userauth_success(const std::string &host_version, const b
 		op->complete();
 		delete op;
 	}
+
+	// start keep alive timer, if needed
+	m_last_io = std::chrono::steady_clock::now();
+	if (m_keep_alive_interval > std::chrono::seconds(0))
+		keep_alive_time_out();
 }
 
 void basic_connection::handle_error(const boost::system::error_code &ec)
@@ -199,7 +200,7 @@ void basic_connection::process_packet(ipacket &in)
 			default:
 			{
 				opacket out(msg_unimplemented);
-				out << m_crypto_engine.get_next_out_seq_nr();
+				out << in.nr();
 				async_write(std::move(out));
 				break;
 			}
@@ -363,19 +364,35 @@ void basic_connection::handle_banner(const std::string &message, const std::stri
 		c->banner(message, lang);
 }
 
-void basic_connection::keep_alive()
+void basic_connection::keep_alive(std::chrono::seconds interval)
 {
-	auto now = std::chrono::steady_clock::now();
+	m_keep_alive_interval = interval;
 
-	if (m_auth_state == authenticated and (now - m_last_io) > kKeepAliveInterval)
+	m_keep_alive_timer.cancel();
+
+	if (m_keep_alive_interval > std::chrono::seconds(0))
+		keep_alive_time_out();
+}
+
+void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
+{
+	time_point_type now = std::chrono::steady_clock::now();
+	std::chrono::seconds idle = std::chrono::duration_cast<std::chrono::seconds>(now - m_last_io);
+
+	// See if we really need to send a packet.
+	if (not ec and is_open() and idle >= m_keep_alive_interval)
 	{
 		opacket out(msg_ignore);
 		out << "Hello, world!";
+		async_write(std::move(out));
+		idle = std::chrono::seconds(0);
+		m_last_io = now;
+	}
 
-		async_write(std::move(out), [self = shared_from_this(), now](const boost::system::error_code &ec, size_t) {
-			if (not ec)
-				self->m_last_io = now;
-		});
+	if (is_open() and m_keep_alive_interval > std::chrono::seconds(0))
+	{
+		m_keep_alive_timer.expires_after(m_keep_alive_interval);
+		m_keep_alive_timer.async_wait(std::bind(&basic_connection::keep_alive_time_out, this, std::placeholders::_1));
 	}
 }
 
@@ -998,14 +1015,14 @@ class proxy_channel : public channel
 // --------------------------------------------------------------------
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(user, host, port)
+	: basic_connection(proxy->get_executor(), user, host, port)
 	, m_proxy(proxy)
 	, m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port))
 {
 }
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(user, host, port)
+	: basic_connection(proxy->get_executor(), user, host, port)
 	, m_proxy(proxy)
 	, m_channel(new forwarding_channel(m_proxy, host, port))
 {

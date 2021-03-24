@@ -303,8 +303,6 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual void closed();
 	virtual void end_of_file();
 
-	void keep_alive();
-
 	virtual void succeeded(); // the request succeeded
 
 	void open_pty(uint32_t width, uint32_t height,

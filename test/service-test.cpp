@@ -363,6 +363,8 @@ int main()
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
 	sigset.async_wait([&io_context](boost::system::error_code, int signal) { io_context.stop(); });
 
+	conn->keep_alive(std::chrono::seconds(5));
+
 	queue.run();
 
 	if (t.joinable())

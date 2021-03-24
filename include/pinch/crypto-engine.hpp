@@ -36,8 +36,6 @@ class crypto_engine
 	std::unique_ptr<ipacket> get_next_packet(boost::asio::streambuf &buffer, boost::system::error_code &ec);
 	std::unique_ptr<boost::asio::streambuf> get_next_request(opacket &&p);
 
-	uint32_t get_next_out_seq_nr() const { return m_out_seq_nr; }
-
   private:
 	blob get_next_block(boost::asio::streambuf &buffer, bool empty);
 
@@ -58,6 +56,8 @@ class crypto_engine
 	bool m_delay_compressor, m_delay_decompressor;
 
 	std::unique_ptr<ipacket> m_packet;
+
+	std::mutex m_in_mutex, m_out_mutex;
 };
 
 } // namespace pinch

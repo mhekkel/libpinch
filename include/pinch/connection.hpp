@@ -191,10 +191,13 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \param user	The user name to use when logging in
 	/// \param host The hostname to connect to, or an IP address
 	/// \param port The port to connect to
-	basic_connection(const std::string &user, const std::string &host, uint16_t port = 22)
+
+	template<typename Executor>
+	basic_connection(Executor executor, const std::string &user, const std::string &host, uint16_t port = 22)
 		: m_user(user)
 		, m_host(host)
 		, m_port(port)
+		, m_keep_alive_timer(executor)
 	{
 	}
 
@@ -245,13 +248,13 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void rekey();
 
 	/// \brief If you want to keep the connection alive, even without
-	/// any traffic, you should call this method regularly. It will
-	/// send a dummy packet to the server indicating we're still there.
+	/// any traffic, you should call this method specifying the time between
+	/// the dummy packets.
 	///
 	/// Internally, connection keeps track of when the last I/O took
 	/// place and if this call is made within the kKeepAliveInterval
 	/// nothing will happen.
-	void keep_alive();
+	void keep_alive(std::chrono::seconds interval = std::chrono::seconds(60));
 
   protected:
 	/// \brief Return true if the next layer is open.
@@ -593,7 +596,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	// Keep track of I/O operations in order to be able to send keep-alive
 	// messages
 	using time_point_type = std::chrono::time_point<std::chrono::steady_clock>;
-	time_point_type m_last_io;         ///< The last time we had an I/O
+
+	time_point_type m_last_io;                                          ///< The last time we had an I/O
+	std::chrono::seconds m_keep_alive_interval;                         ///< How often should we send keep alive packets (in seconds)?
+	boost::asio::steady_timer m_keep_alive_timer;                       ///< The timer used for keep alive
+	void keep_alive_time_out(const boost::system::error_code &ec = {}); ///< Callback for the keep alive timer
+
 	blob m_private_key_hash;           ///< The private key used to authenticate
 	boost::asio::streambuf m_response; ///< Buffer for incomming response data
 
@@ -666,39 +674,58 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 // --------------------------------------------------------------------
 
+/// \brief An implementation of a basic connection using a tcp::socket as next layer
+///
+/// This class implements a regular SSH connection over a TCP socket.
+
 class connection : public basic_connection
 {
   public:
+	/// \brief Constructor
+	///
+	/// Creates a connection, but does not open it. You need to call async_open for that.
+	///
+	/// \param io_context	The io_context to use for the socket
+	/// \param user			The username to use when authenticating
+	/// \param host			The hostname or ip address of the server to connect to
+	/// \param port			The port number to connect to
+
 	connection(boost::asio::io_context &io_context, const std::string &user, const std::string &host,
-		uint16_t port)
-		: basic_connection(user, host, port)
+		uint16_t port = 22)
+		: basic_connection(io_context.get_executor(), user, host, port)
 		, m_io_context(io_context)
 		, m_next_layer(m_io_context)
 	{
 	}
 
-	/// The type of the next layer.
+	/// \brief The type of the next layer.
 	using next_layer_type = boost::asio::ip::tcp::socket;
 
+	/// \brief Required for AsyncReadStream and AsyncWriteStream
 	virtual executor_type get_executor() noexcept override
 	{
 		return m_next_layer.lowest_layer().get_executor();
 	}
 
+	/// \brief Access to the next layer
 	const next_layer_type &next_layer() const { return m_next_layer; }
 
+	/// \brief Access to the next layer
 	next_layer_type &next_layer() { return m_next_layer; }
 
+	/// \brief Access to the lowest layer, should always be a tcp::socket
 	const lowest_layer_type &lowest_layer() const override
 	{
 		return m_next_layer.lowest_layer();
 	}
 
+	/// \brief Access to the lowest layer, should always be a tcp::socket
 	lowest_layer_type &lowest_layer() override
 	{
 		return m_next_layer.lowest_layer();
 	}
 
+	/// \brief Close the connection and the socket
 	virtual void close() override
 	{
 		basic_connection::close();
@@ -706,62 +733,99 @@ class connection : public basic_connection
 		m_next_layer.close();
 	}
 
+	/// \brief Is the socket open?
 	virtual bool next_layer_is_open() const override
 	{
 		return m_next_layer.is_open();
 	}
 
   private:
+	/// \brief Asynchronously open the socket, notifying \a op when done
 	void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) override;
 
 	friend async_open_next_layer_impl;
 
-	boost::asio::io_context &m_io_context;
-	boost::asio::ip::tcp::socket m_next_layer;
+	boost::asio::io_context &m_io_context;     ///< The IO Context we use
+	boost::asio::ip::tcp::socket m_next_layer; ///< The TCP socket
 };
 
 // --------------------------------------------------------------------
 
+/// \brief An implementation of basic_connection that uses another connection as proxy
+///
+/// To access hosts located behind a firewall, it is often useful to hop from one server
+/// to another. By using this proxied connection class, you can benefit of being able
+/// to open multiple channels over the connection without the need to reconnect.
+
 class proxied_connection : public basic_connection
 {
   public:
+	/// \brief Constructor using a 'proxy command' like netcat
+	///
+	///	Historically, a command like /bin/nc or /usr/bin/netcat is
+	///	used to establish a transparent connection to the next server.
+	///	Use the next constructor if you want direct-tcpip instead.
+	///
+	/// \param proxy	The basic_connection to use as proxy.
+	/// \param nc_cmd	The netcat command, or ProxyCommand as called in OpenSSH.
+	/// \param user		The username to use when authenticating
+	/// \param host		The hostname or ip address of the server to connect to
+	/// \param port		The port number to connect to
 	proxied_connection(std::shared_ptr<basic_connection> proxy,
 		const std::string &nc_cmd, const std::string &user,
 		const std::string &host, uint16_t port = 22);
 
+	/// \brief Constructor using a direct-tcpip channel to connect to the host
+	///
+	///	This variant uses a direct-tcpip channel
+	///
+	/// \param proxy	The basic_connection to use as proxy.
+	/// \param user		The username to use when authenticating
+	/// \param host		The hostname or ip address of the server to connect to
+	/// \param port		The port number to connect to
 	proxied_connection(std::shared_ptr<basic_connection> proxy,
 		const std::string &user, const std::string &host,
 		uint16_t port = 22);
 
+	/// \brief destructor
 	~proxied_connection();
 
-	/// The type of the next layer.
+	/// \brief The type of the next layer.
 	using next_layer_type = channel;
 
+	/// \brief Required for AsyncReadStream and AsyncWriteStream
 	virtual executor_type get_executor() noexcept override;
 
+	/// \brief Access to the next layer
 	const next_layer_type &next_layer() const { return *m_channel; }
 
+	/// \brief Access to the next layer
 	next_layer_type &next_layer() { return *m_channel; }
 
+	/// \brief Access to the lowest layer
 	const lowest_layer_type &lowest_layer() const override;
 
+	/// \brief Access to the lowest layer
 	lowest_layer_type &lowest_layer() override;
 
+	/// \brief Close the connection
 	virtual void close() override;
 
+	/// \brief Is the proxy channel open?
 	virtual bool next_layer_is_open() const override;
 
   private:
 	friend async_wait_impl;
 	friend async_open_next_layer_impl;
 
+	/// \brief The actual wait implementation.
 	void do_wait(std::unique_ptr<detail::wait_connection_op> op);
+
+	/// \brief Open the proxy channel asynchronously, calling \a op when done
 	void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) override;
 
-	std::shared_ptr<basic_connection> m_proxy;
-	std::shared_ptr<channel> m_channel;
-	std::string m_host;
+	std::shared_ptr<basic_connection> m_proxy; ///< The proxy connection
+	std::shared_ptr<channel> m_channel;        ///< The channel in m_proxy used for this connection
 };
 
 // --------------------------------------------------------------------
@@ -787,6 +851,8 @@ void basic_connection::async_read_impl::operator()(
 	Handler &&handler, basic_connection *conn,
 	const MutableBufferSequence &buffers)
 {
+	// I don't like this approach very much, but I see no other alternative.
+
 	auto c = dynamic_cast<connection *>(conn);
 	if (c)
 		boost::asio::async_read(c->next_layer(), buffers,
@@ -859,9 +925,6 @@ void basic_connection::async_wait_impl::operator()(
 					new detail::wait_connection_handler(std::move(handler),
 						pc->get_executor(), type)));
 			break;
-
-		default:
-			assert(false);
 	}
 }
 

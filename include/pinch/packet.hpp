@@ -185,7 +185,7 @@ class ipacket
 	friend bool operator==(const opacket &, const ipacket &);
 	friend bool operator==(const ipacket &, const opacket &);
 
-	ipacket();
+	ipacket(uint32_t nr = 0);
 	ipacket(const ipacket &rhs);
 	ipacket(ipacket &&rhs);
 	ipacket(const uint8_t *data, std::size_t size);
@@ -197,6 +197,7 @@ class ipacket
 	bool complete();
 	bool empty();
 	void clear();
+	uint32_t nr() const	{ return m_number; }
 
 	void decompress(compression_helper &decompressor, boost::system::error_code &ec);
 
@@ -237,6 +238,7 @@ class ipacket
 	uint8_t m_padding;
 	bool m_owned;
 	bool m_complete;
+	uint32_t m_number = 0;
 	uint32_t m_offset, m_length;
 	uint8_t *m_data;
 };
