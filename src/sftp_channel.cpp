@@ -209,10 +209,6 @@ void sftp_channel::opened()
 	channel::opened();
 
 	send_request_and_command("subsystem", "sftp");
-
-	opacket out((message_type)SSH_FXP_INIT);
-	out << uint32_t(3);
-	write(std::move(out));
 }
 
 void sftp_channel::receive_data(const char *data, size_t size)
@@ -232,7 +228,19 @@ void sftp_channel::receive_data(const char *data, size_t size)
 			try
 			{
 				if (static_cast<pinch::sftp_messages>(m_packet.message()) == SSH_FXP_VERSION)
+				{
+					auto op = std::move(m_init_op);
+
+					if (not op)
+					{
+						close();
+						return;
+					}
+
 					m_packet >> m_version;
+					op->m_version = m_version;
+					op->complete();
+				}
 				else
 					process_packet();
 			}
@@ -272,11 +280,32 @@ void sftp_channel::process_packet()
 	}
 }
 
-void sftp_channel::opendir(uint32_t request_id, const std::string &path)
+void sftp_channel::do_init(std::unique_ptr<detail::sftp_init_op> op)
+{
+	enum { open_channel, sending_init };
+	channel::async_open([op = std::move(op), state = open_channel, this](const boost::system::error_code& ec) mutable
+	{
+		if (not ec)
+		{
+			opacket out((message_type)SSH_FXP_INIT);
+			out << uint32_t(op->m_version);
+			write(std::move(out));
+
+			m_init_op = std::move(op);
+			return;
+		}
+
+		op->complete(ec);
+	});
+}
+
+void sftp_channel::do_readdir(std::unique_ptr<detail::sftp_readdir_op> op)
 {
 	opacket out((message_type)SSH_FXP_OPENDIR);
-	out << request_id << path;
+	out << op->m_id << op->m_path;
 	write(std::move(out));
+
+	m_sftp_ops.push_back(op.release());
 }
 
 // --------------------------------------------------------------------

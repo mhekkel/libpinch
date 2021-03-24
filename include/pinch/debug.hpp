@@ -5,7 +5,9 @@
 
 #pragma once
 
-#include <iostream>
+/// \brief dump packets to a stream
+
+#include <ostream>
 
 namespace pinch
 {

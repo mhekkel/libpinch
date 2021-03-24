@@ -48,11 +48,14 @@ namespace detail
 	{
 	  public:
 		open_channel_handler(Handler &&h, const IoExecutor &io_ex)
-			: m_handler(std::move(h)), m_io_executor(io_ex),
-			  m_work(m_handler, m_io_executor) {}
+			: m_handler(std::move(h))
+			, m_io_executor(io_ex)
+			, m_work(m_handler, m_io_executor)
+		{
+		}
 
 		virtual void complete(const boost::system::error_code &ec,
-		                      std::size_t bytes_transferred = 0) override
+			std::size_t bytes_transferred = 0) override
 		{
 			binder<Handler, boost::system::error_code> handler(m_handler, ec);
 
@@ -72,21 +75,25 @@ namespace detail
 
 		virtual std::deque<char>::iterator
 		transfer_bytes(std::deque<char>::iterator begin,
-		               std::deque<char>::iterator end) = 0;
+			std::deque<char>::iterator end) = 0;
 	};
 
 	template <typename Handler, typename IoExecutor,
-	          typename MutableBufferSequence>
+		typename MutableBufferSequence>
 	class read_channel_handler : public read_channel_op
 	{
 	  public:
 		read_channel_handler(Handler &&h, const IoExecutor &io_ex,
-		                     MutableBufferSequence &buffers)
-			: m_handler(std::move(h)), m_io_executor(io_ex),
-			  m_work(m_handler, m_io_executor), m_buffers(buffers) {}
+			MutableBufferSequence &buffers)
+			: m_handler(std::move(h))
+			, m_io_executor(io_ex)
+			, m_work(m_handler, m_io_executor)
+			, m_buffers(buffers)
+		{
+		}
 
 		virtual void complete(const boost::system::error_code &ec = {},
-		                      std::size_t bytes_transferred = 0) override
+			std::size_t bytes_transferred = 0) override
 		{
 			binder<Handler, boost::system::error_code, std::size_t> handler(
 				m_handler, ec, m_bytes_transferred);
@@ -96,15 +103,15 @@ namespace detail
 
 		virtual std::deque<char>::iterator
 		transfer_bytes(std::deque<char>::iterator begin,
-		               std::deque<char>::iterator end) override
+			std::deque<char>::iterator end) override
 		{
 			std::ptrdiff_t size = boost::asio::buffer_size(m_buffers);
 			if (size > end - begin)
 				size = end - begin;
 
 			for (auto buf = boost::asio::buffer_sequence_begin(m_buffers);
-			     buf != boost::asio::buffer_sequence_end(m_buffers) and size > 0;
-			     ++buf)
+				 buf != boost::asio::buffer_sequence_end(m_buffers) and size > 0;
+				 ++buf)
 			{
 				char *dst = static_cast<char *>(buf->data());
 
@@ -144,13 +151,16 @@ namespace detail
 	{
 	  public:
 		write_channel_handler(Handler &&h, const IoExecutor &io_ex,
-		                      std::list<opacket> &&packets)
-			: m_handler(std::forward<Handler>(h)), m_io_executor(io_ex),
-			  m_work(m_handler, m_io_executor),
-			  m_packets(std::forward<std::list<opacket>>(packets)) {}
+			std::list<opacket> &&packets)
+			: m_handler(std::forward<Handler>(h))
+			, m_io_executor(io_ex)
+			, m_work(m_handler, m_io_executor)
+			, m_packets(std::forward<std::list<opacket>>(packets))
+		{
+		}
 
 		virtual void complete(const boost::system::error_code &ec = {},
-		                      std::size_t bytes_transferred = 0) override
+			std::size_t bytes_transferred = 0) override
 		{
 			binder<Handler, boost::system::error_code, std::size_t> handler(
 				m_handler, ec, m_bytes_transferred);
@@ -192,15 +202,16 @@ namespace detail
 	{
 	  public:
 		wait_channel_handler(Handler &&h, const IoExecutor &io_ex,
-		                     channel_wait_type type)
-			: m_handler(std::forward<Handler>(h)), m_io_executor(io_ex),
-			  m_work(m_handler, m_io_executor)
+			channel_wait_type type)
+			: m_handler(std::forward<Handler>(h))
+			, m_io_executor(io_ex)
+			, m_work(m_handler, m_io_executor)
 		{
 			m_type = type;
 		}
 
 		virtual void complete(const boost::system::error_code &ec = {},
-		                      std::size_t bytes_transferred = 0) override
+			std::size_t bytes_transferred = 0) override
 		{
 			binder<Handler, boost::system::error_code> handler(m_handler, ec);
 
@@ -263,14 +274,15 @@ class channel : public std::enable_shared_from_this<channel>
 	template <typename Handler>
 	auto async_open(Handler &&handler)
 	{
-		enum { start, open_connection, open_channel };
+		enum
+		{
+			start,
+			open_connection,
+			open_channel
+		};
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-			[
-				state = start, this, me = shared_from_this()
-			]
-			(auto& self, const boost::system::error_code ec = {}, std::size_t = {}) mutable
-			{
+			[state = start, this, me = shared_from_this()](auto &self, const boost::system::error_code ec = {}, std::size_t = {}) mutable {
 				if (not ec)
 				{
 					switch (state)
@@ -298,8 +310,8 @@ class channel : public std::enable_shared_from_this<channel>
 				}
 
 				self.complete(ec);
-			}, handler
-		);
+			},
+			handler);
 	}
 
 	/// \brief Shortcut for async_open, without a handler. Still async though
@@ -316,12 +328,11 @@ class channel : public std::enable_shared_from_this<channel>
 	auto async_wait(wait_type type, Handler &&handler)
 	{
 		return boost::asio::async_initiate<Handler,
-		                                   void(boost::system::error_code)>(
+			void(boost::system::error_code)>(
 			async_wait_impl{}, handler, this, type);
 	}
 
   protected:
-
 	/// \brief File the packet that will be sent when opening a channel
 	///
 	/// Certain channels need additional info in their msg_open packet
@@ -354,14 +365,14 @@ class channel : public std::enable_shared_from_this<channel>
 	/// \param env				The list of environmental variables to set
 
 	void open_pty(uint32_t width, uint32_t height,
-	              const std::string &terminal_type, bool forward_agent,
-	              bool forward_x11, const environment &env);
+		const std::string &terminal_type, bool forward_agent,
+		bool forward_x11, const environment &env);
 
 	/// \brief Send a request to the server, along with a command to execute
 	///
 	/// An exec_channel uses this to execute a command at the server side.
 	void send_request_and_command(const std::string &request,
-	                              const std::string &command);
+		const std::string &command);
 
 	/// \brief Send a signal to the process at the server
 	void send_signal(const std::string &inSignal);
@@ -383,8 +394,8 @@ class channel : public std::enable_shared_from_this<channel>
 	/// Events in a connection or channel may produce different kinds of
 	/// text messages.
 	void set_message_callbacks(message_callback_type banner_handler,
-	                           message_callback_type message_handler,
-	                           message_callback_type error_handler)
+		message_callback_type message_handler,
+		message_callback_type error_handler)
 	{
 		m_banner_handler = banner_handler;
 		m_message_handler = message_handler;
@@ -392,6 +403,7 @@ class channel : public std::enable_shared_from_this<channel>
 	}
 
   protected:
+	friend class basic_connection;
 
 	/// \brief will call the banner handler
 	virtual void banner(const std::string &msg, const std::string &lang);
@@ -406,39 +418,43 @@ class channel : public std::enable_shared_from_this<channel>
   public:
 	// --------------------------------------------------------------------
 
+	/// \brief Requirement for AsyncReadStream, but do not use this directly
 	template <typename MutableBufferSequence, typename ReadHandler>
 	auto async_read_some(const MutableBufferSequence &buffers,
-	                     ReadHandler &&handler)
+		ReadHandler &&handler)
 	{
 		return boost::asio::async_initiate<
 			ReadHandler, void(boost::system::error_code, std::size_t)>(
 			async_read_impl{}, handler, this, buffers);
 	}
 
+	/// \brief Requirement for AsyncWriteStream, but do not use this directly
 	template <typename Handler, typename ConstBufferSequece>
 	auto async_write_some(const ConstBufferSequece &buffer, Handler &&handler)
 	{
 		return boost::asio::async_initiate<Handler, void(boost::system::error_code,
-		                                                 std::size_t)>(
+														std::size_t)>(
 			async_write_impl{}, handler, this, buffer);
 	}
 
+	/// \brief Internal routine for sending packets
 	template <typename Handler>
 	auto async_write_packet(opacket &&out, Handler &&handler)
 	{
 		return boost::asio::async_initiate<Handler, void(boost::system::error_code,
-		                                                 std::size_t)>(
+														std::size_t)>(
 			async_write_impl{}, handler, this, std::move(out));
 	}
 
 	// --------------------------------------------------------------------
 
-	// To send data through the channel using SSH_MSG_CHANNEL_DATA messages
+	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	void send_data(const std::string &data)
 	{
 		send_data(data, [](const boost::system::error_code &, std::size_t) {});
 	}
 
+	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	template <typename Handler>
 	void send_data(const std::string &data, Handler &&handler)
 	{
@@ -446,13 +462,15 @@ class channel : public std::enable_shared_from_this<channel>
 		async_write_packet(std::move(out), std::move(handler));
 	}
 
+	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	void send_data(const opacket &data)
 	{
 		opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
 		async_write_packet(std::move(out),
-		                   [](const boost::system::error_code &, std::size_t) {});
+			[](const boost::system::error_code &, std::size_t) {});
 	}
 
+	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	template <typename Handler>
 	void send_data(const char *data, size_t size, Handler &&handler)
 	{
@@ -461,28 +479,36 @@ class channel : public std::enable_shared_from_this<channel>
 		async_write_packet(std::move(out), std::move(handler));
 	}
 
+	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	template <typename Handler>
 	void send_data(opacket &data, Handler &&handler)
 	{
 		async_write_packet(opacket(msg_channel_data) << m_host_channel_id << data,
-		                   std::move(handler));
+			std::move(handler));
 	}
 
+	/// \brief To send data through the channel using SSH_MSG_CHANNEL_EXTENDED_DATA messages
 	template <typename Handler>
 	void send_extended_data(opacket &data, uint32_t type, Handler &&handler)
 	{
 		async_write_packet(opacket(msg_channel_extended_data)
-		                       << m_host_channel_id << type << data,
-		                   std::move(handler));
+							   << m_host_channel_id << type << data,
+			std::move(handler));
 	}
 
   protected:
-
 	/// \brief Constructor taking a \a connection
 	channel(std::shared_ptr<basic_connection> connection)
-		: m_connection(connection), m_max_send_packet_size(0),
-		  m_channel_open(false), m_my_channel_id(0), m_host_channel_id(0),
-		  m_my_window_size(kWindowSize), m_host_window_size(0), m_eof(false) {}
+		: m_connection(connection)
+		, m_max_send_packet_size(0)
+		, m_channel_open(false)
+		, m_my_channel_id(0)
+		, m_host_channel_id(0)
+		, m_my_window_size(kWindowSize)
+		, m_host_window_size(0)
+		, m_eof(false)
+	{
+	}
 
 	virtual ~channel()
 	{
@@ -501,10 +527,10 @@ class channel : public std::enable_shared_from_this<channel>
 
 	virtual void receive_data(const char *data, std::size_t size);
 	virtual void receive_extended_data(const char *data, std::size_t size,
-	                                   uint32_t type);
+		uint32_t type);
 
 	virtual void handle_channel_request(const std::string &request, ipacket &in,
-	                                    opacket &out);
+		opacket &out);
 
   protected:
 	std::shared_ptr<basic_connection> m_connection;
@@ -535,7 +561,7 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 		template <typename Handler, typename MutableBufferSequence>
 		void operator()(Handler &&handler, channel *ch,
-		                const MutableBufferSequence &buffers)
+			const MutableBufferSequence &buffers)
 		{
 			if (not ch->is_open())
 				handler(error::make_error_code(error::connection_lost), 0);
@@ -553,7 +579,7 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 		template <typename Handler, typename ConstBufferSequence>
 		void operator()(Handler &&handler, channel *ch,
-		                const ConstBufferSequence &buffer)
+			const ConstBufferSequence &buffer)
 		{
 			std::size_t n = buffer.size();
 
@@ -575,7 +601,7 @@ class channel : public std::enable_shared_from_this<channel>
 						k = ch->m_max_send_packet_size;
 
 					packets.push_back(opacket(msg_channel_data)
-					                  << ch->m_host_channel_id << std::make_pair(b, k));
+									  << ch->m_host_channel_id << std::make_pair(b, k));
 
 					b += k;
 				}
@@ -622,13 +648,16 @@ class exec_channel : public channel
 	{
 		virtual ~basic_result_handler() {}
 		virtual void post_result(const std::string &message,
-		                         int32_t result_code) = 0;
+			int32_t result_code) = 0;
 	};
 
 	template <typename Handler>
 	struct result_handler : public basic_result_handler
 	{
-		result_handler(Handler &&handler) : m_handler(std::move(handler)) {}
+		result_handler(Handler &&handler)
+			: m_handler(std::move(handler))
+		{
+		}
 
 		virtual void post_result(const std::string &message, int32_t result_code)
 		{
@@ -640,9 +669,12 @@ class exec_channel : public channel
 
 	template <typename Handler>
 	exec_channel(std::shared_ptr<basic_connection> connection,
-	             const std::string &cmd, Handler &&handler)
-		: channel(connection), m_command(cmd),
-		  m_handler(new result_handler<Handler>(std::move(handler))) {}
+		const std::string &cmd, Handler &&handler)
+		: channel(connection)
+		, m_command(cmd)
+		, m_handler(new result_handler<Handler>(std::move(handler)))
+	{
+	}
 
 	~exec_channel() { delete m_handler; }
 
@@ -650,7 +682,7 @@ class exec_channel : public channel
 
   protected:
 	virtual void handle_channel_request(const std::string &request, ipacket &in,
-	                                    opacket &out);
+		opacket &out);
 
   private:
 	std::string m_command;

@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <functional>
+/// \file Definition of the key exchange object
 
 #include <pinch/packet.hpp>
 #include <pinch/pinch.hpp>
@@ -22,29 +22,55 @@ extern const std::string
 
 // --------------------------------------------------------------------
 
+/// \brief Return the first common protocol for \a server and \a client
 std::string choose_protocol(const std::string &server, const std::string &client);
 
 // --------------------------------------------------------------------
 
 struct key_exchange_impl;
 
+/// \brief The class encapsulating the key exchange algorithm
 class key_exchange
 {
   public:
-	// configure before connecting
+	/// \brief Set a preferred algorithm
+	///
+	/// This method should obviously be called before connecting.
+	///
+	/// \param alg		The algorithm to use
+	/// \param dir		The direction. Tip: use direction::both
+	/// \param peferred	The comma separated list of algorithms, ordered by preferrence
 	static void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
 
+	/// \brief Constructor for a new connection
+	///
+	/// \param host_version The version string provided by the host
 	key_exchange(const std::string &host_version);
+
+	/// \brief Constructor for a rekey event
+	///
+	/// \param host_version The version string provided by the host
+	/// \param session_id	The session ID created in the initial key exchange
 	key_exchange(const std::string &host_version, const blob &session_id);
+
+	/// \brief destructor
 	~key_exchange();
 
 	key_exchange(const key_exchange &) = delete;
 	key_exchange &operator=(const key_exchange &) = delete;
 
+	/// \brief Return a packet with msg_kexinit and our preferred algo's
 	opacket init();
 
+	/// \brief Process a message during key exchange
+	///
+	/// \param in	The incomming packet
+	/// \param out	Might be filled, or not...
+	/// \param ec	Will contain an error code in case of trouble
+	/// \result		Returns true if the message was successfully handled
 	bool process(ipacket &in, opacket &out, boost::system::error_code &ec);
 
+	/// \brief Enumerator for the keys, see standard
 	enum key_enum
 	{
 		A,
@@ -54,23 +80,35 @@ class key_exchange
 		E,
 		F
 	};
-	const uint8_t *key(key_enum k) const;
-	// const uint8_t *key(key_enum k) const { return m_keys[k].data(); }
 
+	/// \brief Return the key data for key \a k
+	const uint8_t *key(key_enum k) const;
+
+	/// \brief Return the session ID as created
 	const blob &session_id() const { return m_session_id; }
 
+	/// \brief Return the final encryption algorithm chosen for \a dir
 	std::string get_encryption_protocol(direction dir) const;
+
+	/// \brief Return the final verification algorithm chosen for \a dir
 	std::string get_verification_protocol(direction dir) const;
+
+	/// \brief Return the final compression algorithm chosen for \a dir
 	std::string get_compression_protocol(direction dir) const;
 
-	ipacket host_payload() const;
-
+	/// \brief Return the private key signing algorithm for the host key
 	const std::string& get_host_key_pk_type() const	{ return m_pk_type; }
+
+	/// \brief Return the public key for the host
 	const blob& get_host_key() const { return m_host_key; }
 
   protected:
 	friend struct key_exchange_impl;
 
+	/// \brief The host payload packet
+	ipacket host_payload() const;
+
+	/// \brief process the kexinit message
 	void process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec);
 
 	key_exchange_impl *m_impl = nullptr;

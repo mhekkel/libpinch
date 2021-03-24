@@ -5,6 +5,8 @@
 
 #pragma once
 
+/// \brief Simple implementation of very common digesting routines
+
 #include <pinch/pinch.hpp>
 
 #include <string>

@@ -5,6 +5,8 @@
 
 #pragma once
 
+/// \brief Build on boost::system::error_code by extending it with SSH messages
+
 #include <exception>
 
 #include <boost/system/error_code.hpp>
@@ -13,14 +15,7 @@
 namespace pinch
 {
 
-class exception : public std::runtime_error
-{
-  public:
-	exception(const char *msg) noexcept : std::runtime_error(msg) {}
-	exception(const std::string &msg) noexcept : std::runtime_error(msg) {}
-	exception(const exception &) = default;
-	exception &operator=(const exception &) = default;
-};
+/// \brief Error messages as defined by the standard
 
 enum error_msg
 {
@@ -69,6 +64,7 @@ enum error_msg
 namespace error
 {
 
+	/// \brief Mapping of standard error messages
 	enum ssh_errors
 	{
 		unimplemented = SSH_MSG_UNIMPLEMENTED,
@@ -86,6 +82,7 @@ namespace error
 		disconnect_by_host
 	};
 
+	/// \brief Reasons for a disconnect
 	enum disconnect_errors
 	{
 		host_not_allowed_to_connect = 1,

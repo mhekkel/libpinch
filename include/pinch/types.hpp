@@ -5,18 +5,23 @@
 
 #pragma once
 
+/// \file Common types in this library
+
 #include <cstdint>
 #include <vector>
 
 namespace pinch
 {
 
+/// \brief The direction for an algorithm
 enum class direction
 {
-	c2s,
-	s2c,
-	both
+	c2s,	///< Client to server
+	s2c,	///< Server to client
+	both	///< Both directions
 };
+
+/// \brief The four algorithms
 enum class algorithm
 {
 	encryption,
@@ -26,6 +31,8 @@ enum class algorithm
 };
 
 // blob should be made a bit more secure one day
+
+/// \brief Class containing a number of unsigned bytes
 using blob = std::vector<uint8_t>;
 
 } // namespace pinch

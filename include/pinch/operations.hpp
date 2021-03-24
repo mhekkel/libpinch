@@ -5,6 +5,8 @@
 
 #pragma once
 
+/// \brief helper function and classes for async operations
+
 #include <pinch/pinch.hpp>
 
 #include <boost/asio.hpp>

@@ -43,8 +43,8 @@ class client
 		});
 
 		m_sftp_channel.reset(new pinch::sftp_channel(connection));
-		m_sftp_channel->async_open([this](const boost::system::error_code &ec) {
-			if (ec)
+		m_sftp_channel->async_init(3, [this](const boost::system::error_code &ec, int version) {
+			if (ec or version != 3)
 			{
 				std::cerr << "error sftp opening channel: " << ec.message() << std::endl;
 				m_sftp_channel->close();
@@ -52,15 +52,15 @@ class client
 			else
 			{
 				m_sftp_channel->read_dir("/home/maarten",
-				                         [](const boost::system::error_code &ec, const std::list<std::tuple<std::string, std::string, pinch::file_attributes>> &files) {
-											 if (ec)
-												 std::cerr << "read dir error: " << ec.message() << std::endl;
-											 else
-											 {
-												 for (const auto &[name, longname, attr] : files)
-													 std::cout << longname << std::endl;
-											 }
-										 });
+					[](const boost::system::error_code &ec, const std::list<std::tuple<std::string, std::string, pinch::file_attributes>> &files) {
+						if (ec)
+							std::cerr << "read dir error: " << ec.message() << std::endl;
+						else
+						{
+							for (const auto &[name, longname, attr] : files)
+								std::cout << longname << std::endl;
+						}
+					});
 			}
 		});
 	}
@@ -104,10 +104,10 @@ class client
 			io::copy(in, std::cout);
 
 			boost::asio::async_read(*m_channel, m_response,
-			                        boost::asio::transfer_at_least(1),
-			                        [this](const boost::system::error_code &ec, size_t bytes_transferred) {
-										this->received(ec, bytes_transferred);
-									});
+				boost::asio::transfer_at_least(1),
+				[this](const boost::system::error_code &ec, size_t bytes_transferred) {
+					this->received(ec, bytes_transferred);
+				});
 		}
 	}
 
@@ -131,10 +131,17 @@ int main(int argc, char *const argv[])
 		std::string port = argv[2];
 		std::string user = argv[3];
 
-		boost::asio::io_service io_service;
-		pinch::connection_pool pool(io_service);
+		boost::asio::io_context io_context;
+		pinch::connection_pool pool(io_context);
 
 		std::shared_ptr<pinch::basic_connection> connection(pool.get(user, host, std::stoi(port)));
+
+		connection->set_accept_host_key_handler(
+			[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
+				std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
+						  << "  ==> in thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
+				return pinch::host_key_reply::trust_once;
+			});
 
 		client *c = nullptr;
 
@@ -149,7 +156,10 @@ int main(int argc, char *const argv[])
 		c = new client(connection);
 		//		});
 
-		io_service.run();
+		boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
+		sigset.async_wait([&io_context](boost::system::error_code, int signal) { io_context.stop(); });
+
+		io_context.run();
 	}
 	catch (std::exception &e)
 	{

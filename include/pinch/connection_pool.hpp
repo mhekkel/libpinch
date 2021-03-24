@@ -5,35 +5,77 @@
 
 #pragma once
 
-#include <pinch/channel.hpp>
+/// \file
+/// Definition of the connection_pool class
+///
+/// A connection_pool can be used to keep the number of connections
+/// limited. Each connection is stored and can be reused.
+///
+/// Connections are uniquely defined by their user/host/port combination.
+
 #include <pinch/pinch.hpp>
+
+#include <pinch/channel.hpp>
 
 namespace pinch
 {
 
+/// \brief The connection_pool class.
+/// 
+/// You should probably have only one instance of this class,
+/// however it is not a singleton. yet?
+
 class connection_pool
 {
   public:
+
+	/// \brief constructor
+	///
+	/// \param io_context	The boost io_context to use
 	connection_pool(boost::asio::io_context &io_context);
+
+	/// \brief destructor
 	~connection_pool();
 
-	// set algorithms to use by connections created by this pool
-	void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
-
+	/// \brief Return a connection for a user/host/port combination
+	///
+	/// \param user		The username to use when authenticating
+	/// \param host		The hostname or ip address of the server
+	/// \param port		The port to connect to
 	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, uint16_t port);
 
-	// get a proxied connection
+	/// \brief Return a proxied connection for a user/host/port combination via a proxy
+	///
+	/// \param user			The username to use when authenticating
+	/// \param host			The hostname or ip address of the server
+	/// \param port			The port to connect to
+	/// \param proxy_user	The username to use when authenticating to the proxy host
+	/// \param proxy_host	The hostname or ip address of the proxy server
+	/// \param proxy_port	The port at the proxy server to connect to
+	/// \param proxy_cmd	The proxy command to use, e.g. /usr/bin/netcat. Leave empty to use direct-tcpip
 	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, uint16_t port,
 		const std::string &proxy_user, const std::string &proxy_host,
 		uint16_t proxy_port, const std::string &proxy_cmd = {});
 
-	// register a default proxy for a connection
+	/// \brief Register a default proxy for a connection
+	///
+	/// \param destination_host	The hostname or ip address of the server
+	/// \param destination_port	The port to connect to
+	/// \param proxy_user		The username to use when authenticating to the proxy host
+	/// \param proxy_host		The hostname or ip address of the proxy server
+	/// \param proxy_port		The port at the proxy server to connect to
+	/// \param proxy_cmd	The proxy command to use, e.g. /usr/bin/netcat. Leave empty to use direct-tcpip
 	void register_proxy(const std::string &destination_host, uint16_t destination_port,
 		const std::string &proxy_user, const std::string &proxy_host,
 		uint16_t proxy_port, const std::string &proxy_cmd);
 
+	/// \brief Close all connections
 	void disconnect_all();
+
+	/// \brief Are there connections open?
 	bool has_open_connections();
+
+	/// \brief Are there any channels still open?
 	bool has_open_channels();
 
   private:
@@ -71,10 +113,6 @@ class connection_pool
 	boost::asio::io_context &m_io_context;
 	entry_list m_entries;
 	proxy_list m_proxies;
-
-	std::string m_alg_kex,
-		m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
-		m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 };
 
 } // namespace pinch

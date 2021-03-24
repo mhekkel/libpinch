@@ -192,7 +192,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \param host The hostname to connect to, or an IP address
 	/// \param port The port to connect to
 
-	template<typename Executor>
+	template <typename Executor>
 	basic_connection(Executor executor, const std::string &user, const std::string &host, uint16_t port = 22)
 		: m_user(user)
 		, m_host(host)
@@ -897,13 +897,8 @@ void basic_connection::async_wait_impl::operator()(
 	switch (type)
 	{
 		case wait_type::open:
-			if (c)
-				c->next_layer().async_wait(boost::asio::socket_base::wait_read,
-					std::move(handler));
-			else
-				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(
-					new detail::wait_connection_handler(std::move(handler),
-						pc->get_executor(), type)));
+			conn->m_waiting_ops.push_back(
+				new detail::wait_connection_handler(std::move(handler), conn->get_executor(), type));
 			break;
 
 		case wait_type::read:

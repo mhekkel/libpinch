@@ -1,4 +1,4 @@
-//           Copyright Maarten L. Hekkelman 2013
+//        Copyright Maarten L. Hekkelman 2013-2021
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -21,40 +21,6 @@ connection_pool::~connection_pool()
 {
 	for (auto &e : m_entries)
 		e.connection.reset();
-}
-
-void connection_pool::set_algorithm(algorithm alg, direction dir, const std::string &preferred)
-{
-	switch (alg)
-	{
-		case algorithm::keyexchange:
-			m_alg_kex = preferred;
-			break;
-
-		case algorithm::encryption:
-			if (dir != direction::c2s)
-				m_alg_enc_s2c = preferred;
-			if (dir != direction::s2c)
-				m_alg_enc_c2s = preferred;
-			break;
-
-		case algorithm::verification:
-			if (dir != direction::c2s)
-				m_alg_ver_s2c = preferred;
-			if (dir != direction::s2c)
-				m_alg_ver_c2s = preferred;
-			break;
-
-		case algorithm::compression:
-			if (dir != direction::c2s)
-				m_alg_cmp_s2c = preferred;
-			if (dir != direction::s2c)
-				m_alg_cmp_c2s = preferred;
-			break;
-	}
-
-	// for (auto e: m_entries)
-	// 	e.connection->set_algorithm(alg, dir, preferred);
 }
 
 void connection_pool::register_proxy(const std::string &destination_host, uint16_t destination_port,
@@ -87,14 +53,6 @@ std::shared_ptr<basic_connection> connection_pool::get(const std::string &user, 
 
 		entry e = {user, host, port, result};
 		m_entries.push_back(e);
-
-		// if (not m_alg_kex.empty())		result->set_algorithm(algorithm::keyexchange,	direction::c2s, m_alg_kex);
-		// if (not m_alg_enc_c2s.empty())	result->set_algorithm(algorithm::encryption,	direction::c2s, m_alg_enc_c2s);
-		// if (not m_alg_ver_c2s.empty())	result->set_algorithm(algorithm::verification,	direction::c2s, m_alg_ver_c2s);
-		// if (not m_alg_cmp_c2s.empty())	result->set_algorithm(algorithm::compression,	direction::c2s, m_alg_cmp_c2s);
-		// if (not m_alg_enc_s2c.empty())	result->set_algorithm(algorithm::encryption,	direction::s2c, m_alg_enc_s2c);
-		// if (not m_alg_ver_s2c.empty())	result->set_algorithm(algorithm::verification,	direction::s2c, m_alg_ver_s2c);
-		// if (not m_alg_cmp_s2c.empty())	result->set_algorithm(algorithm::compression,	direction::s2c, m_alg_cmp_s2c);
 	}
 
 	return result;
@@ -126,14 +84,6 @@ std::shared_ptr<basic_connection> connection_pool::get(const std::string &user, 
 
 		entry e = {user, host, port, result};
 		m_entries.push_back(e);
-
-		// if (not m_alg_kex.empty())		result->set_algorithm(algorithm::keyexchange,	direction::c2s, m_alg_kex);
-		// if (not m_alg_enc_c2s.empty())	result->set_algorithm(algorithm::encryption,	direction::c2s, m_alg_enc_c2s);
-		// if (not m_alg_ver_c2s.empty())	result->set_algorithm(algorithm::verification,	direction::c2s, m_alg_ver_c2s);
-		// if (not m_alg_cmp_c2s.empty())	result->set_algorithm(algorithm::compression,	direction::c2s, m_alg_cmp_c2s);
-		// if (not m_alg_enc_s2c.empty())	result->set_algorithm(algorithm::encryption,	direction::s2c, m_alg_enc_s2c);
-		// if (not m_alg_ver_s2c.empty())	result->set_algorithm(algorithm::verification,	direction::s2c, m_alg_ver_s2c);
-		// if (not m_alg_cmp_s2c.empty())	result->set_algorithm(algorithm::compression,	direction::s2c, m_alg_cmp_s2c);
 	}
 
 	return result;

@@ -77,6 +77,9 @@ void basic_connection::close()
 	m_session_id.clear();
 	m_crypto_engine.reset();
 
+	if (m_port_forwarder)
+		m_port_forwarder->connection_closed();
+
 	// copy the list since calling Close will change it
 	std::list<channel_ptr> channels(m_channels);
 	for (auto ch : channels)
@@ -422,16 +425,18 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 	else if (m_auth_state == handshake)
 		async_wait(detail::connection_wait_type::open, [op = std::move(op)](boost::system::error_code ec) { op->complete(ec); });
 	else
+	{
+		m_auth_state = handshake;
+
 		// boost::asio::co_spawn(get_executor(), do_open_3(std::move(op)), boost::asio::detached);
 		boost::asio::spawn(get_executor(), [op = std::move(op), this](boost::asio::yield_context yield) mutable {
 			do_handshake(std::move(op), yield);
 		});
+	}
 }
 
 void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield)
 {
-	m_auth_state = handshake;
-
 	boost::system::error_code ec;
 
 	do
@@ -1024,7 +1029,7 @@ proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, uint16_t port)
 	: basic_connection(proxy->get_executor(), user, host, port)
 	, m_proxy(proxy)
-	, m_channel(new forwarding_channel(m_proxy, host, port))
+	, m_channel(new forwarding_channel(m_proxy, 22, host, port))
 {
 }
 

@@ -76,6 +76,11 @@ class my_queue
 	// 	}
 	// }
 
+	void stop()
+	{
+		m_stop = true;
+	}
+
 	void run()
 	{
 		for (;;)
@@ -84,6 +89,9 @@ class my_queue
 				std::unique_lock lock(m_mutex);
 				m_cv.wait_for(lock, std::chrono::milliseconds(100));
 			}
+
+			if (m_stop)
+				break;
 
 			if (not m_q.empty())
 			{
@@ -97,6 +105,7 @@ class my_queue
 	std::mutex m_mutex;
 	std::condition_variable m_cv;
 	std::deque<std::unique_ptr<handler_base>> m_q;
+	bool m_stop = false;
 };
 
 class my_executor
@@ -361,7 +370,7 @@ int main()
 	// });
 
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
-	sigset.async_wait([&io_context](boost::system::error_code, int signal) { io_context.stop(); });
+	sigset.async_wait([&io_context, &queue](boost::system::error_code, int signal) { io_context.stop(); queue.stop(); });
 
 	conn->keep_alive(std::chrono::seconds(5));
 

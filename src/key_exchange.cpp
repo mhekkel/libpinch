@@ -242,10 +242,9 @@ void key_exchange_impl::process_kex_dh_reply(ipacket &in, opacket &out, boost::s
 		hostkey >> h_e >> h_n;
 
 		ipacket payload(m_host_payload.data(), m_host_payload.size());
-		std::string key_exchange_alg, server_host_key_alg;
+		std::string server_host_key_alg;
 
-		payload.skip(16);
-		payload >> key_exchange_alg >> server_host_key_alg;
+		payload >> skip(16) >> skip_str >> server_host_key_alg;
 
 		std::string alg = choose_protocol(server_host_key_alg, kServerHostKeyAlgorithms);
 
@@ -534,8 +533,7 @@ void key_exchange::process_kexinit(ipacket &in, opacket &out, boost::system::err
 	m_host_payload = in;
 
 	std::string key_exchange_alg;
-	in.skip(16);
-	in >> key_exchange_alg;
+	in >> skip(16) >> key_exchange_alg;
 
 	key_exchange_alg = choose_protocol(key_exchange_alg, s_alg_kex);
 
@@ -591,11 +589,9 @@ std::string key_exchange::get_encryption_protocol(direction dir) const
 {
 	ipacket payload = host_payload();
 
-	std::string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
+	std::string encryption_alg_c2s, encryption_alg_s2c;
 
-	payload.skip(16);
-	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
+	payload >> skip(16) >> skip_str >> skip_str >> encryption_alg_c2s >> encryption_alg_s2c;
 
 	return dir == direction::c2s ? choose_protocol(encryption_alg_c2s, s_alg_enc_c2s) : choose_protocol(encryption_alg_s2c, s_alg_enc_c2s);
 }
@@ -604,11 +600,9 @@ std::string key_exchange::get_verification_protocol(direction dir) const
 {
 	ipacket payload = host_payload();
 
-	std::string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
+	std::string MAC_alg_c2s, MAC_alg_s2c;
 
-	payload.skip(16);
-	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
+	payload >> skip(16) >> skip_str >> skip_str >> skip_str >> skip_str >> MAC_alg_c2s >> MAC_alg_s2c;
 
 	return dir == direction::c2s ? choose_protocol(MAC_alg_c2s, s_alg_ver_c2s) : choose_protocol(MAC_alg_s2c, s_alg_ver_s2c);
 }
@@ -617,14 +611,11 @@ std::string key_exchange::get_compression_protocol(direction dir) const
 {
 	ipacket payload = host_payload();
 
-	std::string key_exchange_alg, server_host_key_alg, encryption_alg_c2s, encryption_alg_s2c,
-		MAC_alg_c2s, MAC_alg_s2c, compression_alg_c2s, compression_alg_s2c;
+	std::string compression_alg_c2s, compression_alg_s2c;
 
-	payload.skip(16);
-	payload >> key_exchange_alg >> server_host_key_alg >> encryption_alg_c2s >> encryption_alg_s2c >> MAC_alg_c2s >> MAC_alg_s2c >> compression_alg_c2s >> compression_alg_s2c;
+	payload >> skip(16) >> skip_str >> skip_str >> skip_str >> skip_str >> skip_str >> skip_str >> compression_alg_c2s >> compression_alg_s2c;
 
-	return dir ==
-				   direction::c2s
+	return dir == direction::c2s
 			   ? choose_protocol(compression_alg_c2s, s_alg_cmp_c2s)
 			   : choose_protocol(compression_alg_s2c, s_alg_cmp_s2c);
 }

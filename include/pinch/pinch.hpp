@@ -5,6 +5,8 @@
 
 #pragma once
 
+/// \file Generic header, not much here
+
 #include <pinch/types.hpp>
 
 #if DEBUG
