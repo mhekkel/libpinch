@@ -437,29 +437,18 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 
 void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield)
 {
-	boost::system::error_code ec;
-
-	do
+	try
 	{
 		/* code */
-		async_open_next_layer(yield[ec]);
-		if (ec)
-			break;
-
-		async_wait(wait_type::write, yield[ec]);
-		if (ec)
-			break;
+		async_open_next_layer(yield);
+		async_wait(wait_type::write, yield);
 
 		boost::asio::streambuf buffer;
 		std::ostream os(&buffer);
 		os << kSSHVersionString << "\r\n";
-		boost::asio::async_write(*this, buffer, yield[ec]);
-		if (ec)
-			break;
+		boost::asio::async_write(*this, buffer, yield);
 
-		boost::asio::async_read_until(*this, m_response, "\n", yield[ec]);
-		if (ec)
-			break;
+		boost::asio::async_read_until(*this, m_response, "\n", yield);
 
 		std::string host_version;
 		{
@@ -471,31 +460,27 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 			host_version.pop_back();
 
 		if (host_version.substr(0, 7) != "SSH-2.0")
-		{
-			ec = error::make_error_code(error::protocol_version_not_supported);
-			break;
-		}
+			throw boost::system::system_error(error::make_error_code(error::protocol_version_not_supported));
 
 		auto kex = std::make_unique<key_exchange>(host_version);
 		async_write(kex->init());
 
-		boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(8), yield[ec]);
-		if (ec)
-			break;
+		boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(8), yield);
 
 		ipacket in;
 
+		boost::system::error_code ec;
 		while (not ec)
 		{
 			if (not receive_packet(in, ec) and not ec)
 			{
-				boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), yield[ec]);
+				boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), yield);
 				continue;
 			}
 
 			if (in == msg_newkeys)
 			{
-				if (async_check_host_key(kex->get_host_key_pk_type(), kex->get_host_key(), yield[ec]))
+				if (accept_host_key(kex->get_host_key_pk_type(), kex->get_host_key()))
 					break;
 
 				ec = error::make_error_code(error::host_key_not_verifiable);
@@ -516,7 +501,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 		}
 
 		if (ec)
-			break;
+			throw boost::system::system_error(ec);
 
 		newkeys(*kex);
 
@@ -545,7 +530,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 		{
 			if (not receive_packet(in, ec) and not ec)
 			{
-				boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), yield[ec]);
+				boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), yield);
 				continue;
 			}
 
@@ -592,7 +577,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 
 					if (choose_protocol(s, "password") == "password" and ++password_attempts <= 3)
 					{
-						std::string password = async_provide_password(yield[ec]);
+						std::string password = provide_password();
 						if (password.empty())
 						{
 							password_attempts = 4;
@@ -667,7 +652,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 							for (auto &p : prompts)
 								in >> p.str >> p.echo;
 
-							auto replies = async_provide_credentials(name, instruction, language, prompts, yield[ec]);
+							auto replies = provide_credentials(name, instruction, language, prompts);
 
 							if (replies.empty())
 							{
@@ -699,12 +684,17 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 					break;
 			}
 		}
-	} while (false);
 
-	op->complete(ec);
+		op->complete(ec);
 
-	if (ec)
+		if (ec)
+			close();
+	}
+	catch (const boost::system::system_error &e)
+	{
+		op->complete(e.code());
 		close();
+	}
 }
 
 #if 0

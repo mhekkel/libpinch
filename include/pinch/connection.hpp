@@ -420,7 +420,17 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		bool result = state == host_key_state::match;
 		if (not result and m_accept_host_key_handler)
 		{
-			switch (m_accept_host_key_handler(m_host, algorithm, key, state))
+			std::packaged_task<host_key_reply()> task(std::bind(m_accept_host_key_handler, m_host, algorithm, key, state));
+			auto accept = task.get_future();
+
+			if (m_callback_executor)
+				m_callback_executor.execute(std::move(task));
+			else
+				task();
+
+			accept.wait();
+
+			switch (accept.get())
 			{
 				case host_key_reply::trusted:
 					known_hosts::instance().add_host_key(m_host, algorithm, key);
@@ -452,7 +462,17 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \brief Simply call the provide password handler
 	std::string provide_password()
 	{
-		return m_provide_password_handler();
+		std::packaged_task<std::string()> task(m_provide_password_handler);
+		auto result = task.get_future();
+
+		if (m_callback_executor)
+			m_callback_executor.execute(std::move(task));
+		else
+			task();
+
+		result.wait();
+
+		return result.get();
 	}
 
 	/// \brief register a function that will return a password to use in connecting
@@ -474,7 +494,17 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		const std::string &instruction, const std::string &lang,
 		const std::vector<prompt> &prompts)
 	{
-		return m_provide_credentials_handler(name, instruction, lang, prompts);
+		std::packaged_task<std::vector<std::string>()> task(std::bind(m_provide_credentials_handler, name, instruction, lang, prompts));
+		auto result = task.get_future();
+
+		if (m_callback_executor)
+			m_callback_executor.execute(std::move(task));
+		else
+			task();
+
+		result.wait();
+
+		return result.get();
 	}
 
 	/// \brief register a function that will return the credentials for a connection
@@ -536,39 +566,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void handle_banner(const std::string &message, const std::string &lang);
 
 	// --------------------------------------------------------------------
-
-	/// \brief async accept_host_key support
-	template <typename Handler>
-	auto async_check_host_key(const std::string &algorithm, const pinch::blob &key, Handler &&handler)
-	{
-		auto executor = m_callback_executor;
-		if (not executor)
-			executor = boost::asio::get_associated_executor(m_accept_host_key_handler);
-		return async_function_wrapper(std::move(handler), executor, std::bind(&basic_connection::accept_host_key, this, std::placeholders::_1, std::placeholders::_2), algorithm, key);
-	}
-
-	/// \brief async password support
-	template <typename Handler>
-	auto async_provide_password(Handler &&handler)
-	{
-		auto executor = m_callback_executor;
-		if (not executor)
-			executor = boost::asio::get_associated_executor(m_provide_password_handler);
-		return async_function_wrapper(std::move(handler), executor, std::bind(&basic_connection::provide_password, this));
-	}
-
-	/// \brief async credentials support
-	template <typename Handler>
-	auto async_provide_credentials(const std::string &name, const std::string &instruction,
-		const std::string &lang, const std::vector<prompt> &prompts, Handler &&handler)
-	{
-		auto executor = m_callback_executor;
-		if (not executor)
-			executor = boost::asio::get_associated_executor(m_provide_credentials_handler);
-		return async_function_wrapper(std::move(handler), executor,
-			std::bind(&basic_connection::provide_credentials, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4),
-			name, instruction, lang, prompts);
-	}
 
 	std::string m_user;           ///< The username
 	std::string m_host;           ///< The hostname or IP address
