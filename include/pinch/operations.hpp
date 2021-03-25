@@ -38,8 +38,7 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 	enum state
 	{
 		start,
-		running,
-		fetch
+		running
 	};
 
 	std::packaged_task<result_type()> task(std::bind(func, args...));
@@ -55,17 +54,11 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 				if (state == start)
 				{
 					state = running;
-					executor.execute(std::move(self));
+					boost::asio::post(executor, std::move(self));
 					return;
 				}
 
-				if (state == running)
-				{
-					state = fetch;
-					task();
-					boost::asio::dispatch(std::move(self));
-					return;
-				}
+				task();
 
 				try
 				{
@@ -79,7 +72,7 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 
 			self.complete(ec, r);
 		},
-		executor);
+		handler);
 }
 
 // --------------------------------------------------------------------

@@ -429,7 +429,7 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 		m_auth_state = handshake;
 
 		// boost::asio::co_spawn(get_executor(), do_open_3(std::move(op)), boost::asio::detached);
-		boost::asio::spawn(get_executor(), [op = std::move(op), this](boost::asio::yield_context yield) mutable {
+		boost::asio::spawn(m_strand, [op = std::move(op), this](boost::asio::yield_context yield) mutable {
 			do_handshake(std::move(op), yield);
 		});
 	}
@@ -1020,14 +1020,14 @@ class proxy_channel : public channel
 // --------------------------------------------------------------------
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &nc_cmd, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(proxy->get_executor(), user, host, port)
+	: basic_connection(proxy->get_executor().context(), user, host, port)
 	, m_proxy(proxy)
 	, m_channel(new proxy_channel(m_proxy, nc_cmd, user, host, port))
 {
 }
 
 proxied_connection::proxied_connection(std::shared_ptr<basic_connection> proxy, const std::string &user, const std::string &host, uint16_t port)
-	: basic_connection(proxy->get_executor(), user, host, port)
+	: basic_connection(proxy->get_executor().context(), user, host, port)
 	, m_proxy(proxy)
 	, m_channel(new forwarding_channel(m_proxy, 22, host, port))
 {
@@ -1037,11 +1037,6 @@ proxied_connection::~proxied_connection()
 {
 	if (m_channel and m_channel->is_open())
 		m_channel->close();
-}
-
-proxied_connection::executor_type proxied_connection::get_executor() noexcept
-{
-	return m_channel->lowest_layer().get_executor();
 }
 
 const proxied_connection::lowest_layer_type &proxied_connection::lowest_layer() const

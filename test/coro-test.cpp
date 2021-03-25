@@ -32,6 +32,32 @@ namespace io = boost::iostreams;
 
 // --------------------------------------------------------------------
 
+class thread_name
+{
+  public:
+	static thread_name& instance()
+	{
+		static thread_name s_instance;
+		return s_instance;
+	}
+
+	char operator()()
+	{
+		std::lock_guard lock(m_mutex);
+
+		std::thread::id id = std::this_thread::get_id();
+
+		auto i = m_names.find(id);
+		if (i == m_names.end())
+			return m_names[id] = 'A' + m_names.size();
+		else
+			return i->second;
+	}
+
+	std::mutex m_mutex;
+	std::map<std::thread::id,char> m_names;
+};
+
 class my_queue
 {
   public:
@@ -79,9 +105,14 @@ class my_queue
 	// 	}
 	// }
 
+	void stop()
+	{
+		m_done = true;
+	}
+
 	void run()
 	{
-		for (;;)
+		while (not m_done)
 		{
 			{
 				std::unique_lock lock(m_mutex);
@@ -100,6 +131,7 @@ class my_queue
 	std::mutex m_mutex;
 	std::condition_variable m_cv;
 	std::deque<std::unique_ptr<handler_base>> m_q;
+	bool m_done = false;
 };
 
 class my_executor
@@ -139,9 +171,64 @@ class my_executor
 
 // --------------------------------------------------------------------
 
+template <typename Handler, typename Executor, typename... Args, typename Function>
+auto async_function_wrapper(Handler &&handler, Executor &executor, Function func, Args... args)
+{
+	using result_type = decltype(func(args...));
+
+	enum state
+	{
+		start,
+		running,
+		fetch
+	};
+
+	std::packaged_task<result_type()> task(std::bind(func, args...));
+	std::future<result_type> result = task.get_future();
+
+	return boost::asio::async_compose<Handler, void(boost::system::error_code, result_type)>(
+		[
+			task = std::move(task),
+			result = std::move(result),
+			state = start,
+			&executor
+		]
+		(auto &self, boost::system::error_code ec = {}, result_type r = {}) mutable
+		{
+			std::cout << "composed in thread " << thread_name::instance()() << std::endl;
+
+			if (not ec)
+			{
+				if (state == start)
+				{
+					state = running;
+					boost::asio::dispatch(executor, std::move(self));
+					return;
+				}
+
+				state = fetch;
+				task();
+
+				try
+				{
+					r = result.get();
+				}
+				catch (...)
+				{
+					ec = pinch::error::make_error_code(pinch::error::by_application);
+				}
+			}
+
+			self.complete(ec, r);
+		},
+		handler);
+}
+
+// --------------------------------------------------------------------
+
 std::string provide_password()
 {
-	std::cout << "provide_password in thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
+	std::cout << "provide_password in thread " << thread_name::instance()() << std::endl;
 	return "Deze is geheim!";
 }
 
@@ -150,45 +237,116 @@ std::string provide_password()
 template<typename Handler, typename Executor>
 auto async_provide_password(Executor &executor, Handler &&handler)
 {
-	return pinch::async_function_wrapper(std::move(handler), executor, &provide_password);
+	return async_function_wrapper(std::move(handler), executor, &provide_password);
 }
 
 void run_coro(my_executor& executor, boost::asio::yield_context yield)
 {
-	std::cout << "coro in thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
+	std::cout << "run_coro in thread " << thread_name::instance()() << std::endl;
 
 	boost::system::error_code ec;
 	std::string pw = async_provide_password(executor, yield[ec]);
 
-	std::cout << "The password is "<< pw << std::endl;
+	std::cout << "(run_coro) The password is "<< pw << std::endl;
 }
 
 template<typename Handler, typename Provider>
 auto async_provide_password_2(Provider &provider, Handler &&handler)
 {
 	auto executor = boost::asio::get_associated_executor(provider);
-	return pinch::async_function_wrapper(std::move(handler), executor, provider);
+	return async_function_wrapper(std::move(handler), executor, provider);
 }
 
 template<typename Provider>
 void run_coro_2(Provider &provider, boost::asio::yield_context yield)
 {
-	std::cout << "coro in thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
+	std::cout << "run_coro_2 in thread " << thread_name::instance()() << std::endl;
 
 	boost::system::error_code ec;
 	std::string pw = async_provide_password_2(provider, yield[ec]);
 
-	std::cout << "The password is "<< pw << std::endl;
+	std::cout << "(run_coro_2) The password is "<< pw << std::endl;
 }
 
 void run_coro_3(boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t> executor, boost::asio::yield_context yield)
 {
-	std::cout << "coro in thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
+	std::cout << "run_coro_3 in thread " << thread_name::instance()() << std::endl;
 
 	boost::system::error_code ec;
 	std::string pw = async_provide_password(executor, yield[ec]);
 
-	std::cout << "The password is "<< pw << std::endl;
+	std::cout << "(run_coro_3) The password is "<< pw << std::endl;
+}
+
+// --------------------------------------------------------------------
+
+void run_coro_4(boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t> executor)
+{
+	auto handler = [](const boost::system::error_code &ec = {})
+	{
+		std::cout << "callback in thread " << thread_name::instance()() << std::endl;
+
+	};
+	using handler_type = decltype(handler);
+
+	boost::asio::async_compose<handler_type, void(boost::system::error_code)>(
+		[
+			
+		]
+		(auto& self, const boost::system::error_code &ec = {}) mutable
+		{
+			std::cout << "operating in thread " << thread_name::instance()() << std::endl;
+
+			self.complete(ec);
+		}, handler, executor
+	);
+}
+
+void run_coro_5(boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t> executor)
+{
+	auto handler = [](const boost::system::error_code &ec = {})
+	{
+		std::cout << "callback in thread " << thread_name::instance()() << std::endl;
+
+	};
+
+	auto h2 = boost::asio::bind_executor(executor, handler);
+	using handler_type = decltype(h2);
+
+	boost::asio::async_compose<handler_type, void(boost::system::error_code)>(
+		[
+			
+		]
+		(auto& self, const boost::system::error_code &ec = {}) mutable
+		{
+			std::cout << "operating in thread " << thread_name::instance()() << std::endl;
+
+			self.complete(ec);
+		}, h2
+	);
+}
+
+void run_coro_6(boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t> executor,
+	boost::asio::yield_context yield)
+{
+	std::cout << "run_coro_6 in thread " << thread_name::instance()() << std::endl;
+
+	boost::system::error_code ec;
+	std::string pw = async_provide_password(executor, yield[ec]);
+
+	std::cout << "(run_coro_6) The password is "<< pw << std::endl;
+}
+
+void run_coro_7(boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t> executor)
+{
+	std::cout << "run_coro_7 in thread " << thread_name::instance()() << std::endl;
+
+	boost::system::error_code ec;
+	auto pw = async_provide_password(executor, boost::asio::use_future);
+
+	pw.wait();
+
+	std::cout << "(run_coro_7) The password is "<< pw.get() << std::endl;
 }
 
 
@@ -197,19 +355,19 @@ void run_coro_3(boost::asio::execution::any_executor<boost::asio::execution::blo
 int main()
 {
 	// where are we?
-	std::cout << "Starting in main thread 0x" << std::hex << std::this_thread::get_id() << std::endl;
+	std::cout << "Starting in main thread " << thread_name::instance()() << std::endl;
 
 	boost::asio::io_context io_context;
+	boost::asio::strand<boost::asio::io_context::executor_type> strand(io_context.get_executor());
 
 	// our executor
 	my_queue queue;
 	my_executor executor{&io_context, &queue};
 
-
 	auto t = std::thread([&io_context]() {
 		try
 		{
-			std::cout << "io_context::run thread: 0x" << std::hex << std::this_thread::get_id() << std::endl;
+			std::cout << "io_context::run thread: " << thread_name::instance()() << std::endl;
 			boost::asio::executor_work_guard work(io_context.get_executor());
 			io_context.run();
 		}
@@ -219,15 +377,42 @@ int main()
 		}
 	});
 
-	// boost::asio::spawn(io_context.get_executor(), std::bind(&run_coro, std::ref(executor), std::placeholders::_1));
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
-	// std::function<std::string()> provider = boost::asio::bind_executor(executor, &provide_password);
+	std::thread qt([&queue]()
+	{
+		std::cout << "queue thread is " << thread_name::instance()() << std::endl;
+		queue.run();
+	});
 
-	// boost::asio::spawn(io_context.get_executor(), std::bind(&run_coro_2<decltype(provider)>, std::ref(provider), std::placeholders::_1));
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	std::cout << std::endl
+			  << "First attempt, with direct my_executor" << std::endl
+			  << std::endl;
+
+	boost::asio::spawn(strand, std::bind(&run_coro, std::ref(executor), std::placeholders::_1));
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	std::cout << std::endl
+			  << "Second attempt, using bind_executor" << std::endl
+			  << std::endl;
+
+	std::function<std::string()> provider = boost::asio::bind_executor(executor, &provide_password);
+
+	boost::asio::spawn(strand, std::bind(&run_coro_2<decltype(provider)>, std::ref(provider), std::placeholders::_1));
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	std::cout << std::endl
+			  << "Third attempt, with coroutines and a any_executor copy" << std::endl
+			  << std::endl;
 
 	using namespace boost::asio::execution;
 
-	any_executor<blocking_t::never_t> ex_copy(executor);
+	any_executor<blocking_t::never_t> ex_copy;
+	ex_copy = executor;
 
 	assert(ex_copy);
 
@@ -235,15 +420,55 @@ int main()
 	{
 		run_coro_3(ex_copy, yield);
 	});
-	// std::string pw = async_provide_password(ex_copy, []())
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	std::cout << std::endl
+			  << "Fourth attempt, a simple call to run_coro_4" << std::endl
+			  << std::endl;
+
+	run_coro_4(executor);
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	std::cout << std::endl
+			  << "Fifth attempt, a simple call to run_coro_5" << std::endl
+			  << std::endl;
+
+	run_coro_5(executor);
+
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	std::cout << std::endl
+			  << "coro 6" << std::endl
+			  << std::endl;
+
+	boost::asio::spawn(strand, std::bind(&run_coro_6, std::ref(executor), std::placeholders::_1));
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+	std::cout << std::endl
+			  << "coro 7" << std::endl
+			  << std::endl;
+
+	run_coro_7(executor);
+
+
 
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
-	sigset.async_wait([&io_context](boost::system::error_code, int signal) { io_context.stop(); });
+	sigset.async_wait([&io_context, &queue](boost::system::error_code, int signal)
+	{
+		io_context.stop();
+		queue.stop();
+	});
 
-	queue.run();
 
 	if (t.joinable())
 		t.join();
+	
+	if (qt.joinable())
+		qt.join();
 
 	return 0;
 }

@@ -192,12 +192,13 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \param host The hostname to connect to, or an IP address
 	/// \param port The port to connect to
 
-	template <typename Executor>
-	basic_connection(Executor executor, const std::string &user, const std::string &host, uint16_t port = 22)
+	basic_connection(boost::asio::io_context &io_context, const std::string &user, const std::string &host, uint16_t port = 22)
 		: m_user(user)
 		, m_host(host)
 		, m_port(port)
-		, m_keep_alive_timer(executor)
+		, m_io_context(io_context)
+		, m_strand(m_io_context.get_executor())
+		, m_keep_alive_timer(m_io_context)
 	{
 	}
 
@@ -213,10 +214,14 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	using lowest_layer_type = typename tcp_socket_type::lowest_layer_type;
 
 	/// The type of the executor associated with the object.
-	using executor_type = typename lowest_layer_type::executor_type;
+	using executor_type = typename boost::asio::io_context::executor_type;
+
+	executor_type get_executor() noexcept
+	{
+		return m_io_context.get_executor();
+	}
 
 	/// Access to the lowest layer
-	virtual executor_type get_executor() noexcept = 0;
 	virtual lowest_layer_type &lowest_layer() = 0;
 	virtual const lowest_layer_type &lowest_layer() const = 0;
 
@@ -394,8 +399,10 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// This will ensure the callbacks, like host validation and password providers
 	/// are called using \a executor. This will help you to ensure callbacks are
 	/// made on the main graphics thread.
-	template <typename Executor>
-	void set_callback_executor(Executor executor)
+
+	using callback_executor_type = boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t>;
+
+	void set_callback_executor(callback_executor_type executor)
 	{
 		m_callback_executor = executor;
 	}
@@ -440,19 +447,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	{
 		static_assert(std::is_assignable_v<accept_host_key_handler_type, decltype(handler)>, "Invalid handler");
 		m_accept_host_key_handler = handler;
-	}
-
-	/// \brief register a function that will return whether a host key is valid, but from possibly another thread
-	///
-	/// The callback \a handler will be called using the executor, potentially running a separate thread.
-	/// All I/O will be blocked in this thread until a reply is received.
-
-	template <typename Handler, typename Executor>
-	void set_accept_host_key_handler(Handler &&handler, Executor &executor)
-	{
-		static_assert(std::is_assignable_v<accept_host_key_handler_type, decltype(handler)>, "Invalid handler");
-
-		m_accept_host_key_handler = boost::asio::bind_executor(executor, std::move(handler));
 	}
 
 	/// \brief Simply call the provide password handler
@@ -581,6 +575,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	uint16_t m_port;              ///< The port number
 	bool m_forward_agent = false; ///< Flag indicating we want to forward the SSH agent
 
+	boost::asio::io_context &m_io_context;
+  	boost::asio::strand<boost::asio::io_context::executor_type> m_strand;	///< for our coroutines
+
 	std::string m_host_version; ///< The host version string, used for generating keys
 	blob m_session_id;          ///< The session ID for this session
 
@@ -610,7 +607,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	accept_host_key_handler_type m_accept_host_key_handler;          ///< The registered host key validation handler
 
 	/// \brief The executor for the handlers above
-	boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t> m_callback_executor;
+	callback_executor_type m_callback_executor;
 
 	std::list<channel_ptr> m_channels;                       ///< The currently registered channels
 	std::shared_ptr<port_forward_listener> m_port_forwarder; ///< The port forwarder
@@ -692,7 +689,7 @@ class connection : public basic_connection
 
 	connection(boost::asio::io_context &io_context, const std::string &user, const std::string &host,
 		uint16_t port = 22)
-		: basic_connection(io_context.get_executor(), user, host, port)
+		: basic_connection(io_context, user, host, port)
 		, m_io_context(io_context)
 		, m_next_layer(m_io_context)
 	{
@@ -700,12 +697,6 @@ class connection : public basic_connection
 
 	/// \brief The type of the next layer.
 	using next_layer_type = boost::asio::ip::tcp::socket;
-
-	/// \brief Required for AsyncReadStream and AsyncWriteStream
-	virtual executor_type get_executor() noexcept override
-	{
-		return m_next_layer.lowest_layer().get_executor();
-	}
 
 	/// \brief Access to the next layer
 	const next_layer_type &next_layer() const { return m_next_layer; }
@@ -792,9 +783,6 @@ class proxied_connection : public basic_connection
 
 	/// \brief The type of the next layer.
 	using next_layer_type = channel;
-
-	/// \brief Required for AsyncReadStream and AsyncWriteStream
-	virtual executor_type get_executor() noexcept override;
 
 	/// \brief Access to the next layer
 	const next_layer_type &next_layer() const { return *m_channel; }
