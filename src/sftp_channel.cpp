@@ -282,20 +282,18 @@ void sftp_channel::process_packet()
 
 void sftp_channel::do_init(std::unique_ptr<detail::sftp_init_op> op)
 {
-	enum { open_channel, sending_init };
-	channel::async_open([op = std::move(op), state = open_channel, this](const boost::system::error_code& ec) mutable
+	channel::async_open([op = std::move(op), this](const boost::system::error_code& ec) mutable
 	{
-		if (not ec)
+		if (ec)
+			op->complete(ec);
+		else
 		{
 			opacket out((message_type)SSH_FXP_INIT);
 			out << uint32_t(op->m_version);
 			write(std::move(out));
 
 			m_init_op = std::move(op);
-			return;
 		}
-
-		op->complete(ec);
 	});
 }
 
