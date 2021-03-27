@@ -199,6 +199,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		, m_io_context(io_context)
 		, m_strand(m_io_context.get_executor())
 		, m_keep_alive_timer(m_io_context)
+		, m_callback_executor(io_context.get_executor())
 	{
 	}
 
@@ -413,38 +414,59 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// This function delegates the question to known_hosts first. If the key
 	/// is unknown or changed, the registered callback is asked what to do.
 
-	bool accept_host_key(const std::string &algorithm, const blob &key)
+	template <typename Handler>
+	auto async_accept_host_key(const std::string &algorithm, const blob &key, Handler &&handler)
 	{
-		auto state = known_hosts::instance().accept_host_key(m_host, algorithm, key);
-
-		bool result = state == host_key_state::match;
-		if (not result and m_accept_host_key_handler)
+		enum
 		{
-			std::packaged_task<host_key_reply()> task(std::bind(m_accept_host_key_handler, m_host, algorithm, key, state));
-			auto accept = task.get_future();
+			start,
+			ask
+		};
 
-			if (m_callback_executor)
-				m_callback_executor.execute(std::move(task));
-			else
-				task();
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, bool)>(
+			[state1 = start, this, state = host_key_state::no_match, algorithm, key](auto &self, boost::system::error_code ec = {}, bool accept = {}) mutable {
+				if (not ec)
+				{
+					switch (state1)
+					{
+						case start:
+						{
+							state = known_hosts::instance().accept_host_key(m_host, algorithm, key);
 
-			accept.wait();
+							bool result = state == host_key_state::match;
+							if (result or not m_accept_host_key_handler)
+								self.complete(ec, false);
+							else
+							{
+								state1 = ask;
+								boost::asio::execution::execute(
+									boost::asio::require(m_callback_executor, boost::asio::execution::blocking.never),
+									std::move(self));
+							}
+							return;
+						}
 
-			switch (accept.get())
-			{
-				case host_key_reply::trusted:
-					known_hosts::instance().add_host_key(m_host, algorithm, key);
+						case ask:
+						{
+							switch (m_accept_host_key_handler(m_host, algorithm, key, state))
+							{
+								case host_key_reply::trusted:
+									known_hosts::instance().add_host_key(m_host, algorithm, key);
 
-				case host_key_reply::trust_once:
-					result = true;
-					break;
+								case host_key_reply::trust_once:
+									accept = true;
+									break;
 
-				default:
-					break;
-			}
-		}
+								default:
+									break;
+							}
+						}
+					}
 
-		return result;
+					self.complete(ec, accept);
+				}
+			},
+			handler);
 	}
 
 	/// \brief register a function that will return whether a host key
@@ -459,20 +481,36 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		m_accept_host_key_handler = handler;
 	}
 
-	/// \brief Simply call the provide password handler
-	std::string provide_password()
+	/// \brief Call provide password asynchronously
+	template <typename Handler>
+	auto async_provide_password(Handler &&handler)
 	{
-		std::packaged_task<std::string()> task(m_provide_password_handler);
-		auto result = task.get_future();
+		enum
+		{
+			start,
+			running
+		};
 
-		if (m_callback_executor)
-			m_callback_executor.execute(std::move(task));
-		else
-			task();
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::string)>(
+			[state = start,
+				this](auto &self, boost::system::error_code ec = {}, std::string pw = {}) mutable {
+				if (not ec)
+				{
+					if (state == start)
+					{
+						state = running;
+						boost::asio::execution::execute(
+							boost::asio::require(m_callback_executor, boost::asio::execution::blocking.never),
+							std::move(self));
+						return;
+					}
 
-		result.wait();
+					pw = m_provide_password_handler();
+				}
 
-		return result.get();
+				self.complete(ec, pw);
+			},
+			handler);
 	}
 
 	/// \brief register a function that will return a password to use in connecting
@@ -490,21 +528,38 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	}
 
 	/// \brief Simply run the provide credentials handler
-	std::vector<std::string> provide_credentials(const std::string &name,
+	template <typename Handler>
+	auto async_provide_credentials(const std::string &name,
 		const std::string &instruction, const std::string &lang,
-		const std::vector<prompt> &prompts)
+		const std::vector<prompt> &prompts, Handler &&handler)
 	{
-		std::packaged_task<std::vector<std::string>()> task(std::bind(m_provide_credentials_handler, name, instruction, lang, prompts));
-		auto result = task.get_future();
+		enum
+		{
+			start,
+			running
+		};
 
-		if (m_callback_executor)
-			m_callback_executor.execute(std::move(task));
-		else
-			task();
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::vector<std::string>)>(
+			[state = start,
+				name, instruction, lang, prompts,
+				this](auto &self, const boost::system::error_code &ec = {}, std::vector<std::string> reply = {}) mutable {
+				if (not ec)
+				{
+					if (state == start)
+					{
+						state = running;
+						boost::asio::execution::execute(
+							boost::asio::require(m_callback_executor, boost::asio::execution::blocking.never),
+							std::move(self));
+						return;
+					}
 
-		result.wait();
+					reply = m_provide_credentials_handler(name, instruction, lang, prompts);
+				}
 
-		return result.get();
+				self.complete(ec, reply);
+			},
+			handler);
 	}
 
 	/// \brief register a function that will return the credentials for a connection
@@ -573,7 +628,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	bool m_forward_agent = false; ///< Flag indicating we want to forward the SSH agent
 
 	boost::asio::io_context &m_io_context;
-  	boost::asio::strand<boost::asio::io_context::executor_type> m_strand;	///< for our coroutines
+	boost::asio::strand<boost::asio::io_context::executor_type> m_strand; ///< for our coroutines
 
 	std::string m_host_version; ///< The host version string, used for generating keys
 	blob m_session_id;          ///< The session ID for this session

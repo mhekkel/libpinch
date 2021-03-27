@@ -480,7 +480,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 
 			if (in == msg_newkeys)
 			{
-				if (accept_host_key(kex->get_host_key_pk_type(), kex->get_host_key()))
+				if (async_accept_host_key(kex->get_host_key_pk_type(), kex->get_host_key(), yield))
 					break;
 
 				ec = error::make_error_code(error::host_key_not_verifiable);
@@ -577,7 +577,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 
 					if (choose_protocol(s, "password") == "password" and ++password_attempts <= 3)
 					{
-						std::string password = provide_password();
+						std::string password = async_provide_password(yield);
 						if (password.empty())
 						{
 							password_attempts = 4;
@@ -652,7 +652,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 							for (auto &p : prompts)
 								in >> p.str >> p.echo;
 
-							auto replies = provide_credentials(name, instruction, language, prompts);
+							auto replies = async_provide_credentials(name, instruction, language, prompts, yield);
 
 							if (replies.empty())
 							{

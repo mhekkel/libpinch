@@ -89,6 +89,7 @@ class known_hosts
 	known_hosts &operator=(const known_hosts &) = delete;
 
 	std::vector<host_key> m_host_keys;
+	std::mutex m_mutex;
 
 	static std::unique_ptr<known_hosts> s_instance;
 };

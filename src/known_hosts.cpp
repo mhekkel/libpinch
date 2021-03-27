@@ -45,6 +45,7 @@ host_key_state known_hosts::host_key::compare(const std::string &host_name, cons
 
 void known_hosts::load_host_file(std::istream& file)
 {
+	std::lock_guard lock(m_mutex);
 	m_host_keys.clear();
 
 	std::string line;
@@ -73,6 +74,8 @@ void known_hosts::load_host_file(std::istream& file)
 
 void known_hosts::save_host_file(std::ostream& file)
 {
+	std::lock_guard lock(m_mutex);
+
 	for (auto& kh: m_host_keys)
 		file << kh.m_host_name << ' ' << kh.m_algorithm << ' ' << encode_base64(kh.m_key) << std::endl;
 }
@@ -81,11 +84,15 @@ void known_hosts::save_host_file(std::ostream& file)
 
 void known_hosts::add_host_key(const std::string &host, const std::string &algorithm, const std::string &key)
 {
+	std::lock_guard lock(m_mutex);
+
 	m_host_keys.emplace_back(host_key{host, algorithm, decode_base64(key)});
 }
 
 void known_hosts::add_host_key(const std::string &host, const std::string &algorithm, const blob &key)
 {
+	std::lock_guard lock(m_mutex);
+
 	blob salt = random_hash();
 
 	std::string name = "|1|" + encode_base64(salt) + '|';
@@ -97,6 +104,8 @@ void known_hosts::add_host_key(const std::string &host, const std::string &algor
 
 host_key_state known_hosts::accept_host_key(const std::string &host, const std::string &algorithm, const blob &key)
 {
+	std::lock_guard lock(m_mutex);
+
 	host_key_state state = host_key_state::no_match;
 
 	for (auto &hk : m_host_keys)
