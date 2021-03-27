@@ -433,17 +433,16 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 						{
 							state = known_hosts::instance().accept_host_key(m_host, algorithm, key);
 
-							bool result = state == host_key_state::match;
-							if (result or not m_accept_host_key_handler)
-								self.complete(ec, false);
-							else
+							accept = state == host_key_state::match;
+							if (m_accept_host_key_handler)
 							{
 								state1 = ask;
 								boost::asio::execution::execute(
 									boost::asio::require(m_callback_executor, boost::asio::execution::blocking.never),
 									std::move(self));
+								return;
 							}
-							return;
+							break;
 						}
 
 						case ask:
