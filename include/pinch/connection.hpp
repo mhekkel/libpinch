@@ -11,10 +11,13 @@
 #include <chrono>
 #include <deque>
 #include <memory>
-// #include <coroutine>
 
-// #include <boost/asio/use_awaitable.hpp>
+#if __cpp_impl_coroutine
+#include <coroutine>
+#include <boost/asio/use_awaitable.hpp>
+#else
 #include <boost/asio/spawn.hpp>
+#endif
 
 #include <pinch/crypto-engine.hpp>
 #include <pinch/error.hpp>
@@ -434,7 +437,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 							state = known_hosts::instance().accept_host_key(m_host, algorithm, key);
 
 							accept = state == host_key_state::match;
-							if (m_accept_host_key_handler)
+							if (not accept and m_accept_host_key_handler)
 							{
 								state1 = ask;
 								boost::asio::execution::execute(
@@ -716,8 +719,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void do_open(std::unique_ptr<detail::open_connection_op> op);
 
 	/// \brief The handshake code
+#if __cpp_impl_coroutine
+	boost::asio::awaitable<void> do_handshake(std::unique_ptr<detail::open_connection_op> op);
+#else
 	void do_handshake(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield);
-	// boost::asio::awaitable<void> do_open_3(std::unique_ptr<detail::open_connection_op> op);
+#endif
 };
 
 // --------------------------------------------------------------------

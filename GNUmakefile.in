@@ -7,7 +7,6 @@
 firstTarget: all
 
 CXX					= @CXX@
-CXX					= @CXX@
 CXXFLAGS			= @BOOST_CPPFLAGS@ \
 					  @CPPFLAGS@ \
 					  @CXXFLAGS@ \

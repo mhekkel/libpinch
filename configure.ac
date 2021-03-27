@@ -22,29 +22,24 @@ PKG_PROG_PKG_CONFIG
 
 dnl Switch to a C++ compiler, and check if it works.
 AC_LANG(C++)
-AX_CXX_COMPILE_STDCXX_17([noext])
+dnl AX_CXX_COMPILE_STDCXX_17([noext])
+
+AX_CHECK_COMPILE_FLAG([-std=c++20],
+	[
+		CXX="$CXX -std=c++20"
+	],
+	[AC_MSG_ERROR("Compiler does not support c++20")],
+	[])
+
+AX_CHECK_COMPILE_FLAG([-fcoroutines],
+	[
+		CXXFLAGS="$CXXFLAGS -fcoroutines"
+	] , , [-Werror])
 
 AX_CHECK_COMPILE_FLAG([-fstandalone-debug],
 	[
 		CXXFLAGS="$CXXFLAGS -fstandalone-debug"
 	] , , [-Werror])
-
-dnl AX_CHECK_COMPILE_FLAG([-std=c++20],
-dnl 	[
-dnl 		CXX="$CXX -std=c++20"
-dnl 	],
-dnl 	[AC_MSG_ERROR("Compiler does not support c++20")],
-dnl 	[])
-dnl 
-dnl AX_CHECK_COMPILE_FLAG([-fstandalone-debug],
-dnl 	[
-dnl 		CXXFLAGS="$CXXFLAGS -fstandalone-debug"
-dnl 	] , , [-Werror])
-dnl 
-dnl AX_CHECK_COMPILE_FLAG([-fcoroutines],
-dnl 	[
-dnl 		CXXFLAGS="$CXXFLAGS -fcoroutines"
-dnl 	] , , [-Werror])
 
 dnl disable shared libraries, they break the build on MacOS... sigh
 LT_INIT([disable-shared pic-only])

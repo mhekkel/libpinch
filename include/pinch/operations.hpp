@@ -96,11 +96,6 @@ struct binder
 	{
 	}
 
-	// void operator()()
-	// {
-	// 	std::invoke(m_handler, static_cast<const Args&>(m_args));
-	// }
-
 	void operator()()
 	{
 		std::apply(m_handler, m_args);

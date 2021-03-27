@@ -5,8 +5,6 @@
 
 #include <pinch/pinch.hpp>
 
-#include <boost/asio/spawn.hpp>
-
 #include <pinch/connection.hpp>
 #include <pinch/port_forwarding.hpp>
 
@@ -51,6 +49,21 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 
   protected:
 
+#if __cpp_impl_coroutine
+	template<typename SocketIn, typename SocketOut>
+	boost::asio::awaitable<void> copy(SocketIn& in, SocketOut& out, std::shared_ptr<forwarding_connection> self)
+	{
+		char data[1024];
+
+		for (;;)
+		{
+			auto length = co_await boost::asio::async_read(in, boost::asio::buffer(data), boost::asio::transfer_at_least(1), boost::asio::use_awaitable);
+			if (length == 0)
+				break;
+			co_await boost::asio::async_write(out, boost::asio::buffer(data, length), boost::asio::use_awaitable);
+		}
+	};
+#else
 	template<typename SocketIn, typename SocketOut>
 	void copy(SocketIn& in, SocketOut& out, std::shared_ptr<forwarding_connection> self, boost::asio::yield_context yield)
 	{
@@ -65,6 +78,7 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 			boost::asio::async_write(out, boost::asio::buffer(data, length), yield[ec]);
 		}
 	};
+#endif
 
 	std::shared_ptr<forwarding_channel> m_channel;
 	boost::asio::ip::tcp::socket m_socket;
@@ -75,8 +89,13 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 void forwarding_connection::start_copy_data()
 {
 	auto self = shared_from_this();
+#if __cpp_impl_coroutine
+	boost::asio::co_spawn(m_socket.get_executor(), copy(m_socket, *m_channel, shared_from_this()), boost::asio::detached);
+	boost::asio::co_spawn(m_socket.get_executor(), copy(*m_channel, m_socket, shared_from_this()), boost::asio::detached);
+#else
 	boost::asio::spawn(m_socket.get_executor(), [self](boost::asio::yield_context yield) { self->copy(self->m_socket, *self->m_channel, self, yield); });
 	boost::asio::spawn(m_socket.get_executor(), [self](boost::asio::yield_context yield) { self->copy(*self->m_channel, self->m_socket, self, yield); });
+#endif
 }
 
 // --------------------------------------------------------------------
