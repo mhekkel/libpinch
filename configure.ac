@@ -147,4 +147,5 @@ AS_IF([test "$enable_documentation" = "yes"],
 ])
 
 dnl Process Makefile.in to create Makefile
-AC_OUTPUT([GNUmakefile])
+AC_OUTPUT([GNUmakefile
+		   examples/GNUmakefile])

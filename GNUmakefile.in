@@ -157,7 +157,7 @@ $(1)-test: test/$(1)-test
 
 endef
 
-TESTS = service coro unit sftp
+TESTS = service coro unit sftp coro2
 
 $(foreach part,$(TESTS),$(eval $(call TEST_template,$(part))))
 

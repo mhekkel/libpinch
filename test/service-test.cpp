@@ -29,6 +29,45 @@ namespace io = boost::iostreams;
 
 // --------------------------------------------------------------------
 
+#if __has_include(<unistd.h>)
+
+#include <termios.h>
+#include <unistd.h>
+
+void SetStdinEcho(bool enable = true)
+{
+    struct termios tty;
+    tcgetattr(STDIN_FILENO, &tty);
+    if( !enable )
+        tty.c_lflag &= ~ECHO;
+    else
+        tty.c_lflag |= ECHO;
+
+    (void) tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+}
+
+#else
+#include <windows.h>
+
+void SetStdinEcho(bool enable = true)
+{
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE); 
+    DWORD mode;
+    GetConsoleMode(hStdin, &mode);
+
+    if( !enable )
+        mode &= ~ENABLE_ECHO_INPUT;
+    else
+        mode |= ENABLE_ECHO_INPUT;
+
+    SetConsoleMode(hStdin, mode );
+}
+
+#endif
+
+
+// --------------------------------------------------------------------
+
 char this_thread_name()
 {
 	static std::mutex m_mutex;
@@ -264,7 +303,16 @@ std::string provide_password()
 	std::cout << "in provide_password " << std::endl
 				<< "  ==> in thread " << this_thread_name()  << std::endl;
 
-	return "sssh... geheim!";
+	// return "sssh... geheim!";
+
+	std::string result;
+
+	std::cout << "password: "; std::cout.flush();
+	SetStdinEcho(false);
+	std::cin >> result;
+	SetStdinEcho(true);
+
+	return result;
 }
 
 template <typename Handler, typename Executor>
@@ -307,8 +355,8 @@ int main()
 	my_queue queue;
 	my_executor executor{&strand.context(), &queue};
 
-	// auto conn = pool.get("maarten", "localhost", 2022);
-	auto conn = pool.get("maartenx", "s4", 22);
+	auto conn = pool.get("maarten", "localhost", 2022);
+	// auto conn = pool.get("maartenx", "s4", 22);
 	// auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
 
 	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);

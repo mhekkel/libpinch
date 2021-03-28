@@ -65,6 +65,9 @@ enum class host_key_reply
 /// \brief The callback signature for accepting unknown or invalid host keys
 using accept_host_key_handler_type = std::function<host_key_reply(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)>;
 
+/// \brief If you don't want to check hostkeys, use this as callback
+host_key_reply always_trust_host_key_once(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state);
+
 /// \brief keyboard interactive support
 ///
 /// This is used in the credentials callback, the str field contains the string
@@ -319,7 +322,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 													   std::size_t)>(
 			[buffer = std::move(buffer), conn = this->shared_from_this(),
 				state = start](auto &self, const boost::system::error_code &ec = {},
-				std::size_t bytes_received = 0) mutable {
+				std::size_t bytes_transferred = 0) mutable {
 				if (not ec and state == start)
 				{
 					state = writing;
@@ -327,7 +330,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 					return;
 				}
 
-				self.complete(ec, 0);
+				self.complete(ec, bytes_transferred);
 			},
 			handler, *this);
 	}
@@ -481,6 +484,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	{
 		static_assert(std::is_assignable_v<accept_host_key_handler_type, decltype(handler)>, "Invalid handler");
 		m_accept_host_key_handler = handler;
+	}
+
+	void set_always_accept_host_key_once()
+	{
+		set_accept_host_key_handler(&always_trust_host_key_once);
 	}
 
 	/// \brief Call provide password asynchronously

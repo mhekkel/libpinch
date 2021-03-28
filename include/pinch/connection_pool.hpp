@@ -42,7 +42,7 @@ class connection_pool
 	/// \param user		The username to use when authenticating
 	/// \param host		The hostname or ip address of the server
 	/// \param port		The port to connect to
-	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, uint16_t port);
+	std::shared_ptr<basic_connection> get(const std::string &user, const std::string &host, uint16_t port = 22);
 
 	/// \brief Return a proxied connection for a user/host/port combination via a proxy
 	///

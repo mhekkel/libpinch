@@ -1,0 +1,115 @@
+#        Copyright Maarten L. Hekkelman 2013-2021
+# Distributed under the Boost Software License, Version 1.0.
+#    (See accompanying file LICENSE_1_0.txt or copy at
+#          http://www.boost.org/LICENSE_1_0.txt)
+
+.PHONY: firstTarget
+firstTarget: all
+
+CXX					= @CXX@
+CXXFLAGS			= @BOOST_CPPFLAGS@ \
+					  @CPPFLAGS@ \
+					  @CXXFLAGS@ \
+					  @CRYPTOPP_CFLAGS@ \
+					  @PTHREAD_CFLAGS@
+LDFLAGS				= @BOOST_LDFLAGS@ \
+					  @LDFLAGS@ \
+					  @LIBS@
+LIBS				= @PTHREAD_LIBS@ \
+					  -L../.libs -l pinch \
+					  @BOOST_IOSTREAMS_LIB@ \
+					  @BOOST_DATE_TIME_LIB@ \
+					  @BOOST_REGEX_LIB@ \
+					  @BOOST_COROUTINE_LIB@ \
+					  @BOOST_THREAD_LIB@ \
+					  @BOOST_CONTEXT_LIB@ \
+					  @CRYPTOPP_LIBS@ \
+					  @LIBS@
+
+prefix				= $(DESTDIR)@prefix@
+exec_prefix			= @exec_prefix@
+libdir				= @libdir@
+includedir			= @includedir@
+datarootdir			= @datarootdir@
+datadir				= @datadir@
+docdir				= @docdir@
+pkgconfigdir		= $(libdir)/pkgconfig
+
+GNUmakefile: ../config.status GNUmakefile.in
+	cd ..; $(SHELL) ./config.status
+
+# libtool stuff
+
+LIBTOOL_DEPS = @LIBTOOL_DEPS@
+libtool: $(LIBTOOL_DEPS)
+	cd ../; $(SHELL) ./config.status libtool
+
+LIBTOOL = $(SHELL) @abs_top_builddir@/libtool
+CXXCOMPILE = $(LIBTOOL) --silent --tag=CXX --mode=compile $(CXX) $(CXXFLAGS)
+CXXLINK = $(LIBTOOL) --silent --tag=CXX --mode=link $(CXX) $(CXXFLAGS) $(LDFLAGS) -version-info $(LIB_VERSION) -o $@
+
+# main build variables
+CXXFLAGS            += -Wall -Wno-multichar -I ../include
+DEFINES				+= BOOST_ASIO_NO_DEPRECATED
+
+# Use the DEBUG flag to build debug versions of the code
+DEBUG               = @DEBUG@
+
+ifeq "$(DEBUG)" "1"
+DEFINES				+= DEBUG
+CXXFLAGS            += -g -O0
+LDFLAGS				+= -g
+else
+CXXFLAGS			+= -O2
+DEFINES				+= NDEBUG
+endif
+
+# targets
+
+CXXFLAGS			+= $(DEFINES:%=-D%)
+
+BINDIR = bin
+
+$(OBJDIR) $(BINDIR):
+	mkdir -p $@
+
+OBJDIR = obj
+ifeq "$(DEBUG)" "1"
+	OBJDIR	:= $(OBJDIR).dbg
+endif
+
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+$(OBJDIR)/%.o: %.cpp | $(OBJDIR)
+	@ echo ">>" $<
+	@ $(CXX) $(CXXFLAGS) -MT $@ -MD -MP -MF $(OBJDIR)/$*.d -c -o $@ $<
+
+.PHONY: clean
+clean:
+	rm -rf $(OBJDIR)/* $(EXAMPLES:%=$(BINDIR)/%)
+
+define EXAMPLE_template =
+
+-include $$(OBJDIR)/$(1).d
+
+$(1)_OBJECTS = $$(OBJDIR)/$(1).o
+
+$(BINDIR)/$(1): $$($(1)_OBJECTS) | $(BINDIR)
+	@ echo "ld> $(1)"
+	@ $(CXX) -o $$@ $$($(1)_OBJECTS) $$(CFLAGS) $$(CXXFLAGS) $(LDFLAGS) $(LIBS)
+
+endef
+
+EXAMPLES = \
+	example-1
+
+$(foreach part,$(EXAMPLES),$(eval $(call EXAMPLE_template,$(part))))
+
+.PHONY: examples
+examples: $(EXAMPLES:%=$(BINDIR)/%)
+
+all: examples
+
+FORCE:
+

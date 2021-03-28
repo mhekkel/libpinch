@@ -26,6 +26,13 @@ const std::string
 
 // --------------------------------------------------------------------
 
+host_key_reply always_trust_host_key_once(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)
+{
+	return host_key_reply::trust_once;
+}
+
+// --------------------------------------------------------------------
+
 void basic_connection::userauth_success(const std::string &host_version, const blob &session_id, const blob &pk_hash)
 {
 	m_auth_state = authenticated;
@@ -387,13 +394,18 @@ void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 	{
 		opacket out(msg_ignore);
 		out << "Hello, world!";
-		async_write(std::move(out));
+		async_write(std::move(out), [this](boost::system::error_code ec, std::size_t bytes_transferred)
+		{
+			if (ec)
+				handle_error(ec);
+		});
 		idle = std::chrono::seconds(0);
 		m_last_io = now;
 	}
 
 	if (is_open() and m_keep_alive_interval > std::chrono::seconds(0))
 	{
+		m_keep_alive_timer.cancel();	// cancel all outstanding
 		m_keep_alive_timer.expires_after(m_keep_alive_interval);
 		m_keep_alive_timer.async_wait(std::bind(&basic_connection::keep_alive_time_out, this, std::placeholders::_1));
 	}

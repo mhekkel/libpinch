@@ -644,39 +644,18 @@ class channel : public std::enable_shared_from_this<channel>
 class exec_channel : public channel
 {
   public:
-	struct basic_result_handler
-	{
-		virtual ~basic_result_handler() {}
-		virtual void post_result(const std::string &message,
-			int32_t result_code) = 0;
-	};
 
-	template <typename Handler>
-	struct result_handler : public basic_result_handler
-	{
-		result_handler(Handler &&handler)
-			: m_handler(std::move(handler))
-		{
-		}
+	using callback_executor_type = boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t>;
 
-		virtual void post_result(const std::string &message, int32_t result_code)
-		{
-			m_handler(message, result_code);
-		}
-
-		Handler m_handler;
-	};
-
-	template <typename Handler>
+	template <typename Handler, typename Executor>
 	exec_channel(std::shared_ptr<basic_connection> connection,
-		const std::string &cmd, Handler &&handler)
+		const std::string &cmd, Handler &&handler, Executor executor)
 		: channel(connection)
 		, m_command(cmd)
-		, m_handler(new result_handler<Handler>(std::move(handler)))
+		, m_handler(std::move(handler))
+		, m_executor(executor)
 	{
 	}
-
-	~exec_channel() { delete m_handler; }
 
 	virtual void opened();
 
@@ -686,7 +665,9 @@ class exec_channel : public channel
 
   private:
 	std::string m_command;
-	basic_result_handler *m_handler;
+	std::function<void(std::string,int)> m_handler;
+	callback_executor_type m_executor;
+
 };
 
 } // namespace pinch

@@ -422,7 +422,9 @@ void exec_channel::handle_channel_request(const std::string &request, ipacket &i
 	if (request == "exit-status")
 		in >> status;
 
-	m_handler->post_result(request, status);
+	boost::asio::execution::execute(
+		boost::asio::require(m_executor, boost::asio::execution::blocking.never),
+		[request, status, this]() { m_handler(request, status); });
 }
 
 } // namespace pinch

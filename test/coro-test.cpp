@@ -202,7 +202,12 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 				if (state == start)
 				{
 					state = running;
-					boost::asio::dispatch(executor, std::move(self));
+					boost::asio::execution::execute(
+						boost::asio::require(executor, boost::asio::execution::blocking.never),
+						std::move(self));
+
+
+					// boost::asio::dispatch(executor, std::move(self));
 					return;
 				}
 
