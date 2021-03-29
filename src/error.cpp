@@ -94,6 +94,8 @@ namespace detail
 					return "No more authentication methods available";
 				case error::illegal_user_name:
 					return "Illegal user name";
+				case error::keep_alive_timeout:
+					return "Timeout on a keep-alive message";
 				default:
 					return "ssh disconnected with error";
 			}

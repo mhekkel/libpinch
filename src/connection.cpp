@@ -403,7 +403,7 @@ void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 	if (not ec and is_open() and idle >= m_keep_alive_interval)
 	{
 		if (++m_keep_alive_timeouts > m_max_keep_alive_timeouts)
-			handle_error(error::make_error_code(error::connection_lost));
+			handle_error(error::make_error_code(error::keep_alive_timeout));
 		else
 		{
 			opacket out(msg_global_request);
@@ -1079,7 +1079,7 @@ void proxied_connection::close()
 
 bool proxied_connection::next_layer_is_open() const
 {
-	return m_channel->is_open();
+	return m_channel and m_channel->is_open();
 }
 
 void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)

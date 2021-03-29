@@ -99,7 +99,9 @@ namespace error
 		too_many_connections,
 		auth_cancelled_by_user,
 		no_more_auth_methods_available,
-		illegal_user_name
+		illegal_user_name,
+
+		keep_alive_timeout
 	};
 
 	boost::system::error_category &ssh_category();
