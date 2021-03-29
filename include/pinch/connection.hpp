@@ -207,6 +207,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		, m_keep_alive_timer(m_io_context)
 		, m_callback_executor(io_context.get_executor())
 	{
+		m_keep_alive_timer.async_wait(std::bind(&basic_connection::keep_alive_time_out, this, std::placeholders::_1));
 	}
 
 	basic_connection(const basic_connection &) = delete;
@@ -318,11 +319,14 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 		auto buffer = m_crypto_engine.get_next_request(std::move(p));
 
-		return boost::asio::async_compose<Handler, void(boost::system::error_code,
-													   std::size_t)>(
-			[buffer = std::move(buffer), conn = this->shared_from_this(),
-				state = start](auto &self, const boost::system::error_code &ec = {},
-				std::size_t bytes_transferred = 0) mutable {
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
+			[
+				buffer = std::move(buffer),
+				conn = this->shared_from_this(),
+				state = start
+			]
+			(auto &self, const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+			{
 				if (not ec and state == start)
 				{
 					state = writing;
@@ -660,6 +664,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	std::chrono::seconds m_keep_alive_interval;                         ///< How often should we send keep alive packets (in seconds)?
 	boost::asio::steady_timer m_keep_alive_timer;                       ///< The timer used for keep alive
 	void keep_alive_time_out(const boost::system::error_code &ec = {}); ///< Callback for the keep alive timer
+	uint32_t m_keep_alive_timeouts = 0;									///< The current number of timeouts
+	uint32_t m_max_keep_alive_timeouts = 3;								///< The maximum number of timeouts before we disconnect
 
 	blob m_private_key_hash;           ///< The private key used to authenticate
 	boost::asio::streambuf m_response; ///< Buffer for incomming response data

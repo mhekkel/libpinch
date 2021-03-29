@@ -84,6 +84,8 @@ void basic_connection::close()
 	m_session_id.clear();
 	m_crypto_engine.reset();
 
+	m_keep_alive_timer.expires_at(boost::asio::steady_timer::time_point::max());
+
 	if (m_port_forwarder)
 		m_port_forwarder->connection_closed();
 
@@ -145,6 +147,7 @@ void basic_connection::process_packet(ipacket &in)
 {
 	// update time for keep alive
 	m_last_io = std::chrono::steady_clock::now();
+	m_keep_alive_timeouts = 0;
 
 	opacket out;
 	boost::system::error_code ec;
@@ -381,31 +384,41 @@ void basic_connection::keep_alive(std::chrono::seconds interval)
 	m_keep_alive_timer.cancel();
 
 	if (m_keep_alive_interval > std::chrono::seconds(0))
-		keep_alive_time_out();
+	{
+		m_keep_alive_timer.expires_after(m_keep_alive_interval);
+		m_keep_alive_timer.async_wait(std::bind(&basic_connection::keep_alive_time_out, this, std::placeholders::_1));
+	}
 }
 
 void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 {
+	if (ec == boost::asio::error::operation_aborted)
+		return;
+
 	time_point_type now = std::chrono::steady_clock::now();
 	std::chrono::seconds idle = std::chrono::duration_cast<std::chrono::seconds>(now - m_last_io);
 
 	// See if we really need to send a packet.
 	if (not ec and is_open() and idle >= m_keep_alive_interval)
 	{
-		opacket out(msg_ignore);
-		out << "Hello, world!";
-		async_write(std::move(out), [this](boost::system::error_code ec, std::size_t bytes_transferred)
+		if (++m_keep_alive_timeouts > m_max_keep_alive_timeouts)
+			close();
+		else
 		{
-			if (ec)
-				handle_error(ec);
-		});
-		idle = std::chrono::seconds(0);
-		m_last_io = now;
+			opacket out(msg_global_request);
+			out << "keepalive@salt.hekkelman.com" << true;
+			async_write(std::move(out), [this](boost::system::error_code ec, std::size_t bytes_transferred)
+			{
+				if (ec)
+					handle_error(ec);
+			});
+
+			idle = std::chrono::seconds(0);
+		}
 	}
 
-	if (is_open() and m_keep_alive_interval > std::chrono::seconds(0))
+	if (is_open() and m_keep_alive_interval > std::chrono::seconds(1))
 	{
-		m_keep_alive_timer.cancel();	// cancel all outstanding
 		m_keep_alive_timer.expires_after(m_keep_alive_interval);
 		m_keep_alive_timer.async_wait(std::bind(&basic_connection::keep_alive_time_out, this, std::placeholders::_1));
 	}
@@ -456,7 +469,6 @@ boost::asio::awaitable<void> basic_connection::do_handshake(std::unique_ptr<deta
 {
 	try
 	{
-		/* code */
 		co_await async_open_next_layer(boost::asio::use_awaitable);
 		co_await async_wait(wait_type::write, boost::asio::use_awaitable);
 
@@ -720,7 +732,6 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 {
 	try
 	{
-		/* code */
 		async_open_next_layer(yield);
 		async_wait(wait_type::write, yield);
 

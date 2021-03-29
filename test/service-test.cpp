@@ -355,8 +355,8 @@ int main()
 	my_queue queue;
 	my_executor executor{&strand.context(), &queue};
 
-	auto conn = pool.get("maarten", "localhost", 2022);
-	// auto conn = pool.get("maartenx", "s4", 22);
+	// auto conn = pool.get("maarten", "localhost", 2022);
+	auto conn = pool.get("maarten", "s4", 22);
 	// auto conn = pool.get("maarten", "localhost", 22, "maarten", "s4", 22);
 
 	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
@@ -368,15 +368,6 @@ int main()
 		});
 
 	channel->set_message_callbacks(msg, msg, msg);
-
-	// auto validate = boost::asio::bind_executor(executor,
-	// 	[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key) {
-	// 		std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
-	// 				  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
-	// 		return true;
-	// 	});
-
-	// auto validate = std::bind(async_validate<decltype(v_cb), my_executor>, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, v_cb, executor);
 
 	conn->set_callback_executor(executor);
 
@@ -391,24 +382,13 @@ int main()
 			return pinch::host_key_reply::trust_once;
 		}));
 
-	// conn->set_accept_host_key_handler(
-	// 	[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
-	// 		std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
-	// 				  << "  ==> in thread 0x" << std::this_thread::get_id() << std::endl;
-	// 		return pinch::host_key_reply::trust_once;
-	// 	});
-
-
 	conn->set_provide_password_callback(boost::asio::bind_executor(executor, &provide_password));
-
 
 	auto open_cb = boost::asio::bind_executor(executor,
 		[t = channel, conn](const boost::system::error_code &ec) {
 			std::cout << "handler, ec = " << ec.message() << " thread: " << this_thread_name()  << std::endl;
 
 			read_from_channel(t);
-
-			// conn->rekey();
 		});
 
 	channel->open_with_pty(80, 24, "vt220", true, true, "", std::move(open_cb));
@@ -417,7 +397,7 @@ int main()
 		try
 		{
 			std::cout << "IO Context thread is " << this_thread_name() << std::endl;
-			boost::asio::executor_work_guard work(io_context.get_executor());
+			// boost::asio::executor_work_guard work(io_context.get_executor());
 			io_context.run();
 		}
 		catch (const std::exception &ex)
@@ -426,21 +406,6 @@ int main()
 		}
 	});
 
-	// auto vh = [](boost::system::error_code ec, bool b) {
-	// 	std::cout << "vh handler, ec = " << ec.message()
-	// 			  << " thread: " << this_thread_name()  << std::endl
-	// 			  << "b is " << std::boolalpha << b << std::endl;
-	// };
-
-	// async_val(std::move(vh), executor, &validate_host_key, "s4", "sha-rsa", pinch::blob{});
-
-	// AsyncImpl impl;
-	// async_ask_password(std::move(impl), executor);
-	// conn->async_provide_password([](boost::system::error_code ec, std::string pw)
-	// {
-	// 	std::cout << "And the password is " << pw << std::endl
-	// 			  << "  ==> in thread " << this_thread_name()  << std::endl;
-	// });
 
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
 	sigset.async_wait([&io_context, &queue](boost::system::error_code, int signal) { io_context.stop(); queue.stop(); });
