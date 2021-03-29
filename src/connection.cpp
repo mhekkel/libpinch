@@ -400,7 +400,7 @@ void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 	std::chrono::seconds idle = std::chrono::duration_cast<std::chrono::seconds>(now - m_last_io);
 
 	// See if we really need to send a packet.
-	if (not ec and is_open() and idle >= m_keep_alive_interval)
+	if (not ec and idle >= m_keep_alive_interval and is_open())
 	{
 		if (++m_keep_alive_timeouts > m_max_keep_alive_timeouts)
 			handle_error(error::make_error_code(error::keep_alive_timeout));
@@ -418,7 +418,7 @@ void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 		}
 	}
 
-	if (is_open() and m_keep_alive_interval > std::chrono::seconds(1))
+	if (m_keep_alive_interval > std::chrono::seconds(1) and is_open())
 	{
 		m_keep_alive_timer.expires_after(m_keep_alive_interval);
 		m_keep_alive_timer.async_wait(std::bind(&basic_connection::keep_alive_time_out, this, std::placeholders::_1));

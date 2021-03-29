@@ -320,6 +320,8 @@ class ipacket
 	template <typename T, typename std::enable_if_t<std::is_integral_v<T>, int> = 0>
 	ipacket &operator>>(T &v)
 	{
+		v = 0;
+
 		if (m_offset + sizeof(T) > m_length)
 			throw packet_exception();
 

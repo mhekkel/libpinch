@@ -207,7 +207,6 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		, m_keep_alive_timer(m_io_context)
 		, m_callback_executor(io_context.get_executor())
 	{
-		m_keep_alive_timer.async_wait(std::bind(&basic_connection::keep_alive_time_out, this, std::placeholders::_1));
 	}
 
 	basic_connection(const basic_connection &) = delete;
