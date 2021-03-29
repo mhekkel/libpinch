@@ -267,7 +267,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// Internally, connection keeps track of when the last I/O took
 	/// place and if this call is made within the kKeepAliveInterval
 	/// nothing will happen.
-	void keep_alive(std::chrono::seconds interval = std::chrono::seconds(60));
+	void keep_alive(std::chrono::seconds interval = std::chrono::seconds(5), uint32_t max_timeouts = 3);
 
   protected:
 	/// \brief Return true if the next layer is open.

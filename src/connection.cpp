@@ -377,9 +377,10 @@ void basic_connection::handle_banner(const std::string &message, const std::stri
 		c->banner(message, lang);
 }
 
-void basic_connection::keep_alive(std::chrono::seconds interval)
+void basic_connection::keep_alive(std::chrono::seconds interval, uint32_t max_timeouts)
 {
 	m_keep_alive_interval = interval;
+	m_max_keep_alive_timeouts = max_timeouts;
 
 	m_keep_alive_timer.cancel();
 
@@ -402,7 +403,7 @@ void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 	if (not ec and is_open() and idle >= m_keep_alive_interval)
 	{
 		if (++m_keep_alive_timeouts > m_max_keep_alive_timeouts)
-			close();
+			handle_error(error::make_error_code(error::connection_lost));
 		else
 		{
 			opacket out(msg_global_request);
