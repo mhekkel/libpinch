@@ -140,23 +140,20 @@ namespace detail
 	{
 	  public:
 		std::size_t m_bytes_transferred = 0;
-
-		virtual bool empty() const = 0;
-		virtual opacket pop_front() = 0;
-		virtual std::size_t front_size() = 0;
+		opacket m_packet;
 	};
 
 	template <typename Handler, typename IoExecutor>
 	class write_channel_handler : public write_channel_op
 	{
 	  public:
-		write_channel_handler(Handler &&h, const IoExecutor &io_ex,
-			std::list<opacket> &&packets)
+		write_channel_handler(Handler &&h, const IoExecutor &io_ex, opacket &&packet, std::size_t bytes_transferred)
 			: m_handler(std::forward<Handler>(h))
 			, m_io_executor(io_ex)
 			, m_work(m_handler, m_io_executor)
-			, m_packets(std::forward<std::list<opacket>>(packets))
 		{
+			m_bytes_transferred = bytes_transferred;
+			m_packet = std::move(packet);
 		}
 
 		virtual void complete(const boost::system::error_code &ec = {},
@@ -168,27 +165,10 @@ namespace detail
 			m_work.complete(handler, handler.m_handler);
 		}
 
-		virtual bool empty() const override { return m_packets.empty(); }
-
-		virtual opacket pop_front() override
-		{
-			opacket result;
-			std::swap(result, m_packets.front());
-			m_packets.pop_front();
-			m_bytes_transferred += result.size();
-			return result;
-		}
-
-		virtual std::size_t front_size() override
-		{
-			return m_packets.empty() ? 0 : m_packets.front().size();
-		}
-
 	  private:
 		Handler m_handler;
 		IoExecutor m_io_executor;
 		handler_work<Handler, IoExecutor> m_work;
-		std::list<opacket> m_packets;
 	};
 
 	class wait_channel_op : public operation
@@ -524,6 +504,7 @@ class channel : public std::enable_shared_from_this<channel>
 	void push_received();
 	void check_wait();
 	void add_read_op(detail::read_channel_op *op);
+	void add_write_op(detail::write_channel_op* op);
 
 	virtual void receive_data(const char *data, std::size_t size);
 	virtual void receive_extended_data(const char *data, std::size_t size,
@@ -547,6 +528,7 @@ class channel : public std::enable_shared_from_this<channel>
 	std::deque<detail::write_channel_op *> m_write_ops;
 	std::deque<detail::wait_channel_op *> m_wait_ops;
 	bool m_eof;
+	// std::mutex m_mutex;
 
 	message_callback_type m_banner_handler;
 	message_callback_type m_message_handler;
@@ -589,25 +571,19 @@ class channel : public std::enable_shared_from_this<channel>
 				handler(boost::system::error_code(), 0);
 			else
 			{
-				std::list<opacket> packets;
-
 				const char *b = static_cast<const char *>(buffer.data());
 				const char *e = b + n;
 
-				while (b != e)
-				{
-					std::size_t k = e - b;
-					if (k > ch->m_max_send_packet_size)
-						k = ch->m_max_send_packet_size;
+				std::size_t k = e - b;
+				if (k > ch->m_max_send_packet_size)
+					k = ch->m_max_send_packet_size;
 
-					packets.push_back(opacket(msg_channel_data)
-									  << ch->m_host_channel_id << std::make_pair(b, k));
+				opacket packet(msg_channel_data);
+				packet << ch->m_host_channel_id << std::make_pair(b, k);
 
-					b += k;
-				}
+				ch->add_write_op(new detail::write_channel_handler(
+					std::move(handler), ch->get_executor(), std::move(packet), k));
 
-				ch->m_write_ops.push_back(new detail::write_channel_handler(
-					std::move(handler), ch->get_executor(), std::move(packets)));
 				ch->send_pending();
 			}
 		}
@@ -619,9 +595,8 @@ class channel : public std::enable_shared_from_this<channel>
 				handler(error::make_error_code(error::connection_lost), 0);
 			else
 			{
-				std::list out{std::move(packet)};
-				ch->m_write_ops.push_back(new detail::write_channel_handler(
-					std::move(handler), ch->get_executor(), std::move(out)));
+				ch->add_write_op(new detail::write_channel_handler(
+					std::move(handler), ch->get_executor(), std::move(packet), packet.size() - sizeof(uint32_t)));
 				ch->send_pending();
 			}
 		}
