@@ -412,11 +412,37 @@ class channel : public std::enable_shared_from_this<channel>
 	template <typename Handler, typename ConstBufferSequece>
 	auto async_write_some(const ConstBufferSequece &buffer, Handler &&handler)
 	{
-		return boost::asio::async_initiate<Handler, void(boost::system::error_code,
-														std::size_t)>(
-			async_write_impl{}, handler, this, buffer);
+		enum { start, sending };
+
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
+			[
+				me = shared_from_this(),
+				buffer,
+				state = start
+			]
+			(auto &self, const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+			{
+				std::size_t n = buffer.size();
+				if (n > me->m_max_send_packet_size)
+					n = me->m_max_send_packet_size;
+
+				if (not ec and state == start)
+				{
+					opacket packet(msg_channel_data);
+					packet << me->m_host_channel_id << std::make_pair(static_cast<const char*>(buffer.data()), n);
+
+					state = sending;
+
+					me->async_write_packet(std::move(packet), std::move(self));
+					return;
+				}
+
+				self.complete(ec, n);
+			}, handler
+		);
 	}
 
+  private:
 	/// \brief Internal routine for sending packets
 	template <typename Handler>
 	auto async_write_packet(opacket &&out, Handler &&handler)
@@ -428,52 +454,50 @@ class channel : public std::enable_shared_from_this<channel>
 
 	// --------------------------------------------------------------------
 
+  public:
+
 	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-	void send_data(const std::string &data)
+	template <typename Data, typename Handler>
+	auto send_data(const Data &&data, message_type msg, Handler &&handler)
 	{
-		send_data(data, [](const boost::system::error_code &, std::size_t) {});
+		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
+			[
+				me = shared_from_this(),
+				data = std::move(data),
+				offset = 0ULL,
+				msg
+			]
+			(auto &self, const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+			{
+				std::size_t n = data.size() - offset;
+				if (n > me->m_max_send_packet_size)
+					n = me->m_max_send_packet_size;
+
+				if (not ec and n > 0)
+				{
+					opacket packet(msg);
+					packet << me->m_host_channel_id << std::make_pair(reinterpret_cast<const char*>(data.data()) + offset, n);
+					offset += n;
+
+					me->async_write_packet(std::move(packet), std::move(self));
+					return;
+				}
+
+				self.complete(ec, data.size());
+			}, handler
+		);
 	}
 
 	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-	template <typename Handler>
-	void send_data(const std::string &data, Handler &&handler)
+	void send_data(blob &&data, message_type msg = msg_channel_data)
 	{
-		opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
-		async_write_packet(std::move(out), std::move(handler));
+		send_data(std::move(data), msg, [](const boost::system::error_code &, std::size_t) {});
 	}
 
 	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-	void send_data(const opacket &data)
+	void send_data(std::string &&data, message_type msg = msg_channel_data)
 	{
-		opacket out = opacket(msg_channel_data) << m_host_channel_id << data;
-		async_write_packet(std::move(out),
-			[](const boost::system::error_code &, std::size_t) {});
-	}
-
-	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-	template <typename Handler>
-	void send_data(const char *data, size_t size, Handler &&handler)
-	{
-		opacket out = opacket(msg_channel_data)
-					  << m_host_channel_id << std::make_pair(data, size);
-		async_write_packet(std::move(out), std::move(handler));
-	}
-
-	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
-	template <typename Handler>
-	void send_data(opacket &data, Handler &&handler)
-	{
-		async_write_packet(opacket(msg_channel_data) << m_host_channel_id << data,
-			std::move(handler));
-	}
-
-	/// \brief To send data through the channel using SSH_MSG_CHANNEL_EXTENDED_DATA messages
-	template <typename Handler>
-	void send_extended_data(opacket &data, uint32_t type, Handler &&handler)
-	{
-		async_write_packet(opacket(msg_channel_extended_data)
-							   << m_host_channel_id << type << data,
-			std::move(handler));
+		send_data(std::move(data), msg, [](const boost::system::error_code &, std::size_t) {});
 	}
 
   protected:
@@ -528,7 +552,6 @@ class channel : public std::enable_shared_from_this<channel>
 	std::deque<detail::write_channel_op *> m_write_ops;
 	std::deque<detail::wait_channel_op *> m_wait_ops;
 	bool m_eof;
-	// std::mutex m_mutex;
 
 	message_callback_type m_banner_handler;
 	message_callback_type m_message_handler;
@@ -559,35 +582,6 @@ class channel : public std::enable_shared_from_this<channel>
 
 	struct async_write_impl
 	{
-		template <typename Handler, typename ConstBufferSequence>
-		void operator()(Handler &&handler, channel *ch,
-			const ConstBufferSequence &buffer)
-		{
-			std::size_t n = buffer.size();
-
-			if (not ch->is_open())
-				handler(error::make_error_code(error::connection_lost), 0);
-			else if (n == 0)
-				handler(boost::system::error_code(), 0);
-			else
-			{
-				const char *b = static_cast<const char *>(buffer.data());
-				const char *e = b + n;
-
-				std::size_t k = e - b;
-				if (k > ch->m_max_send_packet_size)
-					k = ch->m_max_send_packet_size;
-
-				opacket packet(msg_channel_data);
-				packet << ch->m_host_channel_id << std::make_pair(b, k);
-
-				ch->add_write_op(new detail::write_channel_handler(
-					std::move(handler), ch->get_executor(), std::move(packet), k));
-
-				ch->send_pending();
-			}
-		}
-
 		template <typename Handler>
 		void operator()(Handler &&handler, channel *ch, opacket &&packet)
 		{

@@ -37,8 +37,6 @@ void channel::close()
 
 void channel::closed()
 {
-	// std::lock_guard lock(m_mutex);
-
 	m_channel_open = false;
 
 	for (auto op : m_read_ops)
@@ -301,8 +299,6 @@ void channel::receive_extended_data(const char *data, size_t size, uint32_t type
 
 void channel::send_pending(const boost::system::error_code &ec)
 {
-	// std::lock_guard lock(m_mutex);
-
 	if (ec)
 	{
 		while (not m_write_ops.empty())
@@ -330,14 +326,11 @@ void channel::send_pending(const boost::system::error_code &ec)
 
 			m_connection->async_write(std::move(op->m_packet),
 				[
-					this, op
+					this, op = std::unique_ptr<detail::write_channel_op>(op)
 				]
 				(const boost::system::error_code &ec, std::size_t bytes_transferred)
 				{
 					op->complete(ec, bytes_transferred);
-
-					delete op;
-
 					this->send_pending(ec);
 				});
 		}
@@ -348,15 +341,12 @@ void channel::send_pending(const boost::system::error_code &ec)
 
 void channel::add_read_op(detail::read_channel_op *handler)
 {
-	// std::lock_guard lock(m_mutex);
-
 	m_read_ops.push_back(handler);
 	get_executor().execute([this]() { push_received(); });
 }
 
 void channel::add_write_op(detail::write_channel_op* op)
 {
-	// std::lock_guard lock(m_mutex);
 	m_write_ops.push_back(op);
 }
 

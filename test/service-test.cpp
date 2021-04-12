@@ -219,7 +219,8 @@ void read_from_channel(pinch::channel_ptr ch, int start = 1)
 
 				if (start)
 				{
-					ch->send_data("xterm\n");
+					using namespace std::literals;
+					ch->send_data("xterm\n"s);
 				}
 			}
 		});

@@ -229,7 +229,7 @@ void x11_channel::receive_raw(const boost::system::error_code &ec, size_t size)
 			if (k == 0)
 				break;
 
-			send_data(buffer, k,
+			boost::asio::async_write(*this, boost::asio::buffer(buffer, k), 
 				[self](const boost::system::error_code &ec, size_t) {
 					if (ec)
 						self->close();

@@ -162,14 +162,14 @@ class sftp_channel : public channel
 	template <typename Handler>
 	auto async_init(int version, Handler &&handler)
 	{
-		return boost::asio::async_initiate<Handler, void(boost::system::error_code)>(
+		return boost::asio::async_initiate<Handler, void(boost::system::error_code, int)>(
 			async_sftp_init_impl{}, handler, this, version);
 	}
 
 	template <typename Handler>
 	auto read_dir(const std::string &path, Handler &&handler)
 	{
-		return boost::asio::async_initiate<Handler, void(boost::system::error_code)>(
+		return boost::asio::async_initiate<Handler, void(boost::system::error_code, std::list<std::tuple<std::string, std::string, pinch::file_attributes>>)>(
 			async_readdir_impl{}, handler, this, m_request_id++, path);
 	}
 
