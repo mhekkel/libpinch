@@ -443,6 +443,8 @@ void ssh_agent::add(const std::string &private_key, const std::string &key_comme
 
 			cipher.reset(c.factory());
 			cipher->SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
+
+			break;
 		}
 	}
 
