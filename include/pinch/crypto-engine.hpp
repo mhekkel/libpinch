@@ -19,8 +19,10 @@ class crypto_engine;
 
 // --------------------------------------------------------------------
 
+/// \brief Private implementation
 struct TransformDataImpl;
 
+/// \brief Wrapper class around stream transformation classes (encyption/decryption)
 class TransformData
 {
   public:
@@ -42,12 +44,15 @@ class TransformData
   private:
 	friend class crypto_engine;
 
-	struct TransformDataImpl *m_impl;
+	struct TransformDataImpl *m_impl = nullptr;
 };
 
+// --------------------------------------------------------------------
 
+/// \brief Private implementation
 struct MessageAuthenticationCodeImpl;
 
+/// \brief Wrapper class around message authentication classes
 class MessageAuthenticationCode
 {
   public:
@@ -70,7 +75,7 @@ class MessageAuthenticationCode
   private:
 	friend class crypto_engine;
 
-	struct MessageAuthenticationCodeImpl *m_impl;
+	struct MessageAuthenticationCodeImpl *m_impl = nullptr;
 };
 
 /// --------------------------------------------------------------------

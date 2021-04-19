@@ -61,7 +61,8 @@ void TransformData::reset_encryptor(const std::string &name, const uint8_t *key,
 		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 24, iv) };
 	else if (name == "aes256-ctr")
 		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 32, iv) };
-
+	else
+		assert(false);
 }
 
 void TransformData::reset_decryptor(const std::string &name, const uint8_t *key, const uint8_t *iv)
@@ -82,7 +83,8 @@ void TransformData::reset_decryptor(const std::string &name, const uint8_t *key,
 		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 24, iv) };
 	else if (name == "aes256-ctr")
 		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 32, iv) };
-
+	else
+		assert(false);
 }
 
 void TransformData::process(const uint8_t *in, std::size_t len, uint8_t *out)
