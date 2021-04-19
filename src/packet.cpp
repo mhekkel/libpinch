@@ -14,6 +14,8 @@
 #include <pinch/channel.hpp>
 #include <pinch/packet.hpp>
 
+#include <cryptopp/integer.h>
+
 namespace ba = boost::algorithm;
 
 namespace pinch

@@ -11,7 +11,10 @@
 
 #include <boost/system/error_code.hpp>
 
-#include <cryptopp/integer.h>
+namespace CryptoPP
+{
+class Integer;
+}
 
 /// forward declaration
 struct z_stream_s;

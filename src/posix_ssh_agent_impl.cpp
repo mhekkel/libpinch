@@ -18,8 +18,6 @@
 namespace pinch
 {
 
-using CryptoPP::Integer;
-
 class ssh_agent_impl
 {
   public:

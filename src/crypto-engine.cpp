@@ -27,6 +27,123 @@ namespace io = boost::iostreams;
 namespace pinch
 {
 
+struct TransformDataImpl
+{
+	std::unique_ptr<CryptoPP::StreamTransformation> m_stream_transformation;
+};
+
+TransformData::~TransformData()
+{
+	delete m_impl;
+}
+
+void TransformData::clear()
+{
+	delete m_impl;
+	m_impl = nullptr;
+}
+
+void TransformData::reset_encryptor(const std::string &name, const uint8_t *key, const uint8_t *iv)
+{
+	clear();
+
+	if (name == "3des-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption>(key, 24, iv) };
+	else if (name == "aes128-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 16, iv) };
+	else if (name == "aes192-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 24, iv) };
+	else if (name == "aes256-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 32, iv) };
+	else if (name == "aes128-ctr")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 16, iv) };
+	else if (name == "aes192-ctr")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 24, iv) };
+	else if (name == "aes256-ctr")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 32, iv) };
+
+}
+
+void TransformData::reset_decryptor(const std::string &name, const uint8_t *key, const uint8_t *iv)
+{
+	clear();
+
+	if (name == "3des-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption>(key, 24, iv) };
+	else if (name == "aes128-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 16, iv) };
+	else if (name == "aes192-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 24, iv) };
+	else if (name == "aes256-cbc")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 32, iv) };
+	else if (name == "aes128-ctr")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 16, iv) };
+	else if (name == "aes192-ctr")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 24, iv) };
+	else if (name == "aes256-ctr")
+		m_impl = new TransformDataImpl { std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 32, iv) };
+
+}
+
+void TransformData::process(const uint8_t *in, std::size_t len, uint8_t *out)
+{
+	assert(m_impl);
+	assert(m_impl->m_stream_transformation);
+	m_impl->m_stream_transformation->ProcessData(out, in, len);
+}
+
+std::size_t TransformData::get_block_size() const
+{
+	return m_impl->m_stream_transformation->OptimalBlockSize();
+}
+
+// --------------------------------------------------------------------
+
+struct MessageAuthenticationCodeImpl
+{
+	std::unique_ptr<CryptoPP::MessageAuthenticationCode> m_verify;
+};
+
+MessageAuthenticationCode::~MessageAuthenticationCode()
+{
+	delete m_impl;
+}
+
+void MessageAuthenticationCode::clear()
+{
+	delete m_impl;
+	m_impl = nullptr;
+}
+
+void MessageAuthenticationCode::reset(const std::string &name, const uint8_t *iv)
+{
+	clear();
+
+	if (name == "hmac-sha2-512")
+		m_impl = new MessageAuthenticationCodeImpl{ std::make_unique<CryptoPP::HMAC<CryptoPP::SHA512>>(iv, 64) };
+	else if (name == "hmac-sha2-256")
+		m_impl = new MessageAuthenticationCodeImpl{ std::make_unique<CryptoPP::HMAC<CryptoPP::SHA256>>(iv, 32) };
+	else if (name == "hmac-sha1")
+		m_impl = new MessageAuthenticationCodeImpl{ std::make_unique<CryptoPP::HMAC<CryptoPP::SHA1>>(iv, 20) };
+	else
+		assert(false);
+}
+
+void MessageAuthenticationCode::update(const uint8_t *data, std::size_t len)
+{
+	m_impl->m_verify->Update(data, len);
+}
+
+bool MessageAuthenticationCode::verify(const uint8_t *signature)
+{
+	return m_impl->m_verify->Verify(signature);
+}
+
+std::size_t MessageAuthenticationCode::get_digest_size() const
+{
+	return m_impl->m_verify->DigestSize();
+}
+
 // --------------------------------------------------------------------
 
 struct packet_encryptor
@@ -119,26 +236,15 @@ crypto_engine::crypto_engine()
 
 void crypto_engine::newkeys(key_exchange &kex, bool authenticated)
 {
+	using namespace CryptoPP;
+
 	// Client to server encryption
 	m_alg_enc_c2s = kex.get_encryption_protocol(direction::c2s);
 
 	const uint8_t *key = kex.key(key_exchange::C);
 	const uint8_t *iv = kex.key(key_exchange::A);
 
-	if (m_alg_enc_c2s == "3des-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption(key, 24, iv));
-	else if (m_alg_enc_c2s == "aes128-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
-	else if (m_alg_enc_c2s == "aes192-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
-	else if (m_alg_enc_c2s == "aes256-cbc")
-		m_encryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
-	else if (m_alg_enc_c2s == "aes128-ctr")
-		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 16, iv));
-	else if (m_alg_enc_c2s == "aes192-ctr")
-		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 24, iv));
-	else if (m_alg_enc_c2s == "aes256-ctr")
-		m_encryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption(key, 32, iv));
+	m_encryptor.reset_encryptor(m_alg_enc_c2s, key, iv);
 
 	// Server to client encryption
 	m_alg_enc_s2c = kex.get_encryption_protocol(direction::s2c);
@@ -146,47 +252,20 @@ void crypto_engine::newkeys(key_exchange &kex, bool authenticated)
 	key = kex.key(key_exchange::D);
 	iv = kex.key(key_exchange::B);
 
-	if (m_alg_enc_s2c == "3des-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption(key, 24, iv));
-	else if (m_alg_enc_s2c == "aes128-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
-	else if (m_alg_enc_s2c == "aes192-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
-	else if (m_alg_enc_s2c == "aes256-cbc")
-		m_decryptor.reset(new CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
-	else if (m_alg_enc_s2c == "aes128-ctr")
-		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 16, iv));
-	else if (m_alg_enc_s2c == "aes192-ctr")
-		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 24, iv));
-	else if (m_alg_enc_s2c == "aes256-ctr")
-		m_decryptor.reset(new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(key, 32, iv));
+	m_decryptor.reset_decryptor(m_alg_enc_s2c, key, iv);
 
 	// Client To Server verification
 	m_alg_ver_c2s = kex.get_verification_protocol(direction::c2s);
 	iv = kex.key(key_exchange::E);
 
-	if (m_alg_ver_c2s == "hmac-sha2-512")
-		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
-	else if (m_alg_ver_c2s == "hmac-sha2-256")
-		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (m_alg_ver_c2s == "hmac-sha1")
-		m_signer.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
-	else
-		assert(false);
+	m_signer.reset(m_alg_ver_c2s, iv);
 
 	// Server to Client verification
 
 	m_alg_ver_s2c = kex.get_verification_protocol(direction::s2c);
 	iv = kex.key(key_exchange::F);
 
-	if (m_alg_ver_s2c == "hmac-sha2-512")
-		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA512>(iv, 64));
-	else if (m_alg_ver_s2c == "hmac-sha2-256")
-		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA256>(iv, 32));
-	else if (m_alg_ver_s2c == "hmac-sha1")
-		m_verifier.reset(new CryptoPP::HMAC<CryptoPP::SHA1>(iv, 20));
-	else
-		assert(false);
+	m_verifier.reset(m_alg_ver_s2c, iv);
 
 	// Client to Server compression
 	m_alg_cmp_c2s = kex.get_compression_protocol(direction::c2s);
@@ -204,18 +283,18 @@ void crypto_engine::newkeys(key_exchange &kex, bool authenticated)
 
 	if (m_decryptor)
 	{
-		m_iblocksize = m_decryptor->OptimalBlockSize();
-		m_oblocksize = m_encryptor->OptimalBlockSize();
+		m_iblocksize = m_decryptor.get_block_size();
+		m_oblocksize = m_encryptor.get_block_size();
 	}
 }
 
 void crypto_engine::reset()
 {
 	m_packet.reset();
-	m_encryptor.reset(nullptr);
-	m_decryptor.reset(nullptr);
-	m_signer.reset(nullptr);
-	m_verifier.reset(nullptr);
+	m_encryptor.clear();
+	m_decryptor.clear();
+	m_signer.clear();
+	m_verifier.clear();
 	m_compressor.reset(nullptr);
 	m_decompressor.reset(nullptr);
 	m_delay_decompressor = m_delay_compressor = false;
@@ -266,7 +345,7 @@ blob crypto_engine::get_next_block(boost::asio::streambuf &buffer, bool empty)
 	if (m_decryptor)
 	{
 		blob data(m_iblocksize);
-		m_decryptor->ProcessData(data.data(), block.data(), m_iblocksize);
+		m_decryptor.process(block.data(), m_iblocksize, data.data());
 		std::swap(data, block);
 	}
 
@@ -277,11 +356,11 @@ blob crypto_engine::get_next_block(boost::asio::streambuf &buffer, bool empty)
 			for (int32_t i = 3; i >= 0; --i)
 			{
 				uint8_t b = m_in_seq_nr >> (i * 8);
-				m_verifier->Update(&b, 1);
+				m_verifier.update(&b, 1);
 			}
 		}
 
-		m_verifier->Update(block.data(), block.size());
+		m_verifier.update(block.data(), block.size());
 	}
 
 	return block;
@@ -305,13 +384,15 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf &
 		{
 			if (m_verifier)
 			{
-				if (buffer.size() < m_verifier->DigestSize())
+				const std::size_t digest_size = m_verifier.get_digest_size();
+
+				if (buffer.size() < digest_size)
 					break;
 
-				blob digest(m_verifier->DigestSize());
-				buffer.sgetn(reinterpret_cast<char *>(digest.data()), m_verifier->DigestSize());
+				blob digest(digest_size);
+				buffer.sgetn(reinterpret_cast<char *>(digest.data()), digest_size);
 
-				if (not m_verifier->Verify(digest.data()))
+				if (not m_verifier.verify(digest.data()))
 				{
 					ec = error::make_error_code(error::mac_error);
 					break;
@@ -348,7 +429,7 @@ std::unique_ptr<boost::asio::streambuf> crypto_engine::get_next_request(opacket 
 
 	io::filtering_stream<io::output> out;
 	if (m_encryptor)
-		out.push(packet_encryptor(*m_encryptor, *m_signer, m_oblocksize, m_out_seq_nr));
+		out.push(packet_encryptor(*m_encryptor.m_impl->m_stream_transformation, *m_signer.m_impl->m_verify, m_oblocksize, m_out_seq_nr));
 	out.push(*request);
 
 	p.write(out, m_oblocksize);

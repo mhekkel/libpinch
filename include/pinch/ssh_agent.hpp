@@ -7,7 +7,9 @@
 
 #include <pinch/pinch.hpp>
 
-#include <cryptopp/integer.h>
+#include <list>
+#include <memory>
+#include <functional>
 
 namespace pinch
 {

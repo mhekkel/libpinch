@@ -15,6 +15,64 @@
 namespace pinch
 {
 
+class crypto_engine;
+
+// --------------------------------------------------------------------
+
+struct TransformDataImpl;
+
+class TransformData
+{
+  public:
+	TransformData() {}
+	TransformData(const TransformData &) = delete;
+	TransformData& operator=(const TransformData &) = delete;
+	~TransformData();
+
+	void clear();
+
+	explicit operator bool() { return m_impl != nullptr; }
+
+	void reset_encryptor(const std::string &name, const uint8_t *key, const uint8_t *iv);
+	void reset_decryptor(const std::string &name, const uint8_t *key, const uint8_t *iv);
+
+	void process(const uint8_t *in, std::size_t len, uint8_t *out);
+	std::size_t get_block_size() const;
+
+  private:
+	friend class crypto_engine;
+
+	struct TransformDataImpl *m_impl;
+};
+
+
+struct MessageAuthenticationCodeImpl;
+
+class MessageAuthenticationCode
+{
+  public:
+	MessageAuthenticationCode() {}
+	MessageAuthenticationCode(const MessageAuthenticationCode &) = delete;
+	MessageAuthenticationCode& operator=(const MessageAuthenticationCode &) = delete;
+	~MessageAuthenticationCode();
+
+	void clear();
+
+	explicit operator bool() { return m_impl != nullptr; }
+
+	void reset(const std::string& name, const uint8_t *iv);
+
+	void update(const uint8_t *data, std::size_t len);
+	bool verify(const uint8_t *signature);
+
+	std::size_t get_digest_size() const;
+
+  private:
+	friend class crypto_engine;
+
+	struct MessageAuthenticationCodeImpl *m_impl;
+};
+
 /// --------------------------------------------------------------------
 /// \brief the crypto_engine class
 ///
@@ -74,10 +132,10 @@ class crypto_engine
 		m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
 		m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 
-	std::unique_ptr<CryptoPP::StreamTransformation> m_decryptor;
-	std::unique_ptr<CryptoPP::StreamTransformation> m_encryptor;
-	std::unique_ptr<CryptoPP::MessageAuthenticationCode> m_signer;
-	std::unique_ptr<CryptoPP::MessageAuthenticationCode> m_verifier;
+	TransformData m_decryptor;
+	TransformData m_encryptor;
+	MessageAuthenticationCode m_signer;
+	MessageAuthenticationCode m_verifier;
 
 	std::unique_ptr<compression_helper> m_compressor;
 	std::unique_ptr<compression_helper> m_decompressor;
