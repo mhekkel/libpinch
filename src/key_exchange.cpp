@@ -32,7 +32,7 @@ static AutoSeededRandomPool rng;
 
 const std::string
 	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256"),
-	kServerHostKeyAlgorithms("ecdsa-sha2-nistp256" /* ",rsa-sha2-512,rsa-sha2-256" */ ",ssh-rsa", "ssh-ed25519"),
+	kServerHostKeyAlgorithms("ecdsa-sha2-nistp256" /* ",rsa-sha2-512,rsa-sha2-256" */ ",ssh-rsa"/*, "ssh-ed25519"*/),
 	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256"),
 	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
@@ -291,10 +291,10 @@ void key_exchange_impl::process_kex_dh_reply(ipacket &in, opacket &out, boost::s
 		std::swap(r, pk_rs_d);
 		pk_rs_d.insert(pk_rs_d.end(), s.begin(), s.end());
 	}
-	else if (h_pk_type == "ssh-ed25519")
-	{
+	// else if (h_pk_type == "ssh-ed25519")
+	// {
 		
-	}
+	// }
 
 	if (m_kx.m_pk_type == h_pk_type and h_key and h_key->VerifyMessage(m_H.data(), m_H.size(), pk_rs_d.data(), pk_rs_d.size()))
 		out = msg_newkeys;
