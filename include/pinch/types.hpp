@@ -21,13 +21,14 @@ enum class direction
 	both	///< Both directions
 };
 
-/// \brief The four algorithms
+/// \brief The five algorithms
 enum class algorithm
 {
 	encryption,
 	verification,
 	compression,
-	keyexchange
+	keyexchange,
+	serverhostkey
 };
 
 // blob should be made a bit more secure one day

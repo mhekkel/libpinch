@@ -17,6 +17,7 @@
 #include <cryptopp/oids.h>
 #include <cryptopp/osrng.h>
 #include <cryptopp/rsa.h>
+#include <cryptopp/xed25519.h>
 
 #include <pinch/channel.hpp>
 #include <pinch/crypto-engine.hpp>
@@ -32,7 +33,7 @@ static AutoSeededRandomPool rng;
 
 const std::string
 	kKeyExchangeAlgorithms("diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256"),
-	kServerHostKeyAlgorithms("ecdsa-sha2-nistp256" /* ",rsa-sha2-512,rsa-sha2-256" */ ",ssh-rsa"/*, "ssh-ed25519"*/),
+	kServerHostKeyAlgorithms("ssh-ed25519,ecdsa-sha2-nistp256,ssh-rsa"),
 	kEncryptionAlgorithms("aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc"),
 	kMacAlgorithms("hmac-sha2-512,hmac-sha2-256"),
 	kCompressionAlgorithms("zlib@openssh.com,zlib,none");
@@ -291,10 +292,14 @@ void key_exchange_impl::process_kex_dh_reply(ipacket &in, opacket &out, boost::s
 		std::swap(r, pk_rs_d);
 		pk_rs_d.insert(pk_rs_d.end(), s.begin(), s.end());
 	}
-	// else if (h_pk_type == "ssh-ed25519")
-	// {
-		
-	// }
+	else if (h_pk_type == "ssh-ed25519")
+	{
+		blob key;
+		hostkey >> key;
+		h_key.reset(new CryptoPP::ed25519::Verifier(key.data()));
+
+		signature >> pk_rs_d;
+	}
 
 	if (m_kx.m_pk_type == h_pk_type and h_key and h_key->VerifyMessage(m_H.data(), m_H.size(), pk_rs_d.data(), pk_rs_d.size()))
 		out = msg_newkeys;
@@ -441,7 +446,8 @@ std::string
 	key_exchange::s_alg_ver_s2c = kMacAlgorithms,
 	key_exchange::s_alg_ver_c2s = kMacAlgorithms,
 	key_exchange::s_alg_cmp_s2c = kCompressionAlgorithms,
-	key_exchange::s_alg_cmp_c2s = kCompressionAlgorithms;
+	key_exchange::s_alg_cmp_c2s = kCompressionAlgorithms,
+	key_exchange::s_server_host_key = kServerHostKeyAlgorithms;
 
 key_exchange::key_exchange(const std::string &host_version)
 	: m_host_version(host_version)
@@ -504,6 +510,10 @@ void key_exchange::set_algorithm(algorithm alg, direction dir, const std::string
 			if (dir != direction::s2c)
 				s_alg_cmp_c2s = preferred;
 			break;
+		
+		case algorithm::serverhostkey:
+			s_server_host_key = preferred;
+			break;
 	}
 }
 
@@ -515,7 +525,7 @@ opacket key_exchange::init()
 		out << rng.GenerateByte();
 
 	out << s_alg_kex
-		<< kServerHostKeyAlgorithms
+		<< s_server_host_key
 		<< s_alg_enc_c2s
 		<< s_alg_enc_s2c
 		<< s_alg_ver_c2s

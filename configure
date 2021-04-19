@@ -17817,8 +17817,8 @@ else
 
 fi
 
-		CRYPTOPP_CFLAGS="-I ${withval}"
-		CRYPTOPP_LIBS="-L${withval} -lcryptopp"
+		CRYPTOPP_CFLAGS="-I ${withval}/include"
+		CRYPTOPP_LIBS="-L${withval}/lib -lcryptopp"
 
 		CRYPTOPP_CFLAGS=$CRYPTOPP_CFLAGS
 

@@ -92,8 +92,8 @@ AC_ARG_WITH([cryptopp],
 			AC_MSG_ERROR(['${withval}'' is not a valid directory for --with-cryptopp])
 		])
 
-		CRYPTOPP_CFLAGS="-I ${withval}"
-		CRYPTOPP_LIBS="-L${withval} -lcryptopp"
+		CRYPTOPP_CFLAGS="-I ${withval}/include"
+		CRYPTOPP_LIBS="-L${withval}/lib -lcryptopp"
 
 		AC_SUBST([CRYPTOPP_CFLAGS], [$CRYPTOPP_CFLAGS])
 		AC_SUBST([CRYPTOPP_LIBS], [$CRYPTOPP_LIBS])

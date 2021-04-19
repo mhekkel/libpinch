@@ -125,7 +125,8 @@ class key_exchange
 
 	static std::string
 		s_alg_kex,
-		s_alg_enc_s2c, s_alg_enc_c2s, s_alg_ver_s2c, s_alg_ver_c2s, s_alg_cmp_s2c, s_alg_cmp_c2s;
+		s_alg_enc_s2c, s_alg_enc_c2s, s_alg_ver_s2c, s_alg_ver_c2s, s_alg_cmp_s2c, s_alg_cmp_c2s,
+		s_server_host_key;
 };
 
 } // namespace pinch
