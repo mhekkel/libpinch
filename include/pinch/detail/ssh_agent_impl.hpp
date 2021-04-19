@@ -19,24 +19,27 @@ class ssh_private_key_impl
 
 	virtual blob sign(const blob &session_id, const opacket &data) = 0;
 
+	virtual std::string get_type() const = 0;
+
+	blob get_blob() const
+	{
+		return m_blob;
+	}
+
 	virtual blob get_hash() const = 0;
 	virtual std::string get_comment() const = 0;
 
-	//	static ssh_private_key_impl*	create_for_hash(const std::string& hash);
-	static ssh_private_key_impl *create_for_blob(ipacket &blob);
 	static void create_list(std::vector<ssh_private_key> &keys);
 
   protected:
-	ssh_private_key_impl();
+	ssh_private_key_impl(const blob &b);
 	virtual ~ssh_private_key_impl();
 
-	friend opacket &operator<<(opacket &p, const ssh_private_key &pk);
-
-	CryptoPP::Integer m_e, m_n;
+	blob m_blob;
 
   private:
-	ssh_private_key_impl(const ssh_private_key_impl &);
-	ssh_private_key_impl &operator=(const ssh_private_key_impl &);
+	ssh_private_key_impl(const ssh_private_key_impl &) = delete;
+	ssh_private_key_impl &operator=(const ssh_private_key_impl &) = delete;
 
 	int32_t m_refcount;
 };

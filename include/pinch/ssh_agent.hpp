@@ -32,13 +32,13 @@ class ssh_private_key
 
 	blob sign(const blob &session_id, const opacket &data);
 
+	std::string get_type() const;
+	blob get_blob() const;
 	blob get_hash() const;
 	std::string get_comment() const;
 
 	operator bool() const { return m_impl != nullptr; }
 	bool operator==(const ssh_private_key &key) const;
-
-	friend opacket &operator<<(opacket &p, const ssh_private_key &key);
 
   protected:
 	ssh_private_key_impl *m_impl;

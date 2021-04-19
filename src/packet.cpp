@@ -300,6 +300,18 @@ ipacket::ipacket(const uint8_t *data, size_t size)
 	m_offset = 1;
 }
 
+ipacket::ipacket(message_type msg, const blob &b)
+{
+	m_data = new uint8_t[b.size() + 1];
+	memcpy(m_data + 1, b.data(), b.size());
+	m_owned = true;
+	m_complete = true;
+	m_length = b.size();
+	m_padding = 0;
+	m_data[0] = m_message = msg;
+	m_offset = 1;
+}
+
 ipacket::~ipacket()
 {
 #if DEBUG

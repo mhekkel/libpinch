@@ -15,17 +15,17 @@
 #include <pinch/packet.hpp>
 #include <pinch/ssh_agent.hpp>
 
-using namespace CryptoPP;
-
 namespace pinch
 {
+
+using CryptoPP::Integer;
 
 class ssh_agent_impl
 {
   public:
 	static ssh_agent_impl &instance();
 
-	void get_identities(std::vector<std::tuple<Integer, Integer, std::string>> &identities);
+	void get_identities(std::vector<std::tuple<blob, std::string>> &identities);
 	blob sign(const blob &b, const blob &data);
 
   private:
@@ -73,7 +73,7 @@ ssh_agent_impl::~ssh_agent_impl()
 		close(m_fd);
 }
 
-void ssh_agent_impl::get_identities(std::vector<std::tuple<Integer, Integer, std::string>> &identities)
+void ssh_agent_impl::get_identities(std::vector<std::tuple<blob, std::string>> &identities)
 {
 	if (m_fd > 0)
 	{
@@ -91,16 +91,7 @@ void ssh_agent_impl::get_identities(std::vector<std::tuple<Integer, Integer, std
 
 				reply >> blob >> comment;
 
-				std::string type;
-				blob >> type;
-
-				if (type != "ssh-rsa")
-					continue;
-
-				Integer e, n;
-				blob >> e >> n;
-
-				identities.push_back(make_tuple(e, n, comment));
+				identities.push_back(make_tuple(blob, comment));
 			}
 		}
 	}
@@ -169,33 +160,21 @@ bool ssh_agent_impl::process(const opacket &request, ipacket &reply)
 class posix_ssh_private_key_impl : public ssh_private_key_impl
 {
   public:
-	posix_ssh_private_key_impl(const Integer &e, const Integer &n, const std::string &comment);
-	virtual ~posix_ssh_private_key_impl();
+	posix_ssh_private_key_impl(const blob &b, const std::string &comment)
+		: ssh_private_key_impl(b)
+		, m_comment(comment) {}
+
+	virtual ~posix_ssh_private_key_impl() = default;
 
 	virtual blob sign(const blob &session_id, const opacket &p);
 
+	virtual std::string get_type() const;
 	virtual blob get_hash() const;
 	virtual std::string get_comment() const { return m_comment; }
 
   private:
-	blob m_blob;
 	std::string m_comment;
 };
-
-posix_ssh_private_key_impl::posix_ssh_private_key_impl(const Integer &e, const Integer &n, const std::string &comment)
-	: m_comment(comment)
-{
-	m_e = e;
-	m_n = n;
-
-	opacket blob;
-	blob << "ssh-rsa" << m_e << m_n;
-	m_blob = blob;
-}
-
-posix_ssh_private_key_impl::~posix_ssh_private_key_impl()
-{
-}
 
 blob posix_ssh_private_key_impl::sign(const blob &session_id, const opacket &inData)
 {
@@ -204,6 +183,15 @@ blob posix_ssh_private_key_impl::sign(const blob &session_id, const opacket &inD
 	data.insert(data.end(), in_data.begin(), in_data.end());
 
 	return ssh_agent_impl::instance().sign(m_blob, data);
+}
+
+std::string posix_ssh_private_key_impl::get_type() const
+{
+	ipacket in(msg_undefined, m_blob);
+
+	std::string type;
+	in >> type;
+	return type;
 }
 
 blob posix_ssh_private_key_impl::get_hash() const
@@ -248,32 +236,14 @@ blob posix_ssh_private_key_impl::get_hash() const
 //	return nullptr;
 //}
 
-ssh_private_key_impl *ssh_private_key_impl::create_for_blob(ipacket &blob)
-{
-	ssh_private_key_impl *result = nullptr;
-
-	std::string type;
-	blob >> type;
-
-	if (type == "ssh-rsa")
-	{
-		Integer e, n;
-		blob >> e >> n;
-
-		result = new posix_ssh_private_key_impl(e, n, "");
-	}
-
-	return result;
-}
-
 void ssh_private_key_impl::create_list(std::vector<ssh_private_key> &keys)
 {
-	std::vector<std::tuple<Integer, Integer, std::string>> identities;
+	std::vector<std::tuple<blob, std::string>> identities;
 
 	ssh_agent_impl::instance().get_identities(identities);
 
-	for (const auto &[e, n, comment] : identities)
-		keys.emplace_back(new posix_ssh_private_key_impl(e, n, comment));
+	for (const auto &[b, comment] : identities)
+		keys.emplace_back(new posix_ssh_private_key_impl(b, comment));
 }
 
 } // namespace pinch

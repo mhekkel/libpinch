@@ -37,8 +37,9 @@ namespace pinch
 // --------------------------------------------------------------------
 // ssh_private_key_impl
 
-ssh_private_key_impl::ssh_private_key_impl()
-	: m_refcount(1)
+ssh_private_key_impl::ssh_private_key_impl(const blob &b)
+	: m_blob(b)
+	, m_refcount(1)
 {
 }
 
@@ -64,16 +65,16 @@ void ssh_private_key_impl::release()
 class ssh_basic_private_key_impl : public ssh_private_key_impl
 {
   public:
-	ssh_basic_private_key_impl(RSA::PrivateKey &rsa, const std::string &comment)
-		: mPrivateKey(rsa)
+	ssh_basic_private_key_impl(RSA::PrivateKey &rsa, const blob &b, const std::string &comment)
+		: ssh_private_key_impl(b)
+		, mPrivateKey(rsa)
 		, mComment(comment)
 	{
-		m_e = mPrivateKey.GetPublicExponent();
-		m_n = mPrivateKey.GetModulus();
 	}
 
 	virtual blob sign(const blob &session_id, const opacket &p);
 
+	virtual std::string get_type() const { return "ssh-rsa"; }
 	virtual blob get_hash() const { return blob(); }
 	virtual std::string get_comment() const { return mComment; }
 
@@ -97,7 +98,7 @@ blob ssh_basic_private_key_impl::sign(const blob &session_id, const opacket &p)
 	signer.SignMessage(rng, message.data(), message.size(), digest.data());
 
 	opacket signature;
-	signature << "ssh-rsa" << digest;
+	signature << get_type() << digest;
 	return signature;
 }
 
@@ -137,6 +138,16 @@ blob ssh_private_key::sign(const blob &session_id, const opacket &data)
 	return m_impl->sign(session_id, data);
 }
 
+std::string ssh_private_key::get_type() const
+{
+	return m_impl->get_type();
+}
+
+blob ssh_private_key::get_blob() const
+{
+	return m_impl->get_blob();
+}
+
 blob ssh_private_key::get_hash() const
 {
 	return m_impl->get_hash();
@@ -145,12 +156,6 @@ blob ssh_private_key::get_hash() const
 std::string ssh_private_key::get_comment() const
 {
 	return m_impl->get_comment();
-}
-
-opacket &operator<<(opacket &p, const ssh_private_key &key)
-{
-	p << "ssh-rsa" << key.m_impl->m_e << key.m_impl->m_n;
-	return p;
 }
 
 // --------------------------------------------------------------------
@@ -184,11 +189,7 @@ void ssh_agent::process_agent_request(ipacket &in, opacket &out)
 			out = opacket(SSH2_AGENT_IDENTITIES_ANSWER) << uint32_t(m_private_keys.size());
 
 			for (auto &key : m_private_keys)
-			{
-				opacket blob;
-				blob << key;
-				out << blob << key.get_comment();
-			}
+				out << key.get_blob() << key.get_comment();
 			break;
 		}
 
@@ -473,17 +474,17 @@ void ssh_agent::add(const std::string &private_key, const std::string &key_comme
 	if (not queue.IsEmpty() or not rsaPrivate.Validate(prng, 3))
 		throw std::runtime_error("RSA private key is not valid");
 
-	m_private_keys.push_back(ssh_private_key(new ssh_basic_private_key_impl(rsaPrivate, key_comment)));
+	opacket b;
+	b << "ssh-rsa" << rsaPrivate.GetPublicExponent() << rsaPrivate.GetModulus();
+
+	m_private_keys.push_back(ssh_private_key(new ssh_basic_private_key_impl(rsaPrivate, (blob)b, key_comment)));
 }
 
-ssh_private_key ssh_agent::get_key(ipacket &blob) const
+ssh_private_key ssh_agent::get_key(ipacket &b) const
 {
 	for (auto &key : m_private_keys)
 	{
-		opacket b;
-		b << key;
-
-		if (blob == b)
+		if ((blob)b == key.get_blob())
 			return key;
 	}
 

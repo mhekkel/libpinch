@@ -398,7 +398,7 @@ class channel : public std::enable_shared_from_this<channel>
   public:
 	// --------------------------------------------------------------------
 
-	/// \brief Requirement for AsyncReadStream, but do not use this directly
+	/// \brief Requirement for AsyncReadStream
 	template <typename MutableBufferSequence, typename ReadHandler>
 	auto async_read_some(const MutableBufferSequence &buffers,
 		ReadHandler &&handler)
@@ -408,7 +408,7 @@ class channel : public std::enable_shared_from_this<channel>
 			async_read_impl{}, handler, this, buffers);
 	}
 
-	/// \brief Requirement for AsyncWriteStream, but do not use this directly
+	/// \brief Requirement for AsyncWriteStream
 	template <typename Handler, typename ConstBufferSequece>
 	auto async_write_some(const ConstBufferSequece &buffer, Handler &&handler)
 	{

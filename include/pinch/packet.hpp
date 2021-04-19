@@ -262,6 +262,9 @@ class ipacket
 	/// \brief Constructor taking raw data
 	ipacket(const uint8_t *data, std::size_t size);
 
+	/// \brief Constructor creating a new ipacket from a blob
+	ipacket(message_type msg, const blob &b);
+
 	/// \brief destructor
 	~ipacket();
 
