@@ -14,8 +14,10 @@
 
 #if __cpp_impl_coroutine
 #include <coroutine>
+#include <boost/asio/execution.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #else
+#error
 #include <boost/asio/spawn.hpp>
 #endif
 
@@ -194,6 +196,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
   protected:
 	/// \brief The constructor is protected. Not useful anyway since this class is abstract.
 	///
+	/// \param io_context The io_context to use
 	/// \param user	The user name to use when logging in
 	/// \param host The hostname to connect to, or an IP address
 	/// \param port The port to connect to
@@ -460,6 +463,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 							{
 								case host_key_reply::trusted:
 									known_hosts::instance().add_host_key(m_host, algorithm, key);
+									[[fallthrough]];
 
 								case host_key_reply::trust_once:
 									accept = true;

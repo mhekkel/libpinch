@@ -18,7 +18,8 @@ The library libpinch offers an implementation of the SSH protocol as described i
 
 Using libpinch is as easy as:
 
-[import ../]
+[import ../examples/example-1.cpp ]
+[first_example]
 
 [/ [heading:xml libzeep-xml] ]
 

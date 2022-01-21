@@ -7,7 +7,6 @@
 
 #include <iostream>
 
-#include <boost/bind.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/lexical_cast.hpp>
 

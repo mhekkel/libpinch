@@ -37,9 +37,9 @@ class key_exchange
 	///
 	/// This method should obviously be called before connecting.
 	///
-	/// \param alg		The algorithm to use
-	/// \param dir		The direction. Tip: use direction::both
-	/// \param peferred	The comma separated list of algorithms, ordered by preferrence
+	/// \param alg			The algorithm to use
+	/// \param dir			The direction. Tip: use direction::both
+	/// \param preferred	The comma separated list of algorithms, ordered by preferrence
 	static void set_algorithm(algorithm alg, direction dir, const std::string &preferred);
 
 	/// \brief Constructor for a new connection
