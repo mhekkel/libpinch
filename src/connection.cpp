@@ -747,13 +747,20 @@ void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
 		using namespace boost::asio::ip;
 
 		// synchronous for now...
-		tcp::resolver resolver(get_executor());
-		tcp::resolver::results_type endpoints = resolver.resolve(m_host, std::to_string(m_port));
+		boost::system::error_code ec;
 
-		boost::asio::async_connect(m_next_layer, endpoints,
-			[self = shared_from_this(), op = std::move(op)](const boost::system::error_code &ec, tcp::resolver::endpoint_type) {
-				op->complete(ec);
-			});
+		tcp::resolver resolver(get_executor());
+		tcp::resolver::results_type endpoints = resolver.resolve(m_host, std::to_string(m_port), ec);
+
+		if (ec)
+			op->complete(ec);
+		else
+		{
+			boost::asio::async_connect(m_next_layer, endpoints,
+				[self = shared_from_this(), op = std::move(op)](const boost::system::error_code &ec, tcp::resolver::endpoint_type) {
+					op->complete(ec);
+				});
+		}
 	}
 }
 
