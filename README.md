@@ -10,13 +10,8 @@ Building libpinch requires a modern C++ compiler (with at least support for C++1
 
 The library uses coroutines. This can either be the coroutines from Boost or the C++20 coroutines.
 
-After you've gathered these, use the default sequence
+Libpinch uses [cmake](https://cmake.org).
 
-```
-./configure
-make
-make install
-```
 
 Documentation
 -------------
