@@ -107,7 +107,7 @@ set(Boost_DETAILED_FAILURE_MSG ON)
 if(NOT BUILD_SHARED_LIBS)
 	set(Boost_USE_STATIC_LIBS ON)
 endif()
-find_package(Boost 1.75.0 REQUIRED COMPONENTS program_options system date_time regex coroutine)
+find_package(Boost 1.71.0 REQUIRED COMPONENTS program_options system date_time regex coroutine)
 
 list(APPEND PINCH_HEADERS
 	${CMAKE_SOURCE_DIR}/include/pinch/detail/ssh_agent_impl.hpp
