@@ -17,7 +17,6 @@
 #include <boost/asio/execution.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #else
-#error
 #include <boost/asio/spawn.hpp>
 #endif
 
