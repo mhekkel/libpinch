@@ -74,7 +74,7 @@ int main()
 	boost::asio::deadline_timer timer(strand);
 
 	// Construct a timer with an absolute expiry time.
-	timer.expires_from_now(boost::posix_time::seconds(5));
+	timer.expires_from_now(boost::posix_time::seconds(3));
 
 	// Start an asynchronous wait.
 	timer.async_wait(std::bind(handler, std::placeholders::_1, 1));

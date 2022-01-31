@@ -304,14 +304,13 @@ std::string provide_password()
 	std::cout << "in provide_password " << std::endl
 				<< "  ==> in thread " << this_thread_name()  << std::endl;
 
-	// return "sssh... geheim!";
-
 	std::string result;
 
 	std::cout << "password: "; std::cout.flush();
 	SetStdinEcho(false);
 	std::cin >> result;
 	SetStdinEcho(true);
+	std::cout << std::endl;
 
 	return result;
 }
@@ -340,9 +339,23 @@ struct AsyncImpl
 
 // --------------------------------------------------------------------
 
+/*
+	This example implementation sets up an SSH connection and then opens
+	a terminal channel over this connection. The first thing it does when
+	the channel is open is send a command to start an xterm.
+
+	The code is not complete, there's no way to stop the connection yet.
+	To do this, you should subclass terminal_channel and override closed()
+	and stop the io_context from within.
+*/
+
+
 int main()
 {
 	using boost::asio::ip::tcp;
+
+	const char* USER = getenv("USER");
+	std::string user = USER ? USER : "test-account";
 
 	// where are we?
 	std::cout << "Starting in main thread " << this_thread_name() << std::endl;
@@ -356,16 +369,15 @@ int main()
 	my_queue queue;
 	my_executor executor{&strand.context(), &queue};
 
-	// auto conn = pool.get("test-account", "localhost", 2022);
-	auto conn = pool.get("test-account", "shell.example.com", 22);
-	// auto conn = pool.get("test-account", "localhost", 22, "test-account", "shell.example.com", 22);
+	auto conn = pool.get(user, "localhost");
+	// auto conn = pool.get(user, "localhost", 2022);
+	// auto conn = pool.get(user, "localhost", 22, "test-account", "shell.example.com", 22);
 
-	// auto channel = std::make_shared<pinch::terminal_channel>(proxied_conn);
 	auto channel = std::make_shared<pinch::terminal_channel>(conn);
 
 	auto msg = boost::asio::bind_executor(executor,
 		[](const std::string &msg, const std::string &lang) {
-			std::cout << "Mesage callback, msg = " << msg << ", lang = " << lang << std::endl;
+			std::cout << "Message callback, msg = " << msg << ", lang = " << lang << std::endl;
 		});
 
 	channel->set_message_callbacks(msg, msg, msg);
@@ -373,7 +385,7 @@ int main()
 	conn->set_callback_executor(executor);
 
 	auto &known_hosts = pinch::known_hosts::instance();
-	// known_hosts.load_host_file("/home/maarten/.ssh/known_hosts");
+	// known_hosts.load_host_file("/home/test-account/.ssh/known_hosts");
 	conn->set_accept_host_key_handler(
 		boost::asio::bind_executor(executor, 
 
@@ -386,10 +398,16 @@ int main()
 	conn->set_provide_password_callback(boost::asio::bind_executor(executor, &provide_password));
 
 	auto open_cb = boost::asio::bind_executor(executor,
-		[t = channel, conn](const boost::system::error_code &ec) {
+		[t = channel, conn, &queue, &io_context](const boost::system::error_code &ec) {
 			std::cout << "handler, ec = " << ec.message() << " thread: " << this_thread_name()  << std::endl;
 
-			read_from_channel(t);
+			if (ec)
+			{
+				queue.stop();
+				io_context.stop();
+			}
+			else
+				read_from_channel(t);
 		});
 
 	channel->open_with_pty(80, 24, "vt220", true, true, "", std::move(open_cb));
@@ -406,7 +424,6 @@ int main()
 			std::cerr << ex.what() << std::endl;
 		}
 	});
-
 
 	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
 	sigset.async_wait([&io_context, &queue](boost::system::error_code, int signal) { io_context.stop(); queue.stop(); });
