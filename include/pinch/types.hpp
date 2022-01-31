@@ -16,9 +16,9 @@ namespace pinch
 /// \brief The direction for an algorithm
 enum class direction
 {
-	c2s,	///< Client to server
-	s2c,	///< Server to client
-	both	///< Both directions
+	c2s, ///< Client to server
+	s2c, ///< Server to client
+	both ///< Both directions
 };
 
 /// \brief The five algorithms

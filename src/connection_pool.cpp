@@ -93,7 +93,7 @@ void connection_pool::disconnect_all()
 {
 	m_io_context.stop();
 
-	for (auto& e: m_entries)
+	for (auto &e : m_entries)
 		e.connection->close();
 }
 

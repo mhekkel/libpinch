@@ -19,7 +19,7 @@ void channel::fill_open_opacket(opacket &out)
 
 void channel::open()
 {
-	async_open([](boost::system::error_code){});
+	async_open([](boost::system::error_code) {});
 }
 
 void channel::opened()
@@ -92,8 +92,8 @@ void channel::end_of_file()
 // }
 
 void channel::open_pty(uint32_t width, uint32_t height,
-                       const std::string &terminal_type, bool forward_agent, bool forward_x11,
-                       const environment &env)
+	const std::string &terminal_type, bool forward_agent, bool forward_x11,
+	const environment &env)
 {
 	if (forward_x11)
 	{
@@ -250,7 +250,7 @@ void channel::process(ipacket &in)
 		}
 
 		default:
-			//PRINT(("Unhandled channel message %d", inMessage));
+			// PRINT(("Unhandled channel message %d", inMessage));
 			;
 	}
 
@@ -290,7 +290,8 @@ void channel::handle_channel_request(const std::string &request, ipacket &in, op
 void channel::receive_data(const char *data, size_t size)
 {
 	m_received.insert(m_received.end(), data, data + size);
-	get_executor().execute([this]() { push_received(); });
+	get_executor().execute([this]()
+		{ push_received(); });
 }
 
 void channel::receive_extended_data(const char *data, size_t size, uint32_t type)
@@ -325,10 +326,7 @@ void channel::send_pending(const boost::system::error_code &ec)
 			m_host_window_size -= size;
 
 			m_connection->async_write(std::move(op->m_packet),
-				[
-					this, op = std::unique_ptr<detail::write_channel_op>(op)
-				]
-				(const boost::system::error_code &ec, std::size_t bytes_transferred)
+				[this, op = std::unique_ptr<detail::write_channel_op>(op)](const boost::system::error_code &ec, std::size_t bytes_transferred)
 				{
 					op->complete(ec, bytes_transferred);
 					this->send_pending(ec);
@@ -342,10 +340,11 @@ void channel::send_pending(const boost::system::error_code &ec)
 void channel::add_read_op(detail::read_channel_op *handler)
 {
 	m_read_ops.push_back(handler);
-	get_executor().execute([this]() { push_received(); });
+	get_executor().execute([this]()
+		{ push_received(); });
 }
 
-void channel::add_write_op(detail::write_channel_op* op)
+void channel::add_write_op(detail::write_channel_op *op)
 {
 	m_write_ops.push_back(op);
 }
@@ -429,7 +428,8 @@ void exec_channel::handle_channel_request(const std::string &request, ipacket &i
 
 	boost::asio::execution::execute(
 		boost::asio::require(m_executor, boost::asio::execution::blocking.never),
-		[request, status, this]() { m_handler(request, status); });
+		[request, status, this]()
+		{ m_handler(request, status); });
 }
 
 } // namespace pinch

@@ -7,9 +7,9 @@
 
 #include <pinch/pinch.hpp>
 
+#include <functional>
 #include <list>
 #include <memory>
-#include <functional>
 
 namespace pinch
 {
@@ -74,7 +74,7 @@ class ssh_agent
 
 	// add a PEM encoded private key
 	void add(const std::string &private_key, const std::string &key_comment,
-	         std::function<bool(std::string &)> provide_password);
+		std::function<bool(std::string &)> provide_password);
 
 	// for Windows only, expose the private keys via a Pageant compatible window
 	void expose_pageant(bool expose);

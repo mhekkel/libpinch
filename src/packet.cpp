@@ -119,7 +119,7 @@ void opacket::compress(compression_helper &compressor, boost::system::error_code
 		if (sizeof(buffer) - zstream.avail_out > 0)
 		{
 			copy(buffer, buffer + sizeof(buffer) - zstream.avail_out,
-			     back_inserter(data));
+				back_inserter(data));
 			zstream.next_out = buffer;
 			zstream.avail_out = sizeof(buffer);
 		}
@@ -168,11 +168,11 @@ void opacket::write(std::ostream &os, int blocksize) const
 	os.write(reinterpret_cast<const char *>(padding.data()), padding_size);
 }
 
-//void opacket::append(const uint8_t* data, uint32_t size)
+// void opacket::append(const uint8_t* data, uint32_t size)
 //{
 //	operator<<(size);
 //	m_data.insert(m_data.end(), data, data + size);
-//}
+// }
 
 opacket &opacket::operator<<(const char *v)
 {
@@ -378,7 +378,7 @@ void ipacket::decompress(compression_helper &decompressor, boost::system::error_
 		if (sizeof(buffer) - zstream.avail_out > 0)
 		{
 			copy(buffer, buffer + sizeof(buffer) - zstream.avail_out,
-			     back_inserter(data));
+				back_inserter(data));
 			zstream.next_out = buffer;
 			zstream.avail_out = sizeof(buffer);
 		}

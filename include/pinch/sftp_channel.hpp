@@ -89,7 +89,6 @@ namespace detail
 		handler_work<Handler, IoExecutor> m_work;
 	};
 
-
 	class sftp_operation : public operation
 	{
 	  public:
@@ -114,14 +113,18 @@ namespace detail
 		virtual opacket process(ipacket &p) override;
 
 		std::string m_path;
-		enum { open_dir, read_dir } m_state = open_dir;
+		enum
+		{
+			open_dir,
+			read_dir
+		} m_state = open_dir;
 	};
 
 	template <typename Handler, typename IoExecutor>
 	class sftp_readdir_handler : public sftp_readdir_op
 	{
 	  public:
-		sftp_readdir_handler(Handler &&h, const IoExecutor &io_ex, uint32_t id, const std::string& path)
+		sftp_readdir_handler(Handler &&h, const IoExecutor &io_ex, uint32_t id, const std::string &path)
 			: m_handler(std::forward<Handler>(h))
 			, m_io_executor(io_ex)
 		{

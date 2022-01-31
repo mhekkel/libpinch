@@ -12,15 +12,15 @@
 #include <pinch/ssh_agent.hpp>
 #include <pinch/ssh_agent_channel.hpp>
 
-#include <cryptopp/base64.h>
-#include <cryptopp/osrng.h>
-#include <cryptopp/rsa.h>
-#include <cryptopp/modes.h>
 #include <cryptopp/aes.h>
+#include <cryptopp/base64.h>
 #include <cryptopp/camellia.h>
 #include <cryptopp/des.h>
 #include <cryptopp/hex.h>
 #include <cryptopp/idea.h>
+#include <cryptopp/modes.h>
+#include <cryptopp/osrng.h>
+#include <cryptopp/rsa.h>
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 #include <cryptopp/md5.h>
 
@@ -263,22 +263,31 @@ struct ssh_known_cipher_for_private_key
 	uint32_t iv_size;
 	std::function<SymmetricCipher *()> factory;
 } kKnownCiphers[] = {
-	{"AES-256-CBC", 32, 16, []() -> SymmetricCipher * { return new CBC_Mode<AES>::Decryption; }},
-	{"AES-192-CBC", 24, 16, []() -> SymmetricCipher * { return new CBC_Mode<AES>::Decryption; }},
-	{"AES-128-CBC", 16, 16, []() -> SymmetricCipher * { return new CBC_Mode<AES>::Decryption; }},
-	{"CAMELLIA-256-CBC", 32, 16, []() -> SymmetricCipher * { return new CBC_Mode<Camellia>::Decryption; }},
-	{"CAMELLIA-192-CBC", 24, 16, []() -> SymmetricCipher * { return new CBC_Mode<Camellia>::Decryption; }},
-	{"CAMELLIA-128-CBC", 16, 16, []() -> SymmetricCipher * { return new CBC_Mode<Camellia>::Decryption; }},
-	{"DES-EDE3-CBC", 24, 8, []() -> SymmetricCipher * { return new CBC_Mode<DES_EDE3>::Decryption; }},
-	{"IDEA-CBC", 16, 8, []() -> SymmetricCipher * { return new CBC_Mode<IDEA>::Decryption; }},
-	{"DES-CBC", 8, 8, []() -> SymmetricCipher * { return new CBC_Mode<DES>::Decryption; }}};
+	{"AES-256-CBC", 32, 16, []() -> SymmetricCipher *
+		{ return new CBC_Mode<AES>::Decryption; }},
+	{"AES-192-CBC", 24, 16, []() -> SymmetricCipher *
+		{ return new CBC_Mode<AES>::Decryption; }},
+	{"AES-128-CBC", 16, 16, []() -> SymmetricCipher *
+		{ return new CBC_Mode<AES>::Decryption; }},
+	{"CAMELLIA-256-CBC", 32, 16, []() -> SymmetricCipher *
+		{ return new CBC_Mode<Camellia>::Decryption; }},
+	{"CAMELLIA-192-CBC", 24, 16, []() -> SymmetricCipher *
+		{ return new CBC_Mode<Camellia>::Decryption; }},
+	{"CAMELLIA-128-CBC", 16, 16, []() -> SymmetricCipher *
+		{ return new CBC_Mode<Camellia>::Decryption; }},
+	{"DES-EDE3-CBC", 24, 8, []() -> SymmetricCipher *
+		{ return new CBC_Mode<DES_EDE3>::Decryption; }},
+	{"IDEA-CBC", 16, 8, []() -> SymmetricCipher *
+		{ return new CBC_Mode<IDEA>::Decryption; }},
+	{"DES-CBC", 8, 8, []() -> SymmetricCipher *
+		{ return new CBC_Mode<DES>::Decryption; }}};
 
 // Signature changed a bit to match Crypto++. Salt must be PKCS5_SALT_LEN in length.
 //  Salt, Data and Count are IN; Key and IV are OUT.
 int OPENSSL_EVP_BytesToKey(HashTransformation &hash,
-                           const unsigned char *salt, const unsigned char *data, int dlen,
-                           unsigned int count, unsigned char *key, unsigned int ksize,
-                           unsigned char *iv, unsigned int vsize);
+	const unsigned char *salt, const unsigned char *data, int dlen,
+	unsigned int count, unsigned char *key, unsigned int ksize,
+	unsigned char *iv, unsigned int vsize);
 
 // From OpenSSL, crypto/evp/evp.h.
 static const unsigned int OPENSSL_PKCS5_SALT_LEN = 8;
@@ -289,9 +298,9 @@ static const unsigned int OPENSSL_PKCS5_SALT_LEN = 8;
 
 // From crypto/evp/evp_key.h. Signature changed a bit to match Crypto++.
 int OPENSSL_EVP_BytesToKey(HashTransformation &hash,
-                           const unsigned char *salt, const unsigned char *data, int dlen,
-                           unsigned int count, unsigned char *key, unsigned int ksize,
-                           unsigned char *iv, unsigned int vsize)
+	const unsigned char *salt, const unsigned char *data, int dlen,
+	unsigned int count, unsigned char *key, unsigned int ksize,
+	unsigned char *iv, unsigned int vsize)
 {
 	unsigned int niv, nkey, nhash;
 	unsigned int addmd = 0, i;
@@ -439,7 +448,7 @@ void ssh_agent::add(const std::string &private_key, const std::string &key_comme
 
 			CryptoPP::Weak1::MD5 md5;
 			(void)OPENSSL_EVP_BytesToKey(md5, iv.data(), (const unsigned char *)password.c_str(), password.length(),
-			                             1, key.data(), key.size(), nullptr, 0);
+				1, key.data(), key.size(), nullptr, 0);
 
 			cipher.reset(c.factory());
 			cipher->SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());

@@ -77,7 +77,7 @@ void ssh_agent_impl::get_identities(std::vector<std::tuple<blob, std::string>> &
 	{
 		ipacket reply;
 		if (process(opacket((message_type)SSH2_AGENTC_REQUEST_IDENTITIES), reply) and
-		    reply.message() == (message_type)SSH2_AGENT_IDENTITIES_ANSWER)
+			reply.message() == (message_type)SSH2_AGENT_IDENTITIES_ANSWER)
 		{
 			uint32_t count;
 			reply >> count;
@@ -120,8 +120,8 @@ bool ssh_agent_impl::process(const opacket &request, ipacket &reply)
 	uint32_t l = htonl(req.size());
 
 	if (write(m_fd, &l, sizeof(l)) == sizeof(l) and
-	    write(m_fd, req.data(), req.size()) == int32_t(req.size()) and
-	    read(m_fd, &l, sizeof(l)) == sizeof(l))
+		write(m_fd, req.data(), req.size()) == int32_t(req.size()) and
+		read(m_fd, &l, sizeof(l)) == sizeof(l))
 	{
 		l = ntohl(l);
 
@@ -160,7 +160,9 @@ class posix_ssh_private_key_impl : public ssh_private_key_impl
   public:
 	posix_ssh_private_key_impl(const blob &b, const std::string &comment)
 		: ssh_private_key_impl(b)
-		, m_comment(comment) {}
+		, m_comment(comment)
+	{
+	}
 
 	virtual ~posix_ssh_private_key_impl() = default;
 
@@ -213,7 +215,7 @@ blob posix_ssh_private_key_impl::get_hash() const
 
 // --------------------------------------------------------------------
 //
-//ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
+// ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
 //{
 ////	string hash;
 ////

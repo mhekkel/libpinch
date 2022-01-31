@@ -262,7 +262,13 @@ class channel : public std::enable_shared_from_this<channel>
 		};
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code)>(
-			[state = start, this, me = shared_from_this()](auto &self, const boost::system::error_code ec = {}, std::size_t = {}) mutable {
+			[
+				state = start,
+				this,
+				me = shared_from_this()
+			]
+			(auto &self, const boost::system::error_code ec = {}, std::size_t = {}) mutable
+			{
 				if (not ec)
 				{
 					switch (state)
@@ -412,7 +418,11 @@ class channel : public std::enable_shared_from_this<channel>
 	template <typename Handler, typename ConstBufferSequece>
 	auto async_write_some(const ConstBufferSequece &buffer, Handler &&handler)
 	{
-		enum { start, sending };
+		enum
+		{
+			start,
+			sending
+		};
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
 			[
@@ -429,7 +439,7 @@ class channel : public std::enable_shared_from_this<channel>
 				if (not ec and state == start)
 				{
 					opacket packet(msg_channel_data);
-					packet << me->m_host_channel_id << std::make_pair(static_cast<const char*>(buffer.data()), n);
+					packet << me->m_host_channel_id << std::make_pair(static_cast<const char *>(buffer.data()), n);
 
 					state = sending;
 
@@ -438,8 +448,8 @@ class channel : public std::enable_shared_from_this<channel>
 				}
 
 				self.complete(ec, n);
-			}, handler
-		);
+			},
+			handler);
 	}
 
   private:
@@ -455,7 +465,6 @@ class channel : public std::enable_shared_from_this<channel>
 	// --------------------------------------------------------------------
 
   public:
-
 	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	template <typename Data, typename Handler>
 	auto send_data(const Data &&data, message_type msg, Handler &&handler)
@@ -476,7 +485,7 @@ class channel : public std::enable_shared_from_this<channel>
 				if (not ec and n > 0)
 				{
 					opacket packet(msg);
-					packet << me->m_host_channel_id << std::make_pair(reinterpret_cast<const char*>(data.data()) + offset, n);
+					packet << me->m_host_channel_id << std::make_pair(reinterpret_cast<const char *>(data.data()) + offset, n);
 					offset += n;
 
 					me->async_write_packet(std::move(packet), std::move(self));
@@ -484,8 +493,8 @@ class channel : public std::enable_shared_from_this<channel>
 				}
 
 				self.complete(ec, data.size());
-			}, handler
-		);
+			},
+			handler);
 	}
 
 	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
@@ -528,7 +537,7 @@ class channel : public std::enable_shared_from_this<channel>
 	void push_received();
 	void check_wait();
 	void add_read_op(detail::read_channel_op *op);
-	void add_write_op(detail::write_channel_op* op);
+	void add_write_op(detail::write_channel_op *op);
 
 	virtual void receive_data(const char *data, std::size_t size);
 	virtual void receive_extended_data(const char *data, std::size_t size,
@@ -613,7 +622,6 @@ class channel : public std::enable_shared_from_this<channel>
 class exec_channel : public channel
 {
   public:
-
 	using callback_executor_type = boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t>;
 
 	template <typename Handler, typename Executor>
@@ -634,9 +642,8 @@ class exec_channel : public channel
 
   private:
 	std::string m_command;
-	std::function<void(std::string,int)> m_handler;
+	std::function<void(std::string, int)> m_handler;
 	callback_executor_type m_executor;
-
 };
 
 } // namespace pinch

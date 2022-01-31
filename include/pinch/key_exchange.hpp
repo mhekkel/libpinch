@@ -97,10 +97,10 @@ class key_exchange
 	std::string get_compression_protocol(direction dir) const;
 
 	/// \brief Return the private key signing algorithm for the host key
-	const std::string& get_host_key_pk_type() const	{ return m_pk_type; }
+	const std::string &get_host_key_pk_type() const { return m_pk_type; }
 
 	/// \brief Return the public key for the host
-	const blob& get_host_key() const { return m_host_key; }
+	const blob &get_host_key() const { return m_host_key; }
 
   protected:
 	friend struct key_exchange_impl;
@@ -117,7 +117,7 @@ class key_exchange
 	blob m_session_id;
 	blob m_host_payload, m_my_payload;
 	bool m_first_kex_packet_follows;
-	
+
 	std::string m_pk_type;
 	blob m_host_key;
 

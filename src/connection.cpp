@@ -322,7 +322,8 @@ void basic_connection::open_channel(channel_ptr ch, uint32_t channel_id)
 	{
 		// some sanity check first
 		assert(std::find_if(m_channels.begin(), m_channels.end(),
-				   [channel_id](channel_ptr ch) -> bool { return ch->my_channel_id() == channel_id; }) == m_channels.end());
+				   [channel_id](channel_ptr ch) -> bool
+				   { return ch->my_channel_id() == channel_id; }) == m_channels.end());
 		assert(not ch->is_open());
 
 		m_channels.push_back(ch);
@@ -409,10 +410,9 @@ void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 			opacket out(msg_global_request);
 			out << "keepalive@salt.hekkelman.com" << true;
 			async_write(std::move(out), [this](boost::system::error_code ec, std::size_t bytes_transferred)
-			{
+				{
 				if (ec)
-					handle_error(ec);
-			});
+					handle_error(ec); });
 
 			idle = std::chrono::seconds(0);
 		}
@@ -449,7 +449,8 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 	if (m_auth_state == authenticated)
 		op->complete(ec);
 	else if (m_auth_state == handshake)
-		async_wait(detail::connection_wait_type::open, [op = std::move(op)](boost::system::error_code ec) { op->complete(ec); });
+		async_wait(detail::connection_wait_type::open, [op = std::move(op)](boost::system::error_code ec)
+			{ op->complete(ec); });
 	else
 	{
 		m_auth_state = handshake;
@@ -457,9 +458,8 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 #if __cpp_impl_coroutine
 		boost::asio::co_spawn(get_executor(), do_handshake(std::move(op)), boost::asio::detached);
 #else
-		boost::asio::spawn(m_strand, [op = std::move(op), this](boost::asio::yield_context yield) mutable {
-			do_handshake(std::move(op), yield);
-		});
+		boost::asio::spawn(m_strand, [op = std::move(op), this](boost::asio::yield_context yield) mutable
+			{ do_handshake(std::move(op), yield); });
 #endif
 	}
 }
@@ -594,9 +594,9 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 						auto &pk = private_keys.front();
 
 						out = opacket(msg_userauth_request)
-							  << m_user << "ssh-connection"
-							  << "publickey" << false
-							  << pk.get_type() << pk.get_blob();
+						      << m_user << "ssh-connection"
+						      << "publickey" << false
+						      << pk.get_type() << pk.get_blob();
 
 						private_keys.pop_front();
 						auth_state = auth_state_type::public_key;
@@ -607,10 +607,10 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 					if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and ++password_attempts <= 3)
 					{
 						out = opacket(msg_userauth_request)
-							  << m_user << "ssh-connection"
-							  << "keyboard-interactive"
-							  << "en"
-							  << "";
+						      << m_user << "ssh-connection"
+						      << "keyboard-interactive"
+						      << "en"
+						      << "";
 						auth_state = auth_state_type::keyboard_interactive;
 						async_write(std::move(out));
 					}
@@ -627,8 +627,8 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 
 						auth_state = auth_state_type::password;
 						out = opacket(msg_userauth_request)
-							  << m_user << "ssh-connection"
-							  << "password" << false << password;
+						      << m_user << "ssh-connection"
+						      << "password" << false << password;
 						async_write(std::move(out));
 						continue;
 					}
@@ -700,7 +700,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 							}
 
 							out = opacket(msg_userauth_info_response)
-								  << replies.size();
+							      << replies.size();
 
 							for (auto &r : replies)
 								out << r;
@@ -757,7 +757,8 @@ void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
 		else
 		{
 			boost::asio::async_connect(m_next_layer, endpoints,
-				[self = shared_from_this(), op = std::move(op)](const boost::system::error_code &ec, tcp::resolver::endpoint_type) {
+				[self = shared_from_this(), op = std::move(op)](const boost::system::error_code &ec, tcp::resolver::endpoint_type)
+				{
 					op->complete(ec);
 				});
 		}
@@ -843,13 +844,13 @@ void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection
 
 		if (m_accept_host_key_handler)
 		{
-			m_proxy->set_accept_host_key_handler([this](const std::string &host, const std::string &algorithm, const blob &key, host_key_state state) {
-				return this->m_accept_host_key_handler(host, algorithm, key, state);
-			});
+			m_proxy->set_accept_host_key_handler([this](const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)
+				{ return this->m_accept_host_key_handler(host, algorithm, key, state); });
 		}
 
 		m_channel->async_open(
-			[op = std::move(op)](const boost::system::error_code &ec) {
+			[op = std::move(op)](const boost::system::error_code &ec)
+			{
 				op->complete(ec);
 			});
 	}
@@ -864,21 +865,24 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 		// dubious...
 		case wait_type::open:
 			m_channel->async_wait(channel::wait_type::open,
-				[wait_op = std::move(op)](const boost::system::error_code ec) {
+				[wait_op = std::move(op)](const boost::system::error_code ec)
+				{
 					wait_op->complete(ec);
 				});
 			break;
 
 		case wait_type::read:
 			m_channel->async_wait(channel::wait_type::read,
-				[wait_op = std::move(op)](const boost::system::error_code ec) {
+				[wait_op = std::move(op)](const boost::system::error_code ec)
+				{
 					wait_op->complete(ec);
 				});
 			break;
 
 		case wait_type::write:
 			m_channel->async_wait(channel::wait_type::write,
-				[wait_op = std::move(op)](const boost::system::error_code ec) {
+				[wait_op = std::move(op)](const boost::system::error_code ec)
+				{
 					wait_op->complete(ec);
 				});
 			break;

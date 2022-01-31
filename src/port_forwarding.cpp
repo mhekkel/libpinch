@@ -48,10 +48,9 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 	void start_copy_data();
 
   protected:
-
 #if __cpp_impl_coroutine
-	template<typename SocketIn, typename SocketOut>
-	boost::asio::awaitable<void> copy(SocketIn& in, SocketOut& out, std::shared_ptr<forwarding_connection> self)
+	template <typename SocketIn, typename SocketOut>
+	boost::asio::awaitable<void> copy(SocketIn &in, SocketOut &out, std::shared_ptr<forwarding_connection> self)
 	{
 		char data[1024];
 
@@ -64,8 +63,8 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 		}
 	};
 #else
-	template<typename SocketIn, typename SocketOut>
-	void copy(SocketIn& in, SocketOut& out, std::shared_ptr<forwarding_connection> self, boost::asio::yield_context yield)
+	template <typename SocketIn, typename SocketOut>
+	void copy(SocketIn &in, SocketOut &out, std::shared_ptr<forwarding_connection> self, boost::asio::yield_context yield)
 	{
 		char data[1024];
 		boost::system::error_code ec;
@@ -93,8 +92,10 @@ void forwarding_connection::start_copy_data()
 	boost::asio::co_spawn(m_socket.get_executor(), copy(m_socket, *m_channel, shared_from_this()), boost::asio::detached);
 	boost::asio::co_spawn(m_socket.get_executor(), copy(*m_channel, m_socket, shared_from_this()), boost::asio::detached);
 #else
-	boost::asio::spawn(m_socket.get_executor(), [self](boost::asio::yield_context yield) { self->copy(self->m_socket, *self->m_channel, self, yield); });
-	boost::asio::spawn(m_socket.get_executor(), [self](boost::asio::yield_context yield) { self->copy(*self->m_channel, self->m_socket, self, yield); });
+	boost::asio::spawn(m_socket.get_executor(), [self](boost::asio::yield_context yield)
+		{ self->copy(self->m_socket, *self->m_channel, self, yield); });
+	boost::asio::spawn(m_socket.get_executor(), [self](boost::asio::yield_context yield)
+		{ self->copy(*self->m_channel, self->m_socket, self, yield); });
 #endif
 }
 
@@ -111,7 +112,7 @@ class bound_port : public std::enable_shared_from_this<bound_port>
 
 	void listen(uint16_t local_port);
 
-	uint16_t local_port() const			{ return m_local_port; }
+	uint16_t local_port() const { return m_local_port; }
 
   private:
 	virtual void handle_accept(const boost::system::error_code &ec = {});
@@ -173,10 +174,10 @@ class port_forwarding_connection : public forwarding_connection
 	virtual void start()
 	{
 		std::shared_ptr<forwarding_connection> self(shared_from_this());
-		m_channel->async_open([self](const boost::system::error_code &ec) {
+		m_channel->async_open([self](const boost::system::error_code &ec)
+			{
 			if (not ec)
-				self->start_copy_data();
-		});
+				self->start_copy_data(); });
 	}
 };
 
@@ -323,9 +324,8 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code &ec
 				m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
 
 				auto self = shared_from_this();
-				m_channel->async_open([self, this, remote_address, remote_port](boost::system::error_code ec) {
-					channel_open(ec, remote_address, remote_port, true);
-				});
+				m_channel->async_open([self, this, remote_address, remote_port](boost::system::error_code ec)
+					{ channel_open(ec, remote_address, remote_port, true); });
 			}
 			else
 			{
@@ -425,9 +425,8 @@ void socks5_forwarding_connection::handshake(const boost::system::error_code &ec
 
 			m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
 			auto self = shared_from_this();
-			m_channel->async_open([self, this, remote_address, remote_port](boost::system::error_code ec) {
-				channel_open(ec, remote_address, remote_port, false);
-			});
+			m_channel->async_open([self, this, remote_address, remote_port](boost::system::error_code ec)
+				{ channel_open(ec, remote_address, remote_port, false); });
 			break;
 		}
 	}
@@ -478,7 +477,7 @@ port_forward_listener::~port_forward_listener()
 
 void port_forward_listener::forward_port(uint16_t local_port, const std::string &remote_address, uint16_t remote_port)
 {
-	for (auto p: m_bound_ports)
+	for (auto p : m_bound_ports)
 	{
 		if (p->local_port() == local_port)
 		{
@@ -488,7 +487,8 @@ void port_forward_listener::forward_port(uint16_t local_port, const std::string 
 	}
 
 	std::shared_ptr<bound_port> p(new bound_port(m_connection, *this,
-		[this, remote_address, remote_port]() {
+		[this, remote_address, remote_port]()
+		{
 			return std::shared_ptr<forwarding_connection>(new port_forwarding_connection(m_connection, remote_address, remote_port));
 		}));
 
@@ -498,7 +498,7 @@ void port_forward_listener::forward_port(uint16_t local_port, const std::string 
 
 void port_forward_listener::forward_socks5(uint16_t local_port)
 {
-	for (auto p: m_bound_ports)
+	for (auto p : m_bound_ports)
 	{
 		if (p->local_port() == local_port)
 		{
@@ -508,7 +508,8 @@ void port_forward_listener::forward_socks5(uint16_t local_port)
 	}
 
 	std::shared_ptr<bound_port> p(new bound_port(m_connection, *this,
-		[this]() {
+		[this]()
+		{
 			return std::shared_ptr<forwarding_connection>(new socks5_forwarding_connection(m_connection));
 		}));
 
@@ -516,11 +517,11 @@ void port_forward_listener::forward_socks5(uint16_t local_port)
 	m_bound_ports.push_back(p);
 }
 
-//void port_forward_listener::accept_failed(const boost::system::error_code& ec, bound_port* e)
+// void port_forward_listener::accept_failed(const boost::system::error_code& ec, bound_port* e)
 //{
 //	//m_bound_ports.erase(remove(m_bound_ports.begin(), m_bound_ports.end(), e), m_bound_ports.end());
 //	//delete e;
-//}
+// }
 
 void port_forward_listener::connection_closed()
 {

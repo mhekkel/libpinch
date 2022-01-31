@@ -184,7 +184,7 @@ class opacket
 	bool empty() const { return m_data.empty() or static_cast<message_type>(m_data[0]) == msg_undefined; }
 
 	/// \brief Access to the underlying data
-	const uint8_t* data() const { return m_data.data(); }
+	const uint8_t *data() const { return m_data.data(); }
 
 	/// \brief Return the size of the data contained in this packet
 	std::size_t size() const { return m_data.size(); }

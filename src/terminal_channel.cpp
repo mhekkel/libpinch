@@ -41,8 +41,8 @@ void terminal_channel::opened()
 }
 
 void terminal_channel::open_with_pty(uint32_t width, uint32_t height,
-                                     const std::string &terminal_type, bool forward_agent, bool forward_x11,
-                                     const std::string &ssh_command)
+	const std::string &terminal_type, bool forward_agent, bool forward_x11,
+	const std::string &ssh_command)
 {
 	m_width = width;
 	m_height = height;

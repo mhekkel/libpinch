@@ -248,9 +248,9 @@ std::string encode_base64(std::string_view data, size_t wrap_width)
 	return result;
 }
 
-std::string encode_base64(const blob& data)
+std::string encode_base64(const blob &data)
 {
-	return encode_base64(std::string_view(reinterpret_cast<const char*>(data.data()), data.size()), 0);
+	return encode_base64(std::string_view(reinterpret_cast<const char *>(data.data()), data.size()), 0);
 }
 
 blob decode_base64(std::string_view data)
@@ -643,7 +643,7 @@ class hash_base : public I
 	}
 
 	void update(std::string_view data);
-	void update(const blob& data);
+	void update(const blob &data);
 	void update(const uint8_t *data, size_t n);
 
 	using I::transform;
@@ -662,7 +662,7 @@ void hash_base<I>::update(std::string_view data)
 }
 
 template <typename I>
-void hash_base<I>::update(const blob& data)
+void hash_base<I>::update(const blob &data)
 {
 	update(data.data(), data.size());
 }
@@ -807,7 +807,7 @@ class HMAC
 		return *this;
 	}
 
-	HMAC &update(const blob& data)
+	HMAC &update(const blob &data)
 	{
 		if (not m_inner_updated)
 		{

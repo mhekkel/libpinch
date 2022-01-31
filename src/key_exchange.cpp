@@ -510,7 +510,7 @@ void key_exchange::set_algorithm(algorithm alg, direction dir, const std::string
 			if (dir != direction::s2c)
 				s_alg_cmp_c2s = preferred;
 			break;
-		
+
 		case algorithm::serverhostkey:
 			s_server_host_key = preferred;
 			break;
@@ -630,8 +630,8 @@ std::string key_exchange::get_compression_protocol(direction dir) const
 	payload >> skip(16) >> skip_str >> skip_str >> skip_str >> skip_str >> skip_str >> skip_str >> compression_alg_c2s >> compression_alg_s2c;
 
 	return dir == direction::c2s
-			   ? choose_protocol(compression_alg_c2s, s_alg_cmp_c2s)
-			   : choose_protocol(compression_alg_s2c, s_alg_cmp_s2c);
+	           ? choose_protocol(compression_alg_c2s, s_alg_cmp_c2s)
+	           : choose_protocol(compression_alg_s2c, s_alg_cmp_s2c);
 }
 
 } // namespace pinch

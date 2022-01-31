@@ -107,7 +107,7 @@ void MCertificateStore::ExposePageant(bool inExpose)
 			}
 
 			mPageant = ::CreateWindow(kPageantName, kPageantName,
-			                          0, 0, 0, 0, 0, HWND_MESSAGE, NULL, inst, NULL);
+				0, 0, 0, 0, 0, HWND_MESSAGE, NULL, inst, NULL);
 		}
 		catch (...)
 		{
@@ -128,14 +128,14 @@ bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer &e, Integer
 	PCERT_PUBLIC_KEY_INFO pk = &context->pCertInfo->SubjectPublicKeyInfo;
 
 	if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-	                        RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
-	                        0, nullptr, &cbPublicKeyStruc))
+			RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
+			0, nullptr, &cbPublicKeyStruc))
 	{
 		vector<uint8_t> b(cbPublicKeyStruc);
 
 		if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-		                        RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
-		                        0, b.data(), &cbPublicKeyStruc))
+				RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
+				0, b.data(), &cbPublicKeyStruc))
 		{
 			PUBLICKEYSTRUC *pks = reinterpret_cast<PUBLICKEYSTRUC *>(b.data());
 
@@ -183,7 +183,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 						break;
 
 					mapFile = ::OpenFileMappingA(FILE_MAP_ALL_ACCESS, false,
-					                             fileName);
+						fileName);
 					if (mapFile == nullptr or mapFile == INVALID_HANDLE_VALUE)
 						break;
 
@@ -199,7 +199,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 					PSID mapOwner, procOwner;
 
 					if (::GetSecurityInfo(proc, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-					                      &procOwner, nullptr, nullptr, nullptr, &procSD) != ERROR_SUCCESS)
+							&procOwner, nullptr, nullptr, nullptr, &procSD) != ERROR_SUCCESS)
 					{
 						if (procSD != nullptr)
 							::LocalFree(procSD);
@@ -208,7 +208,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 					::CloseHandle(proc);
 
 					if (::GetSecurityInfo(mapFile, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION,
-					                      &mapOwner, nullptr, nullptr, nullptr, &mapSD) != ERROR_SUCCESS)
+							&mapOwner, nullptr, nullptr, nullptr, &mapSD) != ERROR_SUCCESS)
 					{
 						if (mapSD != nullptr)
 							::LocalFree(mapSD);
@@ -279,7 +279,7 @@ class MWinSshPrivateKeyImpl : public ssh_private_key_impl
 {
   public:
 	MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext,
-	                      Integer &e, Integer &n);
+		Integer &e, Integer &n);
 	virtual ~MWinSshPrivateKeyImpl();
 
 	virtual vector<uint8_t> sign(const vector<uint8_t> &session_id, const opacket &p);
@@ -321,7 +321,7 @@ vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t> &session_id, c
 			const vector<uint8_t> &data(inData);
 
 			if ((session_id.size() == 0 or ::CryptHashData(hash, session_id.data(), session_id.size(), 0)) and
-			    (data.size() == 0 or ::CryptHashData(hash, data.data(), data.size(), 0)))
+				(data.size() == 0 or ::CryptHashData(hash, data.data(), data.size(), 0)))
 			{
 				cb = 0;
 				::CryptSignHash(hash, keySpec, nullptr, 0, nullptr, &cb);
@@ -356,17 +356,17 @@ string MWinSshPrivateKeyImpl::get_comment() const
 
 	// now we have a public key, try to fetch a comment as well
 	DWORD types[] = {CERT_NAME_UPN_TYPE, CERT_NAME_FRIENDLY_DISPLAY_TYPE,
-	                 CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_NAME_EMAIL_TYPE, CERT_NAME_ATTR_TYPE};
+		CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_NAME_EMAIL_TYPE, CERT_NAME_ATTR_TYPE};
 
 	for (DWORD type : types)
 	{
 		DWORD cb = ::CertGetNameString(mCertificateContext, type,
-		                               CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, nullptr, 0);
+			CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, nullptr, 0);
 		if (cb > 1)
 		{
 			vector<wchar_t> b(cb);
 			::CertGetNameString(mCertificateContext, type,
-			                    CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, b.data(), cb);
+				CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, b.data(), cb);
 
 			while (cb > 0 and b[cb - 1] == 0)
 				--cb;
@@ -388,7 +388,7 @@ vector<uint8_t> MWinSshPrivateKeyImpl::get_hash() const
 	DWORD cbHash = 20;
 
 	if (not ::CertGetCertificateContextProperty(mCertificateContext,
-	                                            CERT_HASH_PROP_ID, result.data(), &cbHash))
+			CERT_HASH_PROP_ID, result.data(), &cbHash))
 	{
 		result.clear();
 	}
@@ -398,7 +398,7 @@ vector<uint8_t> MWinSshPrivateKeyImpl::get_hash() const
 
 // --------------------------------------------------------------------
 
-//ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
+// ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
 //{
 ////	string hash;
 ////

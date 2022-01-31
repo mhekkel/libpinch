@@ -13,9 +13,9 @@
 #include <memory>
 
 #if __cpp_impl_coroutine
-#include <coroutine>
 #include <boost/asio/execution.hpp>
 #include <boost/asio/use_awaitable.hpp>
+#include <coroutine>
 #else
 #include <boost/asio/spawn.hpp>
 #endif
@@ -344,7 +344,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void async_write(opacket &&out)
 	{
 		async_write(std::move(out),
-			[this](const boost::system::error_code &ec, std::size_t) {
+			[this](const boost::system::error_code &ec, std::size_t)
+			{
 				if (ec)
 					this->handle_error(ec);
 			});
@@ -435,7 +436,15 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		};
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code, bool)>(
-			[state1 = start, this, state = host_key_state::no_match, algorithm, key](auto &self, boost::system::error_code ec = {}, bool accept = {}) mutable {
+			[
+				state1 = start,
+				this,
+				state = host_key_state::no_match,
+				algorithm,
+				key
+			]
+			(auto &self, boost::system::error_code ec = {}, bool accept = {}) mutable
+			{
 				if (not ec)
 				{
 					switch (state1)
@@ -508,8 +517,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		};
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::string)>(
-			[state = start,
-				this](auto &self, boost::system::error_code ec = {}, std::string pw = {}) mutable {
+			[
+				state = start,
+				this
+			]
+			(auto &self, boost::system::error_code ec = {}, std::string pw = {}) mutable
+			{
 				if (not ec)
 				{
 					if (state == start)
@@ -556,9 +569,16 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		};
 
 		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::vector<std::string>)>(
-			[state = start,
-				name, instruction, lang, prompts,
-				this](auto &self, const boost::system::error_code &ec = {}, std::vector<std::string> reply = {}) mutable {
+			[
+				state = start,
+				name,
+				instruction,
+				lang,
+				prompts,
+				this
+			]
+			(auto &self, const boost::system::error_code &ec = {}, std::vector<std::string> reply = {}) mutable
+			{
 				if (not ec)
 				{
 					if (state == start)
@@ -666,8 +686,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	std::chrono::seconds m_keep_alive_interval;                         ///< How often should we send keep alive packets (in seconds)?
 	boost::asio::steady_timer m_keep_alive_timer;                       ///< The timer used for keep alive
 	void keep_alive_time_out(const boost::system::error_code &ec = {}); ///< Callback for the keep alive timer
-	uint32_t m_keep_alive_timeouts = 0;									///< The current number of timeouts
-	uint32_t m_max_keep_alive_timeouts = 3;								///< The maximum number of timeouts before we disconnect
+	uint32_t m_keep_alive_timeouts = 0;                                 ///< The current number of timeouts
+	uint32_t m_max_keep_alive_timeouts = 3;                             ///< The maximum number of timeouts before we disconnect
 
 	blob m_private_key_hash;           ///< The private key used to authenticate
 	boost::asio::streambuf m_response; ///< Buffer for incomming response data

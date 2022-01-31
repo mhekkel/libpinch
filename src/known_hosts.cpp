@@ -43,7 +43,7 @@ host_key_state known_hosts::host_key::compare(const std::string &host_name, cons
 
 // --------------------------------------------------------------------
 
-void known_hosts::load_host_file(std::istream& file)
+void known_hosts::load_host_file(std::istream &file)
 {
 	std::lock_guard lock(m_mutex);
 	m_host_keys.clear();
@@ -72,11 +72,11 @@ void known_hosts::load_host_file(std::istream& file)
 	}
 }
 
-void known_hosts::save_host_file(std::ostream& file)
+void known_hosts::save_host_file(std::ostream &file)
 {
 	std::lock_guard lock(m_mutex);
 
-	for (auto& kh: m_host_keys)
+	for (auto &kh : m_host_keys)
 		file << kh.m_host_name << ' ' << kh.m_algorithm << ' ' << encode_base64(kh.m_key) << std::endl;
 }
 

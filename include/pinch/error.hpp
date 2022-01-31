@@ -30,8 +30,8 @@ enum error_msg
 	SSH_MSG_NEWKEYS,
 
 	/*	Numbers 30-49 used for kex packets.
-		Different kex methods may reuse message numbers in
-		this range. */
+	    Different kex methods may reuse message numbers in
+	    this range. */
 
 	SSH_MSG_KEXDH_INIT = 30,
 	SSH_MSG_KEXDH_REPLY,

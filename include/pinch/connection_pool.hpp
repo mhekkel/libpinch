@@ -21,14 +21,13 @@ namespace pinch
 {
 
 /// \brief The connection_pool class.
-/// 
+///
 /// You should probably have only one instance of this class,
 /// however it is not a singleton. yet?
 
 class connection_pool
 {
   public:
-
 	/// \brief constructor
 	///
 	/// \param io_context	The boost io_context to use
@@ -104,7 +103,7 @@ class connection_pool
 		bool operator==(const proxy &rhs) const
 		{
 			return destination_host == rhs.destination_host and
-				   destination_port == rhs.destination_port;
+			       destination_port == rhs.destination_port;
 		}
 	};
 

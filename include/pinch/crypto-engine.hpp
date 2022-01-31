@@ -28,7 +28,7 @@ class TransformData
   public:
 	TransformData() {}
 	TransformData(const TransformData &) = delete;
-	TransformData& operator=(const TransformData &) = delete;
+	TransformData &operator=(const TransformData &) = delete;
 	~TransformData();
 
 	void clear();
@@ -58,14 +58,14 @@ class MessageAuthenticationCode
   public:
 	MessageAuthenticationCode() {}
 	MessageAuthenticationCode(const MessageAuthenticationCode &) = delete;
-	MessageAuthenticationCode& operator=(const MessageAuthenticationCode &) = delete;
+	MessageAuthenticationCode &operator=(const MessageAuthenticationCode &) = delete;
 	~MessageAuthenticationCode();
 
 	void clear();
 
 	explicit operator bool() { return m_impl != nullptr; }
 
-	void reset(const std::string& name, const uint8_t *iv);
+	void reset(const std::string &name, const uint8_t *iv);
 
 	void update(const uint8_t *data, std::size_t len);
 	bool verify(const uint8_t *signature);

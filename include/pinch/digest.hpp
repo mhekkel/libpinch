@@ -9,8 +9,8 @@
 
 #include <pinch/pinch.hpp>
 
-#include <string>
 #include <stdexcept>
+#include <string>
 
 #include <pinch/types.hpp>
 
@@ -24,7 +24,10 @@ blob random_hash();
 class invalid_base64 : public std::invalid_argument
 {
   public:
-	invalid_base64() : invalid_argument("invalid base64") {}
+	invalid_base64()
+		: invalid_argument("invalid base64")
+	{
+	}
 };
 
 /// \brief base64 routines
