@@ -844,8 +844,15 @@ void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection
 
 		if (m_accept_host_key_handler)
 		{
-			m_proxy->set_accept_host_key_handler([this](const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)
-				{ return this->m_accept_host_key_handler(host, algorithm, key, state); });
+			if (m_callback_executor)
+				m_proxy->set_callback_executor(m_callback_executor);
+
+			m_proxy->set_accept_host_key_handler(
+				[this]
+				(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)
+				{
+					return this->m_accept_host_key_handler(host, algorithm, key, state);
+				});
 		}
 
 		m_channel->async_open(
