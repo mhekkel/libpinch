@@ -587,6 +587,37 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 
 					in >> s >> partial;
 
+					// OK, user auth failed, let's inform the user in case it really failed
+					switch (auth_state)
+					{
+						case auth_state_type::keyboard_interactive:
+							for (auto c : m_channels)
+							{
+								auto ec = error::make_error_code(error::userauth_failure);
+								c->message(ec.message() + " (keyboard interactive)", "en");
+							}
+							break;
+
+						case auth_state_type::public_key:
+							for (auto c : m_channels)
+							{
+								auto ec = error::make_error_code(error::userauth_failure);
+								c->message(ec.message() + " (public key)", "en");
+							}
+							break;
+
+						case auth_state_type::password:
+							for (auto c : m_channels)
+							{
+								auto ec = error::make_error_code(error::userauth_failure);
+								c->message(ec.message() + " (password)", "en");
+							}
+							break;
+					
+						default:
+							break;
+					}
+
 					private_key_hash.clear();
 
 					if (choose_protocol(s, "publickey") == "publickey" and not private_keys.empty())
@@ -613,6 +644,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 						      << "";
 						auth_state = auth_state_type::keyboard_interactive;
 						async_write(std::move(out));
+						continue;
 					}
 
 					if (choose_protocol(s, "password") == "password" and ++password_attempts <= 3)
