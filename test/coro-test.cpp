@@ -15,7 +15,6 @@
 #include <type_traits>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 
 #include <pinch/pinch.hpp>
@@ -29,7 +28,6 @@
 // #include "pinch/terminal_channel.hpp"
 
 namespace ba = boost::algorithm;
-namespace io = boost::iostreams;
 
 // --------------------------------------------------------------------
 
