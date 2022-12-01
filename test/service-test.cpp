@@ -9,12 +9,11 @@
 
 #include <deque>
 #include <iostream>
+#include <map>
 
 #include <type_traits>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/iostreams/copy.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
 
 #include "pinch/channel.hpp"
 #include "pinch/connection.hpp"
@@ -25,7 +24,6 @@
 #include "pinch/terminal_channel.hpp"
 
 namespace ba = boost::algorithm;
-namespace io = boost::iostreams;
 
 // --------------------------------------------------------------------
 
@@ -213,7 +211,7 @@ void read_from_channel(pinch::channel_ptr ch, int start = 1)
 			else
 			{
 				std::istream in(&buffer);
-				io::copy(in, std::cout);
+				std::cout << in.rdbuf();
 
 				read_from_channel(ch, 0);
 
@@ -348,7 +346,6 @@ struct AsyncImpl
 	To do this, you should subclass terminal_channel and override closed()
 	and stop the io_context from within.
 */
-
 
 int main()
 {

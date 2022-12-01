@@ -7,7 +7,6 @@
 
 #include <iostream>
 
-#include <boost/iostreams/copy.hpp>
 #include <boost/lexical_cast.hpp>
 
 #include <pinch/connection.hpp>
@@ -21,8 +20,6 @@
 #pragma comment(lib, "libpinch")
 #pragma comment(lib, "cryptlib")
 #endif
-
-namespace io = boost::iostreams;
 
 class client
 {
@@ -100,7 +97,7 @@ class client
 			}
 
 			std::istream in(&m_response);
-			io::copy(in, std::cout);
+			std::cout << in.rdbuf();
 
 			boost::asio::async_read(*m_channel, m_response,
 				boost::asio::transfer_at_least(1),

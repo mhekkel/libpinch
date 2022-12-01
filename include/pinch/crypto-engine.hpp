@@ -7,6 +7,8 @@
 
 /// \file This file contains the definition of the crypto engine class
 
+#include <mutex>
+
 #include <boost/asio/streambuf.hpp>
 
 #include <pinch/key_exchange.hpp>
