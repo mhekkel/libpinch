@@ -6,6 +6,7 @@
 #include <pinch/pinch.hpp>
 
 #include <iostream>
+#include <thread>
 
 #include <boost/iostreams/copy.hpp>
 #include <boost/lexical_cast.hpp>

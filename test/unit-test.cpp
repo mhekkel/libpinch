@@ -6,6 +6,7 @@
 // #define BOOST_ASIO_ENABLE_HANDLER_TRACKING
 
 #include <iostream>
+#include <thread>
 
 #include <pinch/connection.hpp>
 #include <pinch/terminal_channel.hpp>

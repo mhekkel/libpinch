@@ -9,6 +9,8 @@
 
 #include <deque>
 #include <iostream>
+#include <map>
+#include <thread>
 
 #include <type_traits>
 
