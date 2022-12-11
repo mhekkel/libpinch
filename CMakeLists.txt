@@ -22,17 +22,18 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
-    if(WIN32)
+	if(WIN32)
 		set(pinch_compile_flags "/clang:-fcoroutines-ts")
 	else()
 		set(pinch_compile_flags "-fcoroutines-ts")
 	endif()
 elseif(MSVC)
-    check_include_file_cxx("coroutine" has_coroutine "/std:c++latest")
-    if(NOT has_coroutine)
-        message(STATUS "Try <experimental/coroutine> (Coroutines TS) instead of <coroutine> ...")
-        check_include_file_cxx("experimental/coroutine" has_coroutine_ts "/std:c++17")
-    endif()
+	check_include_file_cxx("coroutine" has_coroutine "/std:c++latest")
+
+	if(NOT has_coroutine)
+		message(STATUS "Try <experimental/coroutine> (Coroutines TS) instead of <coroutine> ...")
+		check_include_file_cxx("experimental/coroutine" has_coroutine_ts "/std:c++17")
+	endif()
 
 	# has coroutine headers?
 	if(has_coroutine)
@@ -40,13 +41,14 @@ elseif(MSVC)
 	elseif(has_coroutine_ts)
 		set(pinch_compile_flags "/std:c++17")
 	else()
-        message(FATAL_ERROR "There are no headers for C++ Coroutines")
-    endif()
+		message(FATAL_ERROR "There are no headers for C++ Coroutines")
+	endif()
 elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
-    #
-    # expect GCC 10 or later
-    #
-    check_include_file_cxx("coroutine" has_coroutine "-fcoroutines")
+	#
+	# expect GCC 10 or later
+	#
+	check_include_file_cxx("coroutine" has_coroutine "-fcoroutines")
+
 	if(has_coroutine)
 		set(pinch_compile_flags "-fcoroutines")
 	endif()
@@ -54,11 +56,13 @@ endif()
 
 # support compiler options for coroutine?
 check_cxx_compiler_flag("${pinch_compile_flags}" support_coroutines)
+
 if(NOT support_coroutines)
-    message(FATAL_ERROR "The compiler doesn't support C++ Coroutines")
+	message(FATAL_ERROR "The compiler doesn't support C++ Coroutines")
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${pinch_compile_flags}")
+
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers")
 elseif(MSVC)
@@ -73,11 +77,11 @@ option(BUILD_SHARED_LIBS "Build a shared library instead of a static one" OFF)
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 if(MSVC)
-    # make msvc standards compliant...
-    add_compile_options(/permissive-)
+	# make msvc standards compliant...
+	add_compile_options(/permissive-)
 
 	macro(get_WIN32_WINNT version)
-		if (WIN32 AND CMAKE_SYSTEM_VERSION)
+		if(WIN32 AND CMAKE_SYSTEM_VERSION)
 			set(ver ${CMAKE_SYSTEM_VERSION})
 			string(REPLACE "." "" ver ${ver})
 			string(REGEX REPLACE "([0-9])" "0\\1" ver ${ver})
@@ -94,13 +98,19 @@ set(CMAKE_THREAD_PREFER_PTHREAD)
 set(THREADS_PREFER_PTHREAD_FLAG)
 find_package(Threads REQUIRED)
 
-find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
-find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ cryptlib REQUIRED)
+find_package(cryptopp 8.7 REQUIRED)
+
+if(NOT cryptopp_FOUND)
+	find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
+	find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ cryptlib REQUIRED)
+endif()
 
 set(Boost_DETAILED_FAILURE_MSG ON)
+
 if(NOT BUILD_SHARED_LIBS)
 	set(Boost_USE_STATIC_LIBS ON)
 endif()
+
 find_package(Boost 1.71.0 REQUIRED COMPONENTS system date_time regex coroutine)
 
 list(APPEND PINCH_HEADERS
@@ -164,23 +174,21 @@ target_include_directories(pinch
 	PUBLIC
 	"$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
 	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-	${CRYPTOPP_INCLUDE_DIR}
 )
 
-target_include_directories(pinch PRIVATE ${PROJECT_SOURCE_DIR}/include PUBLIC ${Boost_INCLUDE_DIR} ${CRYPTOPP_INCLUDE_DIR} ${ZLIB_INCLUDE_DIR})
-target_link_libraries(pinch PUBLIC ${Boost_LIBRARIES} ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB)
+target_include_directories(pinch PRIVATE ${PROJECT_SOURCE_DIR}/include PUBLIC ${Boost_INCLUDE_DIR} ${ZLIB_INCLUDE_DIR})
+target_link_libraries(pinch PUBLIC Boost::date_time cryptopp::cryptopp ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB)
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    target_link_options(pinch PRIVATE -undefined dynamic_lookup)
-endif (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+	target_link_options(pinch PRIVATE -undefined dynamic_lookup)
+endif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
 
-set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR} )
-set(LIBRARY_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR} )
+set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR})
+set(LIBRARY_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR})
 
 generate_export_header(pinch EXPORT_FILE_NAME pinch/PINCH_export.hpp)
 
 # Install rules
-
 install(TARGETS pinch
 	EXPORT pinchTargets
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -213,8 +221,8 @@ configure_package_config_file(Config.cmake.in
 )
 
 install(FILES
-		"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfig.cmake"
-		"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfigVersion.cmake"
+	"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfig.cmake"
+	"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfigVersion.cmake"
 	DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pinch
 	COMPONENT Devel
 )
@@ -226,21 +234,20 @@ set_target_properties(pinch PROPERTIES
 	INTERFACE_PINCH_MAJOR_VERSION 5)
 
 set_property(TARGET pinch APPEND PROPERTY
-  COMPATIBLE_INTERFACE_STRING PINCH_MAJOR_VERSION
+	COMPATIBLE_INTERFACE_STRING PINCH_MAJOR_VERSION
 )
 
 write_basic_package_version_file(
-  "${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfigVersion.cmake"
-  VERSION ${PROJECT_VERSION}
-  COMPATIBILITY AnyNewerVersion
+	"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfigVersion.cmake"
+	VERSION ${PROJECT_VERSION}
+	COMPATIBILITY AnyNewerVersion
 )
 
 # pkgconfig support
-
-set(prefix      ${CMAKE_INSTALL_PREFIX})
+set(prefix ${CMAKE_INSTALL_PREFIX})
 set(exec_prefix ${CMAKE_INSTALL_PREFIX})
-set(libdir      ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
-set(includedir  ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})
+set(libdir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+set(includedir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libpinch.pc.in
 	${CMAKE_CURRENT_BINARY_DIR}/libpinch.pc.in @ONLY)
@@ -261,15 +268,19 @@ if(PINCH_BUILD_DOC)
 	if(NOT DOXYGEN)
 		list(APPEND MISSING_DOC_TOOL_LIST doxygen)
 	endif()
+
 	if(NOT QUICKBOOK)
 		list(APPEND MISSING_DOC_TOOL_LIST quickbook)
 	endif()
+
 	if(NOT XSLTPROC)
 		list(APPEND MISSING_DOC_TOOL_LIST xsltproc)
 	endif()
+
 	if(NOT FOP)
 		list(APPEND MISSING_DOC_TOOL_LIST fop)
 	endif()
+
 	if(NOT BJAM)
 		list(APPEND MISSING_DOC_TOOL_LIST bjam)
 	endif()
@@ -296,10 +307,10 @@ if(PINCH_BUILD_DOC)
 	endif()
 
 	configure_file(${PROJECT_SOURCE_DIR}/doc/Jamfile.v2.in ${PROJECT_SOURCE_DIR}/doc/Jamfile.v2 @ONLY)
-	
+
 	add_custom_command(OUTPUT ${PROJECT_SOURCE_DIR}/doc/html/index.html
-			${PROJECT_SOURCE_DIR}/doc/html ${PROJECT_SOURCE_DIR}/doc/bin
-			${PROJECT_SOURCE_DIR}/doc/autodoc.xml
+		${PROJECT_SOURCE_DIR}/doc/html ${PROJECT_SOURCE_DIR}/doc/bin
+		${PROJECT_SOURCE_DIR}/doc/autodoc.xml
 		COMMAND ${BJAM} ${PROJECT_SOURCE_DIR}/doc
 		DEPENDS ${PROJECT_SOURCE_DIR}/doc/Jamfile.v2)
 	add_custom_target(doc ALL DEPENDS ${PROJECT_SOURCE_DIR}/doc/html/index.html)
@@ -307,15 +318,12 @@ if(PINCH_BUILD_DOC)
 endif()
 
 # Test applications
-
 option(PINCH_BUILD_TESTS "Build test executables" OFF)
 
 if(PINCH_BUILD_TESTS)
-
 	enable_testing()
 
-	#  unit parser serializer xpath json crypto http processor webapp soap rest security uri
-
+	# unit parser serializer xpath json crypto http processor webapp soap rest security uri
 	list(APPEND PINCH_tests coro service sftp unit)
 
 	foreach(TEST IN LISTS PINCH_tests)
@@ -330,7 +338,7 @@ if(PINCH_BUILD_TESTS)
 
 		target_include_directories(${PINCH_TEST} PRIVATE
 			${CMAKE_CURRENT_SOURCE_DIR}/include
-			${CMAKE_CURRENT_BINARY_DIR}  # for config.h
+			${CMAKE_CURRENT_BINARY_DIR} # for config.h
 			${PROJECT_SOURCE_DIR}/include
 		)
 
@@ -350,6 +358,5 @@ if(PINCH_BUILD_TESTS)
 		add_test(NAME ${PINCH_TEST}
 			COMMAND $<TARGET_FILE:${PINCH_TEST}> ${PINCH_TEST_ARGS}
 			WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/test)
-
 	endforeach()
 endif()
