@@ -95,7 +95,7 @@ set(THREADS_PREFER_PTHREAD_FLAG)
 find_package(Threads REQUIRED)
 
 find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
-find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ REQUIRED)
+find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ cryptlib REQUIRED)
 
 set(Boost_DETAILED_FAILURE_MSG ON)
 if(NOT BUILD_SHARED_LIBS)
