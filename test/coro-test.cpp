@@ -15,17 +15,10 @@
 #include <type_traits>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
 
 #include <pinch/pinch.hpp>
 #include <pinch/error.hpp>
 #include "pinch/operations.hpp"
-// #include "pinch/connection.hpp"
-// #include "pinch/connection_pool.hpp"
-// #include "pinch/crypto-engine.hpp"
-// #include "pinch/known_hosts.hpp"
-// #include "pinch/ssh_agent.hpp"
-// #include "pinch/terminal_channel.hpp"
 
 namespace ba = boost::algorithm;
 

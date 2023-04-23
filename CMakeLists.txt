@@ -98,7 +98,7 @@ set(CMAKE_THREAD_PREFER_PTHREAD)
 set(THREADS_PREFER_PTHREAD_FLAG)
 find_package(Threads REQUIRED)
 
-find_package(cryptopp 8.7 REQUIRED)
+find_package(cryptopp 8.7 QUIET)
 
 if(NOT cryptopp_FOUND)
 	find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
@@ -176,8 +176,20 @@ target_include_directories(pinch
 	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
-target_include_directories(pinch PRIVATE ${PROJECT_SOURCE_DIR}/include PUBLIC ${Boost_INCLUDE_DIR} ${ZLIB_INCLUDE_DIR})
-target_link_libraries(pinch PUBLIC Boost::date_time cryptopp::cryptopp ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB)
+target_include_directories(pinch
+	PRIVATE
+	${PROJECT_SOURCE_DIR}/include
+	PUBLIC
+	${CRYPTOPP_INCLUDE_DIR}
+	${Boost_INCLUDE_DIR}
+	${ZLIB_INCLUDE_DIR})
+target_link_libraries(pinch PUBLIC
+	Boost::date_time
+	Boost::coroutine
+	# cryptopp::cryptopp
+	${CRYPTOPP_LIBRARY}
+	${CMAKE_THREAD_LIBS_INIT}
+	std::filesystem ZLIB::ZLIB)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
 	target_link_options(pinch PRIVATE -undefined dynamic_lookup)
