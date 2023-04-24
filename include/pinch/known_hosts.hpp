@@ -5,15 +5,11 @@
 
 #pragma once
 
-#include "pinch/pinch.hpp"
+#include "pinch/asio.hpp"
 #include "pinch/types.hpp"
 
-#include <asio/dispatch.hpp>
-
-#include <functional>
-#include <future>
+#include <mutex>
 #include <string>
-#include <type_traits>
 
 /// \file known_hosts.hpp
 /// This file contains the class known_hosts which is used to keep track of

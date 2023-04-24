@@ -1,7 +1,8 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-find_dependency(Boost 1.71.0 REQUIRED COMPONENTS program_options system date_time regex coroutine)
+
+find_dependency(ZLIB)
 
 INCLUDE("${CMAKE_CURRENT_LIST_DIR}/pinchTargets.cmake")
 

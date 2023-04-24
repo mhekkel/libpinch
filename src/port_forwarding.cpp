@@ -3,12 +3,11 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
 
 #include "pinch/connection.hpp"
 #include "pinch/port_forwarding.hpp"
 
-namespace ip = asio::ip;
+namespace ip = asio_ns::ip;
 
 namespace pinch
 {
@@ -43,44 +42,31 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 
 	virtual void start() = 0;
 
-	asio::ip::tcp::socket &get_socket() { return m_socket; }
+	asio_ns::ip::tcp::socket &get_socket() { return m_socket; }
 
 	void start_copy_data();
 
   protected:
-#if __cpp_impl_coroutine
 	template <typename SocketIn, typename SocketOut>
-	asio::awaitable<void> copy(SocketIn &in, SocketOut &out, std::shared_ptr<forwarding_connection> self)
+	asio_ns::awaitable<void> copy(SocketIn &in, SocketOut &out, std::shared_ptr<forwarding_connection> self)
 	{
 		char data[1024];
 
-		for (;;)
+		try
 		{
-			auto length = co_await asio::async_read(in, asio::buffer(data), asio::transfer_at_least(1), asio::use_awaitable);
-			if (length == 0)
-				break;
-			co_await asio::async_write(out, asio::buffer(data, length), asio::use_awaitable);
+			for (;;)
+			{
+				auto length = co_await asio_ns::async_read(in, asio_ns::buffer(data), asio_ns::transfer_at_least(1), asio_ns::use_awaitable);
+				if (length == 0)
+					break;
+				co_await asio_ns::async_write(out, asio_ns::buffer(data, length), asio_ns::use_awaitable);
+			}
 		}
+		catch (...) {}
 	};
-#else
-	template <typename SocketIn, typename SocketOut>
-	void copy(SocketIn &in, SocketOut &out, std::shared_ptr<forwarding_connection> self, asio::yield_context yield)
-	{
-		char data[1024];
-		std::error_code ec;
-
-		while (not ec)
-		{
-			auto length = asio::async_read(in, asio::buffer(data), asio::transfer_at_least(1), yield[ec]);
-			if (length == 0 or ec)
-				break;
-			asio::async_write(out, asio::buffer(data, length), yield[ec]);
-		}
-	};
-#endif
 
 	std::shared_ptr<forwarding_channel> m_channel;
-	asio::ip::tcp::socket m_socket;
+	asio_ns::ip::tcp::socket m_socket;
 	char m_c2s_buffer[512], m_s2c_buffer[512];
 	bool m_alive;
 };
@@ -88,15 +74,8 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 void forwarding_connection::start_copy_data()
 {
 	auto self = shared_from_this();
-#if __cpp_impl_coroutine
-	asio::co_spawn(m_socket.get_executor(), copy(m_socket, *m_channel, shared_from_this()), asio::detached);
-	asio::co_spawn(m_socket.get_executor(), copy(*m_channel, m_socket, shared_from_this()), asio::detached);
-#else
-	asio::spawn(m_socket.get_executor(), [self](asio::yield_context yield)
-		{ self->copy(self->m_socket, *self->m_channel, self, yield); });
-	asio::spawn(m_socket.get_executor(), [self](asio::yield_context yield)
-		{ self->copy(*self->m_channel, self->m_socket, self, yield); });
-#endif
+	asio_ns::co_spawn(m_socket.get_executor(), copy(m_socket, *m_channel, shared_from_this()), asio_ns::detached);
+	asio_ns::co_spawn(m_socket.get_executor(), copy(*m_channel, m_socket, shared_from_this()), asio_ns::detached);
 }
 
 // --------------------------------------------------------------------
@@ -115,7 +94,7 @@ class bound_port : public std::enable_shared_from_this<bound_port>
 	uint16_t local_port() const { return m_local_port; }
 
   private:
-	virtual void handle_accept(const std::error_code &ec = {});
+	virtual void handle_accept(const system_ns::error_code &ec = {});
 
 	std::shared_ptr<basic_connection> m_connection;
 	ip::tcp::acceptor m_acceptor;
@@ -140,14 +119,14 @@ void bound_port::listen(uint16_t local_port)
 
 	m_new_connection = m_connection_factory();
 
-	auto endpoint = asio::ip::tcp::endpoint(asio::ip::tcp::v4(), local_port);
-	m_acceptor = asio::ip::tcp::acceptor(m_connection->get_executor(), endpoint);
-	m_acceptor.set_option(asio::ip::tcp::acceptor::reuse_address(true));
+	auto endpoint = asio_ns::ip::tcp::endpoint(asio_ns::ip::tcp::v4(), local_port);
+	m_acceptor = asio_ns::ip::tcp::acceptor(m_connection->get_executor(), endpoint);
+	m_acceptor.set_option(asio_ns::ip::tcp::acceptor::reuse_address(true));
 
 	handle_accept();
 }
 
-void bound_port::handle_accept(const std::error_code &ec)
+void bound_port::handle_accept(const system_ns::error_code &ec)
 {
 	if (not ec)
 	{
@@ -174,7 +153,7 @@ class port_forwarding_connection : public forwarding_connection
 	virtual void start()
 	{
 		std::shared_ptr<forwarding_connection> self(shared_from_this());
-		m_channel->async_open([self](const std::error_code &ec)
+		m_channel->async_open([self](const system_ns::error_code &ec)
 			{
 			if (not ec)
 				self->start_copy_data(); });
@@ -197,8 +176,8 @@ class socks5_forwarding_connection : public forwarding_connection
 	void write_error(uint8_t error_code);
 	void wrote_error();
 
-	void handshake(const std::error_code &ec, size_t bytes_transferred);
-	void channel_open(const std::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4);
+	void handshake(const system_ns::error_code &ec, size_t bytes_transferred);
+	void channel_open(const system_ns::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4);
 
 	std::shared_ptr<socks5_forwarding_connection> self() { return std::dynamic_pointer_cast<socks5_forwarding_connection>(shared_from_this()); }
 
@@ -230,11 +209,11 @@ void socks5_forwarding_connection::start()
 
 	m_buffer.resize(2);
 	m_state = SOCKS_INIT;
-	asio::async_read(m_socket, asio::buffer(m_buffer),
+	asio_ns::async_read(m_socket, asio_ns::buffer(m_buffer),
 		std::bind(&socks5_forwarding_connection::handshake, self(), _1, _2));
 }
 
-void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t bytes_transferred)
+void socks5_forwarding_connection::handshake(const system_ns::error_code &ec, size_t bytes_transferred)
 {
 	using namespace std::placeholders;
 
@@ -250,7 +229,7 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 				{
 					m_buffer.resize(6);
 					m_state = SOCKS4_INIT;
-					asio::async_read(m_socket, asio::buffer(m_buffer), cb);
+					asio_ns::async_read(m_socket, asio_ns::buffer(m_buffer), cb);
 				}
 			}
 			else if (m_buffer[0] == '\x05')
@@ -259,7 +238,7 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 				{
 					m_buffer.resize(1);
 					m_state = SOCKS5_INIT;
-					asio::async_read(m_socket, asio::buffer(m_buffer), cb);
+					asio_ns::async_read(m_socket, asio_ns::buffer(m_buffer), cb);
 				}
 			}
 			break;
@@ -270,12 +249,12 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 			{
 				m_buffer.resize(2);
 				m_state = SOCKS4a_CONNECTION_REQUEST_USER_ID;
-				asio::async_read(m_socket, asio::buffer(m_mini_buffer), cb);
+				asio_ns::async_read(m_socket, asio_ns::buffer(m_mini_buffer), cb);
 			}
 			else
 			{
 				m_state = SOCKS4_CONNECTION_REQUEST_USER_ID;
-				asio::async_read(m_socket, asio::buffer(m_mini_buffer), cb);
+				asio_ns::async_read(m_socket, asio_ns::buffer(m_mini_buffer), cb);
 			}
 			break;
 		}
@@ -291,22 +270,22 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 				remote_port = *p++;
 				remote_port = (remote_port << 8) | *p++;
 
-				asio::ip::address_v4::bytes_type addr;
+				asio_ns::ip::address_v4::bytes_type addr;
 				std::copy(p, p + 4, addr.begin());
-				remote_address = asio::ip::address_v4(addr).to_string();
+				remote_address = asio_ns::ip::address_v4(addr).to_string();
 
 				m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
 				m_channel->async_open(std::bind(&socks5_forwarding_connection::channel_open, self(),
 					_1, remote_address, remote_port, true));
 			}
 			else
-				asio::async_read(m_socket, asio::buffer(m_mini_buffer), cb);
+				asio_ns::async_read(m_socket, asio_ns::buffer(m_mini_buffer), cb);
 			break;
 
 		case SOCKS4a_CONNECTION_REQUEST_USER_ID:
 			if (m_mini_buffer[0] == 0)
 				m_state = SOCKS4a_CONNECTION_REQUEST_FQDN;
-			asio::async_read(m_socket, asio::buffer(m_mini_buffer), cb);
+			asio_ns::async_read(m_socket, asio_ns::buffer(m_mini_buffer), cb);
 			break;
 
 		case SOCKS4a_CONNECTION_REQUEST_FQDN:
@@ -324,13 +303,13 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 				m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
 
 				auto self = shared_from_this();
-				m_channel->async_open([self, this, remote_address, remote_port](std::error_code ec)
+				m_channel->async_open([self, this, remote_address, remote_port](system_ns::error_code ec)
 					{ channel_open(ec, remote_address, remote_port, true); });
 			}
 			else
 			{
 				m_buffer.push_back(m_mini_buffer[0]);
-				asio::async_read(m_socket, asio::buffer(m_mini_buffer), cb);
+				asio_ns::async_read(m_socket, asio_ns::buffer(m_mini_buffer), cb);
 			}
 			break;
 		}
@@ -340,14 +319,14 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 			{
 				m_buffer = {'\x05', '\x00'};
 				m_state = SOCKS5_SERVERS_CHOICE;
-				asio::async_write(m_socket, asio::buffer(m_buffer), cb);
+				asio_ns::async_write(m_socket, asio_ns::buffer(m_buffer), cb);
 			}
 			break;
 
 		case SOCKS5_SERVERS_CHOICE:
 			m_state = SOCKS5_CONNECTION_REQUEST;
 			m_buffer.resize(4);
-			asio::async_read(m_socket, asio::buffer(m_buffer), cb);
+			asio_ns::async_read(m_socket, asio_ns::buffer(m_buffer), cb);
 			break;
 
 		case SOCKS5_CONNECTION_REQUEST:
@@ -373,14 +352,14 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 						break;
 				}
 
-				asio::async_read(m_socket, asio::buffer(m_buffer), cb);
+				asio_ns::async_read(m_socket, asio_ns::buffer(m_buffer), cb);
 			}
 			break;
 
 		case SOCKS5_CONNECTION_REQUEST_FQDN:
 			m_buffer.resize(m_buffer[0] + 2);
 			m_state = SOCKS5_CONNECTION_REQUEST_FQDN_2;
-			asio::async_read(m_socket, asio::buffer(m_buffer), cb);
+			asio_ns::async_read(m_socket, asio_ns::buffer(m_buffer), cb);
 			break;
 
 		case SOCKS5_CONNECTION_REQUEST_IPV4:
@@ -396,18 +375,18 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 			{
 				case SOCKS5_CONNECTION_REQUEST_IPV4:
 				{
-					asio::ip::address_v4::bytes_type addr;
+					asio_ns::ip::address_v4::bytes_type addr;
 					std::copy(p, p + 4, addr.begin());
-					remote_address = asio::ip::address_v4(addr).to_string();
+					remote_address = asio_ns::ip::address_v4(addr).to_string();
 					p += 4;
 					break;
 				}
 
 				case SOCKS5_CONNECTION_REQUEST_IPV6:
 				{
-					asio::ip::address_v6::bytes_type addr;
+					asio_ns::ip::address_v6::bytes_type addr;
 					std::copy(p, p + 16, addr.begin());
-					remote_address = asio::ip::address_v6(addr).to_string();
+					remote_address = asio_ns::ip::address_v6(addr).to_string();
 					p += 16;
 					break;
 				}
@@ -425,14 +404,14 @@ void socks5_forwarding_connection::handshake(const std::error_code &ec, size_t b
 
 			m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
 			auto self = shared_from_this();
-			m_channel->async_open([self, this, remote_address, remote_port](std::error_code ec)
+			m_channel->async_open([self, this, remote_address, remote_port](system_ns::error_code ec)
 				{ channel_open(ec, remote_address, remote_port, false); });
 			break;
 		}
 	}
 }
 
-void socks5_forwarding_connection::channel_open(const std::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4)
+void socks5_forwarding_connection::channel_open(const system_ns::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4)
 {
 	if (not ec)
 	{
@@ -453,8 +432,8 @@ void socks5_forwarding_connection::channel_open(const std::error_code &ec, const
 			m_buffer[m_buffer.size() - 1] = static_cast<uint8_t>(remote_port);
 		}
 
-		asio::async_write(m_socket, asio::buffer(m_buffer),
-			[](const std::error_code &ec, size_t bytes_transferred) {});
+		asio_ns::async_write(m_socket, asio_ns::buffer(m_buffer),
+			[](const system_ns::error_code &ec, size_t bytes_transferred) {});
 
 		start_copy_data();
 	}
@@ -517,7 +496,7 @@ void port_forward_listener::forward_socks5(uint16_t local_port)
 	m_bound_ports.push_back(p);
 }
 
-// void port_forward_listener::accept_failed(const std::error_code& ec, bound_port* e)
+// void port_forward_listener::accept_failed(const system_ns::error_code& ec, bound_port* e)
 //{
 //	//m_bound_ports.erase(remove(m_bound_ports.begin(), m_bound_ports.end(), e), m_bound_ports.end());
 //	//delete e;

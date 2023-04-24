@@ -8,12 +8,11 @@
 /// \file crypto-engine.hpp
 /// This file contains the definition of the crypto engine class
 
+#include "pinch/asio.hpp"
 #include "pinch/key_exchange.hpp"
 #include "pinch/packet.hpp"
 
 #include <mutex>
-
-#include <asio/streambuf.hpp>
 
 
 namespace pinch
@@ -125,14 +124,14 @@ class crypto_engine
 	///
 	/// Will return an empty pointer in case the packet is not complete yet
 	/// and needs more input.
-	std::unique_ptr<ipacket> get_next_packet(asio::streambuf &buffer, std::error_code &ec);
+	std::unique_ptr<ipacket> get_next_packet(asio_ns::streambuf &buffer, system_ns::error_code &ec);
 
 	/// \brief Package the packet in \a p as a streambuf
-	std::unique_ptr<asio::streambuf> get_next_request(opacket &&p);
+	std::unique_ptr<asio_ns::streambuf> get_next_request(opacket &&p);
 
   private:
 	/// \brief Fetch the next block of data
-	blob get_next_block(asio::streambuf &buffer, bool empty);
+	blob get_next_block(asio_ns::streambuf &buffer, bool empty);
 
 	std::size_t m_iblocksize = 8, m_oblocksize = 8;
 	uint32_t m_in_seq_nr = 0, m_out_seq_nr = 0;

@@ -7,9 +7,9 @@
 
 /// \brief classes for forwarding connections
 
-#include "pinch/pinch.hpp"
-
 #include "pinch/channel.hpp"
+
+#include <memory>
 
 namespace pinch
 {

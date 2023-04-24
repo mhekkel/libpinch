@@ -3,7 +3,6 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
 
 #include "pinch/channel.hpp"
 #include "pinch/packet.hpp"
@@ -90,7 +89,7 @@ opacket &opacket::operator=(const opacket &rhs)
 	return *this;
 }
 
-void opacket::compress(compression_helper &compressor, std::error_code &ec)
+void opacket::compress(compression_helper &compressor, system_ns::error_code &ec)
 {
 	z_stream &zstream(compressor);
 
@@ -359,7 +358,7 @@ ipacket &ipacket::operator=(ipacket &&rhs)
 	return *this;
 }
 
-void ipacket::decompress(compression_helper &decompressor, std::error_code &ec)
+void ipacket::decompress(compression_helper &decompressor, system_ns::error_code &ec)
 {
 	assert(m_complete);
 

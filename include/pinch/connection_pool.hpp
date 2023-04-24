@@ -13,8 +13,6 @@
 ///
 /// Connections are uniquely defined by their user/host/port combination.
 
-#include "pinch/pinch.hpp"
-
 #include "pinch/channel.hpp"
 
 namespace pinch
@@ -31,7 +29,7 @@ class connection_pool
 	/// \brief constructor
 	///
 	/// \param io_context	The boost io_context to use
-	connection_pool(asio::io_context &io_context);
+	connection_pool(asio_ns::io_context &io_context);
 
 	/// \brief destructor
 	~connection_pool();
@@ -109,7 +107,7 @@ class connection_pool
 
 	using proxy_list = std::list<proxy>;
 
-	asio::io_context &m_io_context;
+	asio_ns::io_context &m_io_context;
 	entry_list m_entries;
 	proxy_list m_proxies;
 };

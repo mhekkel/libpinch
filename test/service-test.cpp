@@ -5,19 +5,12 @@
 
 #define BOOST_ASIO_ENABLE_HANDLER_TRACKING
 
-#include "pinch/channel.hpp"
-#include "pinch/connection.hpp"
-#include "pinch/connection_pool.hpp"
-#include "pinch/crypto-engine.hpp"
-#include "pinch/known_hosts.hpp"
-#include "pinch/ssh_agent.hpp"
-#include "pinch/terminal_channel.hpp"
-
-#include <asio.hpp>
+#include "pinch.hpp"
 
 #include <deque>
 #include <iostream>
 #include <map>
+#include <thread>
 #include <type_traits>
 
 // --------------------------------------------------------------------
@@ -163,7 +156,7 @@ class my_queue
 class my_executor
 {
   public:
-	asio::execution_context *m_context;
+	asio_ns::execution_context *m_context;
 	my_queue *m_queue;
 
 	bool operator==(const my_executor &other) const noexcept
@@ -176,16 +169,16 @@ class my_executor
 		return !(*this == other);
 	}
 
-	asio::execution_context &query(asio::execution::context_t) const noexcept
+	asio_ns::execution_context &query(asio_ns::execution::context_t) const noexcept
 	{
 		return *m_context;
 	}
 
-	static constexpr asio::execution::blocking_t::never_t query(
-		asio::execution::blocking_t) noexcept
+	static constexpr asio_ns::execution::blocking_t::never_t query(
+		asio_ns::execution::blocking_t) noexcept
 	{
 		// This executor always has blocking.never semantics.
-		return asio::execution::blocking.never;
+		return asio_ns::execution::blocking.never;
 	}
 
 	template <class F>
@@ -195,12 +188,12 @@ class my_executor
 	}
 };
 
-asio::streambuf buffer;
+asio_ns::streambuf buffer;
 
 void read_from_channel(pinch::channel_ptr ch, int start = 1)
 {
-	asio::async_read(*ch, buffer, asio::transfer_at_least(1),
-		[ch, start](const std::error_code &ec, std::size_t bytes_transferred) mutable {
+	asio_ns::async_read(*ch, buffer, asio_ns::transfer_at_least(1),
+		[ch, start](const system_ns::error_code &ec, std::size_t bytes_transferred) mutable {
 			if (ec)
 				std::cerr << ec.message() << std::endl;
 			else
@@ -231,7 +224,7 @@ bool async_validate(const std::string &host_name, const std::string &algorithm, 
 
 	auto result = validate_task.get_future();
 
-	asio::dispatch(executor, [task = std::move(validate_task)]() mutable {
+	asio_ns::dispatch(executor, [task = std::move(validate_task)]() mutable {
 		task();
 	});
 
@@ -262,18 +255,18 @@ auto async_val(Handler &&handler, Executor &executor, Function func, Args... arg
 	std::packaged_task<result_type()> task(std::bind(func, args...));
 	std::future<result_type> result = task.get_future();
 
-	return asio::async_compose<Handler, void(std::error_code, result_type)>(
+	return asio_ns::async_compose<Handler, void(system_ns::error_code, result_type)>(
 		[task = std::move(task),
 			result = std::move(result),
 			state = start,
-			executor](auto &self, std::error_code ec = {}, result_type r = {}) mutable {
+			executor](auto &self, system_ns::error_code ec = {}, result_type r = {}) mutable {
 			if (not ec)
 			{
 				if (state == start)
 				{
 					state = running;
 					task();
-					asio::dispatch(executor, std::move(self));
+					asio_ns::dispatch(executor, std::move(self));
 					return;
 				}
 
@@ -323,7 +316,7 @@ auto async_ask_password_2(Handler &&handler, Executor &executor)
 
 struct AsyncImpl
 {
-	void operator()(std::error_code ec, std::string password)
+	void operator()(system_ns::error_code ec, std::string password)
 	{
 		std::cout << "And the password is " << password << std::endl
 				  << "  ==> in thread " << this_thread_name()  << std::endl;
@@ -344,7 +337,7 @@ struct AsyncImpl
 
 int main()
 {
-	using asio::ip::tcp;
+	using asio_ns::ip::tcp;
 
 	const char* USER = getenv("USER");
 	std::string user = USER ? USER : "test-account";
@@ -352,8 +345,8 @@ int main()
 	// where are we?
 	std::cout << "Starting in main thread " << this_thread_name() << std::endl;
 
-	asio::io_context io_context;
-	auto strand = asio::io_context::strand(io_context);
+	asio_ns::io_context io_context;
+	auto strand = asio_ns::io_context::strand(io_context);
 
 	pinch::connection_pool pool(io_context);
 
@@ -367,7 +360,7 @@ int main()
 
 	auto channel = std::make_shared<pinch::terminal_channel>(conn);
 
-	auto msg = asio::bind_executor(executor,
+	auto msg = asio_ns::bind_executor(executor,
 		[](const std::string &msg, const std::string &lang) {
 			std::cout << "Message callback, msg = " << msg << ", lang = " << lang << std::endl;
 		});
@@ -379,7 +372,7 @@ int main()
 	auto &known_hosts = pinch::known_hosts::instance();
 	// known_hosts.load_host_file("/home/test-account/.ssh/known_hosts");
 	conn->set_accept_host_key_handler(
-		asio::bind_executor(executor, 
+		asio_ns::bind_executor(executor, 
 
 		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
 			std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
@@ -387,10 +380,10 @@ int main()
 			return pinch::host_key_reply::trust_once;
 		}));
 
-	conn->set_provide_password_callback(asio::bind_executor(executor, &provide_password));
+	conn->set_provide_password_callback(asio_ns::bind_executor(executor, &provide_password));
 
-	auto open_cb = asio::bind_executor(executor,
-		[t = channel, conn, &queue, &io_context](const std::error_code &ec) {
+	auto open_cb = asio_ns::bind_executor(executor,
+		[t = channel, conn, &queue, &io_context](const system_ns::error_code &ec) {
 			std::cout << "handler, ec = " << ec.message() << " thread: " << this_thread_name()  << std::endl;
 
 			if (ec)
@@ -408,7 +401,7 @@ int main()
 		try
 		{
 			std::cout << "IO Context thread is " << this_thread_name() << std::endl;
-			// asio::executor_work_guard work(io_context.get_executor());
+			// asio_ns::executor_work_guard work(io_context.get_executor());
 			io_context.run();
 		}
 		catch (const std::exception &ex)
@@ -417,8 +410,8 @@ int main()
 		}
 	});
 
-	asio::signal_set sigset(io_context, SIGHUP, SIGINT);
-	sigset.async_wait([&io_context, &queue](std::error_code, int signal) { io_context.stop(); queue.stop(); });
+	asio_ns::signal_set sigset(io_context, SIGHUP, SIGINT);
+	sigset.async_wait([&io_context, &queue](system_ns::error_code, int signal) { io_context.stop(); queue.stop(); });
 
 	conn->keep_alive(std::chrono::seconds(5));
 

@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "pinch/pinch.hpp"
 
 #include "pinch/channel.hpp"
 #include "pinch/connection.hpp"

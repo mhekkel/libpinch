@@ -8,7 +8,6 @@
 /// \brief A preliminary implementation of SFTP
 
 #include "pinch/channel.hpp"
-#include "pinch/pinch.hpp"
 
 namespace pinch
 {
@@ -29,11 +28,11 @@ namespace error
 		ssh_fx_op_unsupported
 	};
 
-	std::error_category &sftp_category();
+	system_ns::error_category &sftp_category();
 
-	inline std::error_code make_error_code(sftp_error e)
+	inline system_ns::error_code make_error_code(sftp_error e)
 	{
-		return std::error_code(static_cast<int>(e), sftp_category());
+		return system_ns::error_code(static_cast<int>(e), sftp_category());
 	}
 
 } // namespace error
@@ -75,7 +74,7 @@ namespace detail
 			m_version = version;
 		}
 
-		virtual void complete(const std::error_code &ec,
+		virtual void complete(const system_ns::error_code &ec,
 			std::size_t bytes_transferred = 0) override
 		{
 			binder handler(m_handler, ec, m_version);
@@ -107,7 +106,7 @@ namespace detail
 	class sftp_readdir_op : public sftp_operation
 	{
 	  public:
-		std::error_code m_ec;
+		system_ns::error_code m_ec;
 		std::list<std::tuple<std::string, std::string, file_attributes>> m_files;
 
 		virtual opacket process(ipacket &p) override;
@@ -132,11 +131,11 @@ namespace detail
 			m_path = path;
 		}
 
-		virtual void complete(const std::error_code &ec = {}, std::size_t bytes_transferred = 0) override
+		virtual void complete(const system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) override
 		{
 			handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
 
-			binder<Handler, std::error_code, std::list<std::tuple<std::string, std::string, file_attributes>>>
+			binder<Handler, system_ns::error_code, std::list<std::tuple<std::string, std::string, file_attributes>>>
 				handler(m_handler, m_ec, m_files);
 
 			w.complete(handler, handler.m_handler);
@@ -165,14 +164,14 @@ class sftp_channel : public channel
 	template <typename Handler>
 	auto async_init(int version, Handler &&handler)
 	{
-		return asio::async_initiate<Handler, void(std::error_code, int)>(
+		return asio_ns::async_initiate<Handler, void(system_ns::error_code, int)>(
 			async_sftp_init_impl{}, handler, this, version);
 	}
 
 	template <typename Handler>
 	auto read_dir(const std::string &path, Handler &&handler)
 	{
-		return asio::async_initiate<Handler, void(std::error_code, std::list<std::tuple<std::string, std::string, pinch::file_attributes>>)>(
+		return asio_ns::async_initiate<Handler, void(system_ns::error_code, std::list<std::tuple<std::string, std::string, pinch::file_attributes>>)>(
 			async_readdir_impl{}, handler, this, m_request_id++, path);
 	}
 

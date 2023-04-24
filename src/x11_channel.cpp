@@ -3,12 +3,9 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
 #include "pinch/connection.hpp"
 #include "pinch/debug.hpp"
 #include "pinch/x11_channel.hpp"
-
-#include <asio/local/stream_protocol.hpp>
 
 #include <regex>
 
@@ -19,8 +16,8 @@ struct x11_socket_impl_base
 {
 	virtual ~x11_socket_impl_base() {}
 
-	virtual void async_read(std::shared_ptr<x11_channel> channel, asio::streambuf &response) = 0;
-	virtual void async_write(channel_ptr channel, std::shared_ptr<asio::streambuf> data) = 0;
+	virtual void async_read(std::shared_ptr<x11_channel> channel, asio_ns::streambuf &response) = 0;
+	virtual void async_write(channel_ptr channel, std::shared_ptr<asio_ns::streambuf> data) = 0;
 };
 
 template <class SOCKET>
@@ -38,19 +35,19 @@ struct x11_socket_impl : public x11_socket_impl_base
 			m_socket.close();
 	}
 
-	virtual void async_read(std::shared_ptr<x11_channel> channel, asio::streambuf &response)
+	virtual void async_read(std::shared_ptr<x11_channel> channel, asio_ns::streambuf &response)
 	{
-		asio::async_read(m_socket, response, asio::transfer_at_least(1),
-			[channel](const std::error_code &ec, std::size_t bytes_transferred)
+		asio_ns::async_read(m_socket, response, asio_ns::transfer_at_least(1),
+			[channel](const system_ns::error_code &ec, std::size_t bytes_transferred)
 			{
 				channel->receive_raw(ec, bytes_transferred);
 			});
 	}
 
-	virtual void async_write(channel_ptr channel, std::shared_ptr<asio::streambuf> data)
+	virtual void async_write(channel_ptr channel, std::shared_ptr<asio_ns::streambuf> data)
 	{
-		asio::async_write(m_socket, *data,
-			[channel, data](const std::error_code &ec, size_t)
+		asio_ns::async_write(m_socket, *data,
+			[channel, data](const system_ns::error_code &ec, size_t)
 			{
 				if (ec)
 					channel->close();
@@ -60,21 +57,21 @@ struct x11_socket_impl : public x11_socket_impl_base
 	SOCKET m_socket;
 };
 
-struct x11_datagram_impl : public x11_socket_impl<asio::ip::tcp::socket>
+struct x11_datagram_impl : public x11_socket_impl<asio_ns::ip::tcp::socket>
 {
 	template <typename Arg>
 	x11_datagram_impl(Arg &&arg, const std::string &host, const std::string &port)
 		: x11_socket_impl(std::forward<Arg>(arg))
 	{
-		using asio::ip::tcp;
+		using asio_ns::ip::tcp;
 
 		tcp::resolver resolver(arg);
 		auto endpoints = resolver.resolve(host, port);
-		asio::connect(m_socket, endpoints);
+		asio_ns::connect(m_socket, endpoints);
 	}
 };
 
-struct x11_stream_impl : public x11_socket_impl<asio::local::stream_protocol::socket>
+struct x11_stream_impl : public x11_socket_impl<asio_ns::local::stream_protocol::socket>
 {
 	template <typename Arg>
 	x11_stream_impl(Arg &&arg, const std::string &display_nr)
@@ -82,7 +79,7 @@ struct x11_stream_impl : public x11_socket_impl<asio::local::stream_protocol::so
 	{
 		const std::string kXUnixPath("/tmp/.X11-unix/X");
 
-		m_socket.connect(asio::local::stream_protocol::endpoint(kXUnixPath + display_nr));
+		m_socket.connect(asio_ns::local::stream_protocol::endpoint(kXUnixPath + display_nr));
 	}
 };
 
@@ -148,7 +145,7 @@ void x11_channel::closed()
 
 void x11_channel::receive_data(const char *data, size_t size)
 {
-	std::shared_ptr<asio::streambuf> request(new asio::streambuf);
+	std::shared_ptr<asio_ns::streambuf> request(new asio_ns::streambuf);
 	std::ostream out(request.get());
 
 	if (m_verified)
@@ -213,7 +210,7 @@ bool x11_channel::check_validation()
 	return result;
 }
 
-void x11_channel::receive_raw(const std::error_code &ec, size_t size)
+void x11_channel::receive_raw(const system_ns::error_code &ec, size_t size)
 {
 	if (ec)
 		close();
@@ -230,8 +227,8 @@ void x11_channel::receive_raw(const std::error_code &ec, size_t size)
 			if (k == 0)
 				break;
 
-			asio::async_write(*this, asio::buffer(buffer, k),
-				[self](const std::error_code &ec, size_t)
+			asio_ns::async_write(*this, asio_ns::buffer(buffer, k),
+				[self](const system_ns::error_code &ec, size_t)
 				{
 					if (ec)
 						self->close();

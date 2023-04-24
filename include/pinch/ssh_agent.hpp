@@ -5,11 +5,12 @@
 
 #pragma once
 
-#include "pinch/pinch.hpp"
+#include "pinch/types.hpp"
 
 #include <functional>
 #include <list>
 #include <memory>
+#include <string>
 
 namespace pinch
 {

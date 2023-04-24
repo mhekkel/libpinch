@@ -3,7 +3,6 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
 
 #include "pinch/detail/ssh_agent_impl.hpp"
 #include "pinch/packet.hpp"

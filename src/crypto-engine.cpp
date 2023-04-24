@@ -3,7 +3,6 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
 #include "pinch/crypto-engine.hpp"
 #include "pinch/error.hpp"
 
@@ -365,7 +364,7 @@ std::string crypto_engine::get_key_exchange_algorithm() const
 	return m_alg_kex;
 }
 
-blob crypto_engine::get_next_block(asio::streambuf &buffer, bool empty)
+blob crypto_engine::get_next_block(asio_ns::streambuf &buffer, bool empty)
 {
 	blob block(m_iblocksize);
 	buffer.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
@@ -394,7 +393,7 @@ blob crypto_engine::get_next_block(asio::streambuf &buffer, bool empty)
 	return block;
 }
 
-std::unique_ptr<ipacket> crypto_engine::get_next_packet(asio::streambuf &buffer, std::error_code &ec)
+std::unique_ptr<ipacket> crypto_engine::get_next_packet(asio_ns::streambuf &buffer, system_ns::error_code &ec)
 {
 	std::lock_guard lock(m_in_mutex);
 
@@ -440,15 +439,15 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(asio::streambuf &buffer,
 	return complete_and_verified ? std::move(m_packet) : std::unique_ptr<ipacket>();
 }
 
-std::unique_ptr<asio::streambuf> crypto_engine::get_next_request(opacket &&p)
+std::unique_ptr<asio_ns::streambuf> crypto_engine::get_next_request(opacket &&p)
 {
 	std::lock_guard lock(m_out_mutex);
 
-	auto request = std::make_unique<asio::streambuf>();
+	auto request = std::make_unique<asio_ns::streambuf>();
 
 	if (m_compressor)
 	{
-		std::error_code ec;
+		system_ns::error_code ec;
 		p.compress(*m_compressor, ec);
 
 		if (ec)

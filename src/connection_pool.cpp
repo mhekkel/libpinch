@@ -3,7 +3,6 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
 
 #include "pinch/connection_pool.hpp"
 
@@ -12,7 +11,7 @@ namespace pinch
 
 // --------------------------------------------------------------------
 
-connection_pool::connection_pool(asio::io_context &io_context)
+connection_pool::connection_pool(asio_ns::io_context &io_context)
 	: m_io_context(io_context)
 {
 }

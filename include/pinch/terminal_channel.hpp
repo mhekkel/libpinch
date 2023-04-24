@@ -6,7 +6,6 @@
 #pragma once
 
 #include "pinch/channel.hpp"
-#include "pinch/pinch.hpp"
 
 namespace pinch
 {

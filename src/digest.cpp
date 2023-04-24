@@ -3,7 +3,8 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
+
+#include "pinch/digest.hpp"
 
 #include <limits.h>
 #include <memory.h>
@@ -11,8 +12,6 @@
 #include <cassert>
 #include <random>
 #include <streambuf>
-
-#include "pinch/digest.hpp"
 
 namespace pinch
 {

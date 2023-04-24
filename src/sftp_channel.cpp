@@ -3,7 +3,6 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include "pinch/pinch.hpp"
 
 #include "pinch/connection.hpp"
 #include "pinch/packet.hpp"
@@ -82,7 +81,7 @@ namespace error
 	namespace detail
 	{
 
-		class sftp_category : public std::error_category
+		class sftp_category : public system_ns::error_category
 		{
 		  public:
 			const char *name() const noexcept
@@ -120,7 +119,7 @@ namespace error
 
 	} // namespace detail
 
-	std::error_category &sftp_category()
+	system_ns::error_category &sftp_category()
 	{
 		static detail::sftp_category impl;
 		return impl;
@@ -282,7 +281,7 @@ void sftp_channel::process_packet()
 
 void sftp_channel::do_init(std::unique_ptr<detail::sftp_init_op> op)
 {
-	channel::async_open([op = std::move(op), this](const std::error_code &ec) mutable
+	channel::async_open([op = std::move(op), this](const system_ns::error_code &ec) mutable
 		{
 		if (ec)
 			op->complete(ec);

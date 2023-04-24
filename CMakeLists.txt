@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(libpinch VERSION 1.0.0 LANGUAGES CXX)
+project(libpinch VERSION 1.1.0 LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+
+option(USE_BOOST_ASIO "Use the asio library from Boost instead of the non-boost version" ON)
 
 include(GNUInstallDirs)
 include(CheckFunctionExists)
@@ -68,7 +70,14 @@ endif()
 
 find_package(Filesystem REQUIRED)
 find_package(ZLIB REQUIRED)
-pkg_check_modules(ASIO asio REQUIRED IMPORTED_TARGET)
+
+if(USE_BOOST_ASIO)
+	find_package(Boost COMPONENTS headers system REQUIRED)
+	set(ASIO_INCLUDE_DIR ${Boost_INCLUDE_DIR})
+	add_compile_definitions(USE_BOOST_ASIO)
+else()
+	pkg_check_modules(ASIO asio REQUIRED IMPORTED_TARGET)
+endif()
 
 # Build shared libraries by default (not my cup of tea, but hey)
 option(BUILD_SHARED_LIBS "Build a shared library instead of a static one" OFF)
@@ -105,9 +114,8 @@ find_package(Threads REQUIRED)
 find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
 find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ REQUIRED)
 
-# find_package(Boost 1.71.0 REQUIRED COMPONENTS coroutine)
-
 list(APPEND PINCH_HEADERS
+	${CMAKE_SOURCE_DIR}/include/pinch.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/detail/ssh_agent_impl.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/error.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/terminal_channel.hpp
@@ -115,7 +123,6 @@ list(APPEND PINCH_HEADERS
 	${CMAKE_SOURCE_DIR}/include/pinch/ssh_agent_channel.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/x11_channel.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/packet.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/pinch.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/crypto-engine.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/digest.hpp
 	${CMAKE_SOURCE_DIR}/include/pinch/known_hosts.hpp
@@ -167,11 +174,11 @@ target_include_directories(pinch
 	PUBLIC
 	"$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
 	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-	${CRYPTOPP_INCLUDE_DIR}
+	${CRYPTOPP_INCLUDE_DIR} ${ASIO_INCLUDE_DIR}
 )
 
 target_include_directories(pinch PRIVATE ${CMAKE_SOURCE_DIR}/include PUBLIC ${CRYPTOPP_INCLUDE_DIR})
-target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB PkgConfig::ASIO)
+target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     target_link_options(pinch PRIVATE -undefined dynamic_lookup)
@@ -199,6 +206,12 @@ install(EXPORT pinchTargets
 
 install(
 	DIRECTORY include/pinch
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+	COMPONENT Devel
+)
+
+install(
+	FILES "${CMAKE_SOURCE_DIR}/include/pinch.hpp"
 	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 	COMPONENT Devel
 )

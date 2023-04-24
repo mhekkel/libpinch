@@ -7,6 +7,8 @@
 
 /// \brief dump packets to a stream
 
+#include "pinch/packet.hpp"
+
 #include <ostream>
 
 namespace pinch

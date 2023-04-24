@@ -11,8 +11,6 @@
 /// The class channel implements the concept of a bare SSH channel.
 /// It uses the pinch::connection class to send and receive data.
 
-#include "pinch/pinch.hpp"
-
 #include "pinch/connection.hpp"
 #include "pinch/operations.hpp"
 
@@ -54,10 +52,10 @@ namespace detail
 		{
 		}
 
-		virtual void complete(const std::error_code &ec,
+		virtual void complete(const system_ns::error_code &ec,
 			std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, std::error_code> handler(m_handler, ec);
+			binder<Handler, system_ns::error_code> handler(m_handler, ec);
 
 			m_work.complete(handler, handler.m_handler);
 		}
@@ -92,10 +90,10 @@ namespace detail
 		{
 		}
 
-		virtual void complete(const std::error_code &ec = {},
+		virtual void complete(const system_ns::error_code &ec = {},
 			std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, std::error_code, std::size_t> handler(
+			binder<Handler, system_ns::error_code, std::size_t> handler(
 				m_handler, ec, m_bytes_transferred);
 
 			m_work.complete(handler, handler.m_handler);
@@ -105,12 +103,12 @@ namespace detail
 		transfer_bytes(std::deque<char>::iterator begin,
 			std::deque<char>::iterator end) override
 		{
-			std::ptrdiff_t size = asio::buffer_size(m_buffers);
+			std::ptrdiff_t size = asio_ns::buffer_size(m_buffers);
 			if (size > end - begin)
 				size = end - begin;
 
-			for (auto buf = asio::buffer_sequence_begin(m_buffers);
-				 buf != asio::buffer_sequence_end(m_buffers) and size > 0;
+			for (auto buf = asio_ns::buffer_sequence_begin(m_buffers);
+				 buf != asio_ns::buffer_sequence_end(m_buffers) and size > 0;
 				 ++buf)
 			{
 				char *dst = static_cast<char *>(buf->data());
@@ -156,10 +154,10 @@ namespace detail
 			m_packet = std::move(packet);
 		}
 
-		virtual void complete(const std::error_code &ec = {},
+		virtual void complete(const system_ns::error_code &ec = {},
 			std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, std::error_code, std::size_t> handler(
+			binder<Handler, system_ns::error_code, std::size_t> handler(
 				m_handler, ec, m_bytes_transferred);
 
 			m_work.complete(handler, handler.m_handler);
@@ -190,10 +188,10 @@ namespace detail
 			m_type = type;
 		}
 
-		virtual void complete(const std::error_code &ec = {},
+		virtual void complete(const system_ns::error_code &ec = {},
 			std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, std::error_code> handler(m_handler, ec);
+			binder<Handler, system_ns::error_code> handler(m_handler, ec);
 
 			m_work.complete(handler, handler.m_handler);
 		}
@@ -215,7 +213,7 @@ class channel : public std::enable_shared_from_this<channel>
 {
   public:
 	/// \brief The type of the lowest layer.
-	using tcp_socket_type = asio::ip::tcp::socket;
+	using tcp_socket_type = asio_ns::ip::tcp::socket;
 	using lowest_layer_type = typename tcp_socket_type::lowest_layer_type;
 
 	/// \brief The type of the executor associated with the object.
@@ -261,13 +259,13 @@ class channel : public std::enable_shared_from_this<channel>
 			open_channel
 		};
 
-		return asio::async_compose<Handler, void(std::error_code)>(
+		return asio_ns::async_compose<Handler, void(system_ns::error_code)>(
 			[
 				state = start,
 				this,
 				me = shared_from_this()
 			]
-			(auto &self, const std::error_code ec = {}, std::size_t = {}) mutable
+			(auto &self, const system_ns::error_code ec = {}, std::size_t = {}) mutable
 			{
 				if (not ec)
 				{
@@ -313,8 +311,8 @@ class channel : public std::enable_shared_from_this<channel>
 	template <typename Handler>
 	auto async_wait(wait_type type, Handler &&handler)
 	{
-		return asio::async_initiate<Handler,
-			void(std::error_code)>(
+		return asio_ns::async_initiate<Handler,
+			void(system_ns::error_code)>(
 			async_wait_impl{}, handler, this, type);
 	}
 
@@ -409,8 +407,8 @@ class channel : public std::enable_shared_from_this<channel>
 	auto async_read_some(const MutableBufferSequence &buffers,
 		ReadHandler &&handler)
 	{
-		return asio::async_initiate<
-			ReadHandler, void(std::error_code, std::size_t)>(
+		return asio_ns::async_initiate<
+			ReadHandler, void(system_ns::error_code, std::size_t)>(
 			async_read_impl{}, handler, this, buffers);
 	}
 
@@ -424,13 +422,13 @@ class channel : public std::enable_shared_from_this<channel>
 			sending
 		};
 
-		return asio::async_compose<Handler, void(std::error_code, std::size_t)>(
+		return asio_ns::async_compose<Handler, void(system_ns::error_code, std::size_t)>(
 			[
 				me = shared_from_this(),
 				buffer,
 				state = start
 			]
-			(auto &self, const std::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+			(auto &self, const system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
 			{
 				std::size_t n = buffer.size();
 				if (n > me->m_max_send_packet_size)
@@ -457,7 +455,7 @@ class channel : public std::enable_shared_from_this<channel>
 	template <typename Handler>
 	auto async_write_packet(opacket &&out, Handler &&handler)
 	{
-		return asio::async_initiate<Handler, void(std::error_code,
+		return asio_ns::async_initiate<Handler, void(system_ns::error_code,
 														std::size_t)>(
 			async_write_impl{}, handler, this, std::move(out));
 	}
@@ -469,14 +467,14 @@ class channel : public std::enable_shared_from_this<channel>
 	template <typename Data, typename Handler>
 	auto send_data(const Data &&data, message_type msg, Handler &&handler)
 	{
-		return asio::async_compose<Handler, void(std::error_code, std::size_t)>(
+		return asio_ns::async_compose<Handler, void(system_ns::error_code, std::size_t)>(
 			[
 				me = shared_from_this(),
 				data = std::move(data),
 				offset = 0ULL,
 				msg
 			]
-			(auto &self, const std::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+			(auto &self, const system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
 			{
 				std::size_t n = data.size() - offset;
 				if (n > me->m_max_send_packet_size)
@@ -500,13 +498,13 @@ class channel : public std::enable_shared_from_this<channel>
 	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	void send_data(blob &&data, message_type msg = msg_channel_data)
 	{
-		send_data(std::move(data), msg, [](const std::error_code &, std::size_t) {});
+		send_data(std::move(data), msg, [](const system_ns::error_code &, std::size_t) {});
 	}
 
 	/// \brief To send data through the channel using SSH_MSG_CHANNEL_DATA messages
 	void send_data(std::string &&data, message_type msg = msg_channel_data)
 	{
-		send_data(std::move(data), msg, [](const std::error_code &, std::size_t) {});
+		send_data(std::move(data), msg, [](const system_ns::error_code &, std::size_t) {});
 	}
 
   protected:
@@ -533,7 +531,7 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual std::string channel_type() const { return "session"; }
 
 	// low level stuff
-	void send_pending(const std::error_code &ec = {});
+	void send_pending(const system_ns::error_code &ec = {});
 	void push_received();
 	void check_wait();
 	void add_read_op(detail::read_channel_op *op);
@@ -579,8 +577,8 @@ class channel : public std::enable_shared_from_this<channel>
 		{
 			if (not ch->is_open())
 				handler(error::make_error_code(error::connection_lost), 0);
-			else if (asio::buffer_size(buffers) == 0)
-				handler(std::error_code(), 0);
+			else if (asio_ns::buffer_size(buffers) == 0)
+				handler(system_ns::error_code(), 0);
 			else
 				ch->add_read_op(new detail::read_channel_handler{
 					std::move(handler), ch->get_executor(), buffers});
@@ -622,7 +620,7 @@ class channel : public std::enable_shared_from_this<channel>
 class exec_channel : public channel
 {
   public:
-	using callback_executor_type = asio::execution::any_executor<asio::execution::blocking_t::never_t>;
+	using callback_executor_type = asio_ns::execution::any_executor<asio_ns::execution::blocking_t::never_t>;
 
 	template <typename Handler, typename Executor>
 	exec_channel(std::shared_ptr<basic_connection> connection,

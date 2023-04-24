@@ -4,7 +4,6 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 
 #include "pinch/error.hpp"
-#include "pinch/pinch.hpp"
 
 namespace pinch::error
 {
@@ -12,7 +11,7 @@ namespace pinch::error
 namespace detail
 {
 
-	class ssh_category : public std::error_category
+	class ssh_category : public system_ns::error_category
 	{
 	  public:
 		const char *name() const noexcept
@@ -52,7 +51,7 @@ namespace detail
 		}
 	};
 
-	class disconnect_category : public std::error_category
+	class disconnect_category : public system_ns::error_category
 	{
 	  public:
 		const char *name() const noexcept
@@ -104,13 +103,13 @@ namespace detail
 
 } // namespace detail
 
-std::error_category &ssh_category()
+system_ns::error_category &ssh_category()
 {
 	static detail::ssh_category impl;
 	return impl;
 }
 
-std::error_category &disconnect_category()
+system_ns::error_category &disconnect_category()
 {
 	static detail::disconnect_category impl;
 	return impl;
