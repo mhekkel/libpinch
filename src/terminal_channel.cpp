@@ -3,11 +3,11 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
-#include <pinch/connection.hpp>
-#include <pinch/packet.hpp>
-#include <pinch/terminal_channel.hpp>
+#include "pinch/connection.hpp"
+#include "pinch/packet.hpp"
+#include "pinch/terminal_channel.hpp"
 
 namespace pinch
 {

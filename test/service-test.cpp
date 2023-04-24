@@ -3,17 +3,7 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-//#define BOOST_ASIO_ENABLE_HANDLER_TRACKING
-
-#include <boost/asio.hpp>
-
-#include <deque>
-#include <iostream>
-#include <map>
-
-#include <type_traits>
-
-#include <boost/algorithm/string.hpp>
+#define BOOST_ASIO_ENABLE_HANDLER_TRACKING
 
 #include "pinch/channel.hpp"
 #include "pinch/connection.hpp"
@@ -23,7 +13,12 @@
 #include "pinch/ssh_agent.hpp"
 #include "pinch/terminal_channel.hpp"
 
-namespace ba = boost::algorithm;
+#include <asio.hpp>
+
+#include <deque>
+#include <iostream>
+#include <map>
+#include <type_traits>
 
 // --------------------------------------------------------------------
 
@@ -168,7 +163,7 @@ class my_queue
 class my_executor
 {
   public:
-	boost::asio::execution_context *m_context;
+	asio::execution_context *m_context;
 	my_queue *m_queue;
 
 	bool operator==(const my_executor &other) const noexcept
@@ -181,16 +176,16 @@ class my_executor
 		return !(*this == other);
 	}
 
-	boost::asio::execution_context &query(boost::asio::execution::context_t) const noexcept
+	asio::execution_context &query(asio::execution::context_t) const noexcept
 	{
 		return *m_context;
 	}
 
-	static constexpr boost::asio::execution::blocking_t::never_t query(
-		boost::asio::execution::blocking_t) noexcept
+	static constexpr asio::execution::blocking_t::never_t query(
+		asio::execution::blocking_t) noexcept
 	{
 		// This executor always has blocking.never semantics.
-		return boost::asio::execution::blocking.never;
+		return asio::execution::blocking.never;
 	}
 
 	template <class F>
@@ -200,12 +195,12 @@ class my_executor
 	}
 };
 
-boost::asio::streambuf buffer;
+asio::streambuf buffer;
 
 void read_from_channel(pinch::channel_ptr ch, int start = 1)
 {
-	boost::asio::async_read(*ch, buffer, boost::asio::transfer_at_least(1),
-		[ch, start](const boost::system::error_code &ec, std::size_t bytes_transferred) mutable {
+	asio::async_read(*ch, buffer, asio::transfer_at_least(1),
+		[ch, start](const std::error_code &ec, std::size_t bytes_transferred) mutable {
 			if (ec)
 				std::cerr << ec.message() << std::endl;
 			else
@@ -236,7 +231,7 @@ bool async_validate(const std::string &host_name, const std::string &algorithm, 
 
 	auto result = validate_task.get_future();
 
-	boost::asio::dispatch(executor, [task = std::move(validate_task)]() mutable {
+	asio::dispatch(executor, [task = std::move(validate_task)]() mutable {
 		task();
 	});
 
@@ -267,18 +262,18 @@ auto async_val(Handler &&handler, Executor &executor, Function func, Args... arg
 	std::packaged_task<result_type()> task(std::bind(func, args...));
 	std::future<result_type> result = task.get_future();
 
-	return boost::asio::async_compose<Handler, void(boost::system::error_code, result_type)>(
+	return asio::async_compose<Handler, void(std::error_code, result_type)>(
 		[task = std::move(task),
 			result = std::move(result),
 			state = start,
-			executor](auto &self, boost::system::error_code ec = {}, result_type r = {}) mutable {
+			executor](auto &self, std::error_code ec = {}, result_type r = {}) mutable {
 			if (not ec)
 			{
 				if (state == start)
 				{
 					state = running;
 					task();
-					boost::asio::dispatch(executor, std::move(self));
+					asio::dispatch(executor, std::move(self));
 					return;
 				}
 
@@ -328,7 +323,7 @@ auto async_ask_password_2(Handler &&handler, Executor &executor)
 
 struct AsyncImpl
 {
-	void operator()(boost::system::error_code ec, std::string password)
+	void operator()(std::error_code ec, std::string password)
 	{
 		std::cout << "And the password is " << password << std::endl
 				  << "  ==> in thread " << this_thread_name()  << std::endl;
@@ -349,7 +344,7 @@ struct AsyncImpl
 
 int main()
 {
-	using boost::asio::ip::tcp;
+	using asio::ip::tcp;
 
 	const char* USER = getenv("USER");
 	std::string user = USER ? USER : "test-account";
@@ -357,8 +352,8 @@ int main()
 	// where are we?
 	std::cout << "Starting in main thread " << this_thread_name() << std::endl;
 
-	boost::asio::io_context io_context;
-	auto strand = boost::asio::io_context::strand(io_context);
+	asio::io_context io_context;
+	auto strand = asio::io_context::strand(io_context);
 
 	pinch::connection_pool pool(io_context);
 
@@ -372,7 +367,7 @@ int main()
 
 	auto channel = std::make_shared<pinch::terminal_channel>(conn);
 
-	auto msg = boost::asio::bind_executor(executor,
+	auto msg = asio::bind_executor(executor,
 		[](const std::string &msg, const std::string &lang) {
 			std::cout << "Message callback, msg = " << msg << ", lang = " << lang << std::endl;
 		});
@@ -384,7 +379,7 @@ int main()
 	auto &known_hosts = pinch::known_hosts::instance();
 	// known_hosts.load_host_file("/home/test-account/.ssh/known_hosts");
 	conn->set_accept_host_key_handler(
-		boost::asio::bind_executor(executor, 
+		asio::bind_executor(executor, 
 
 		[](const std::string &host_name, const std::string &algorithm, const pinch::blob &key, pinch::host_key_state state) {
 			std::cout << "validating " << host_name << " with algo " << algorithm << std::endl
@@ -392,10 +387,10 @@ int main()
 			return pinch::host_key_reply::trust_once;
 		}));
 
-	conn->set_provide_password_callback(boost::asio::bind_executor(executor, &provide_password));
+	conn->set_provide_password_callback(asio::bind_executor(executor, &provide_password));
 
-	auto open_cb = boost::asio::bind_executor(executor,
-		[t = channel, conn, &queue, &io_context](const boost::system::error_code &ec) {
+	auto open_cb = asio::bind_executor(executor,
+		[t = channel, conn, &queue, &io_context](const std::error_code &ec) {
 			std::cout << "handler, ec = " << ec.message() << " thread: " << this_thread_name()  << std::endl;
 
 			if (ec)
@@ -413,7 +408,7 @@ int main()
 		try
 		{
 			std::cout << "IO Context thread is " << this_thread_name() << std::endl;
-			// boost::asio::executor_work_guard work(io_context.get_executor());
+			// asio::executor_work_guard work(io_context.get_executor());
 			io_context.run();
 		}
 		catch (const std::exception &ex)
@@ -422,8 +417,8 @@ int main()
 		}
 	});
 
-	boost::asio::signal_set sigset(io_context, SIGHUP, SIGINT);
-	sigset.async_wait([&io_context, &queue](boost::system::error_code, int signal) { io_context.stop(); queue.stop(); });
+	asio::signal_set sigset(io_context, SIGHUP, SIGINT);
+	sigset.async_wait([&io_context, &queue](std::error_code, int signal) { io_context.stop(); queue.stop(); });
 
 	conn->keep_alive(std::chrono::seconds(5));
 

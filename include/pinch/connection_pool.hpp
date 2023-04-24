@@ -5,7 +5,7 @@
 
 #pragma once
 
-/// \file
+/// \file connection_pool.hpp
 /// Definition of the connection_pool class
 ///
 /// A connection_pool can be used to keep the number of connections
@@ -13,9 +13,9 @@
 ///
 /// Connections are uniquely defined by their user/host/port combination.
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
-#include <pinch/channel.hpp>
+#include "pinch/channel.hpp"
 
 namespace pinch
 {
@@ -31,7 +31,7 @@ class connection_pool
 	/// \brief constructor
 	///
 	/// \param io_context	The boost io_context to use
-	connection_pool(boost::asio::io_context &io_context);
+	connection_pool(asio::io_context &io_context);
 
 	/// \brief destructor
 	~connection_pool();
@@ -109,7 +109,7 @@ class connection_pool
 
 	using proxy_list = std::list<proxy>;
 
-	boost::asio::io_context &m_io_context;
+	asio::io_context &m_io_context;
 	entry_list m_entries;
 	proxy_list m_proxies;
 };

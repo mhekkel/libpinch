@@ -3,10 +3,10 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
-#include <pinch/debug.hpp>
-#include <pinch/packet.hpp>
+#include "pinch/debug.hpp"
+#include "pinch/packet.hpp"
 
 namespace pinch
 {

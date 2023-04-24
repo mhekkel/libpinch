@@ -7,12 +7,12 @@
 
 /// \brief Simple implementation of very common digesting routines
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
 #include <stdexcept>
 #include <string>
 
-#include <pinch/types.hpp>
+#include "pinch/types.hpp"
 
 namespace pinch
 {

@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
 #include <functional>
 #include <list>

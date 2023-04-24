@@ -3,18 +3,18 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
 #include <iostream>
 
 #include "pinch/ssh_agent_channel.hpp"
-#include <pinch/channel.hpp>
-#include <pinch/connection.hpp>
-#include <pinch/crypto-engine.hpp>
-#include <pinch/error.hpp>
-#include <pinch/port_forwarding.hpp>
-#include <pinch/ssh_agent.hpp>
-#include <pinch/x11_channel.hpp>
+#include "pinch/channel.hpp"
+#include "pinch/connection.hpp"
+#include "pinch/crypto-engine.hpp"
+#include "pinch/error.hpp"
+#include "pinch/port_forwarding.hpp"
+#include "pinch/ssh_agent.hpp"
+#include "pinch/x11_channel.hpp"
 
 namespace pinch
 {
@@ -66,7 +66,7 @@ void basic_connection::userauth_success(const std::string &host_version, const b
 		keep_alive_time_out();
 }
 
-void basic_connection::handle_error(const boost::system::error_code &ec)
+void basic_connection::handle_error(const std::error_code &ec)
 {
 	if (ec)
 	{
@@ -84,7 +84,7 @@ void basic_connection::close()
 	m_session_id.clear();
 	m_crypto_engine.reset();
 
-	m_keep_alive_timer.expires_at(boost::asio::steady_timer::time_point::max());
+	m_keep_alive_timer.expires_at(asio::steady_timer::time_point::max());
 
 	if (m_port_forwarder)
 		m_port_forwarder->connection_closed();
@@ -103,7 +103,7 @@ void basic_connection::rekey()
 
 // the read loop, this routine keeps calling itself until an error condition is met
 
-void basic_connection::read_loop(boost::system::error_code ec, std::size_t bytes_transferred)
+void basic_connection::read_loop(std::error_code ec, std::size_t bytes_transferred)
 {
 	if (ec)
 	{
@@ -134,7 +134,7 @@ void basic_connection::read_loop(boost::system::error_code ec, std::size_t bytes
 		}
 
 		using namespace std::placeholders;
-		boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1),
+		asio::async_read(*this, m_response, asio::transfer_at_least(1),
 			std::bind(&basic_connection::read_loop, this, _1, _2));
 	}
 	catch (...)
@@ -150,7 +150,7 @@ void basic_connection::process_packet(ipacket &in)
 	m_keep_alive_timeouts = 0;
 
 	opacket out;
-	boost::system::error_code ec;
+	std::error_code ec;
 
 	if (not(m_kex and m_kex->process(in, out, ec)))
 		switch ((message_type)in)
@@ -226,7 +226,7 @@ void basic_connection::process_packet(ipacket &in)
 		async_write(std::move(out));
 }
 
-bool basic_connection::receive_packet(ipacket &packet, boost::system::error_code &ec)
+bool basic_connection::receive_packet(ipacket &packet, std::error_code &ec)
 {
 	if (packet.complete())
 		packet.clear();
@@ -392,9 +392,9 @@ void basic_connection::keep_alive(std::chrono::seconds interval, uint32_t max_ti
 	}
 }
 
-void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
+void basic_connection::keep_alive_time_out(const std::error_code &ec)
 {
-	if (ec == boost::asio::error::operation_aborted)
+	if (ec == asio::error::operation_aborted)
 		return;
 
 	time_point_type now = std::chrono::steady_clock::now();
@@ -409,7 +409,7 @@ void basic_connection::keep_alive_time_out(const boost::system::error_code &ec)
 		{
 			opacket out(msg_global_request);
 			out << "keepalive@salt.hekkelman.com" << true;
-			async_write(std::move(out), [this](boost::system::error_code ec, std::size_t bytes_transferred)
+			async_write(std::move(out), [this](std::error_code ec, std::size_t bytes_transferred)
 				{
 				if (ec)
 					handle_error(ec); });
@@ -444,21 +444,21 @@ void basic_connection::forward_socks5(uint16_t local_port)
 
 void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 {
-	boost::system::error_code ec;
+	std::error_code ec;
 
 	if (m_auth_state == authenticated)
 		op->complete(ec);
 	else if (m_auth_state == handshake)
-		async_wait(detail::connection_wait_type::open, [op = std::move(op)](boost::system::error_code ec)
+		async_wait(detail::connection_wait_type::open, [op = std::move(op)](std::error_code ec)
 			{ op->complete(ec); });
 	else
 	{
 		m_auth_state = handshake;
 
 #if __cpp_impl_coroutine
-		boost::asio::co_spawn(get_executor(), do_handshake(std::move(op)), boost::asio::detached);
+		asio::co_spawn(get_executor(), do_handshake(std::move(op)), asio::detached);
 #else
-		boost::asio::spawn(m_strand, [op = std::move(op), this](boost::asio::yield_context yield) mutable
+		asio::spawn(m_strand, [op = std::move(op), this](asio::yield_context yield) mutable
 			{ do_handshake(std::move(op), yield); });
 #endif
 	}
@@ -467,15 +467,15 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 #if __cpp_impl_coroutine
 
 #define CO_AWAIT co_await
-#define YIELD boost::asio::use_awaitable
+#define YIELD asio::use_awaitable
 
-boost::asio::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> op)
+asio::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> op)
 #else
 
 #define CO_AWAIT
 #define YIELD yield
 
-void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield)
+void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> op, asio::yield_context yield)
 
 #endif
 {
@@ -484,12 +484,12 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 		CO_AWAIT async_open_next_layer(YIELD);
 		CO_AWAIT async_wait(wait_type::write, YIELD);
 
-		boost::asio::streambuf buffer;
+		asio::streambuf buffer;
 		std::ostream os(&buffer);
 		os << kSSHVersionString << "\r\n";
-		CO_AWAIT boost::asio::async_write(*this, buffer, YIELD);
+		CO_AWAIT asio::async_write(*this, buffer, YIELD);
 
-		CO_AWAIT boost::asio::async_read_until(*this, m_response, "\n", YIELD);
+		CO_AWAIT asio::async_read_until(*this, m_response, "\n", YIELD);
 
 		std::string host_version;
 		{
@@ -501,21 +501,21 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 			host_version.pop_back();
 
 		if (host_version.substr(0, 7) != "SSH-2.0")
-			throw boost::system::system_error(error::make_error_code(error::protocol_version_not_supported));
+			throw std::system_error(error::make_error_code(error::protocol_version_not_supported));
 
 		auto kex = std::make_unique<key_exchange>(host_version);
 		async_write(kex->init());
 
-		CO_AWAIT boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(8), YIELD);
+		CO_AWAIT asio::async_read(*this, m_response, asio::transfer_at_least(8), YIELD);
 
 		ipacket in;
 
-		boost::system::error_code ec;
+		std::error_code ec;
 		while (not ec)
 		{
 			if (not receive_packet(in, ec) and not ec)
 			{
-				CO_AWAIT boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), YIELD);
+				CO_AWAIT asio::async_read(*this, m_response, asio::transfer_at_least(1), YIELD);
 				continue;
 			}
 
@@ -542,7 +542,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 		}
 
 		if (ec)
-			throw boost::system::system_error(ec);
+			throw std::system_error(ec);
 
 		newkeys(*kex);
 
@@ -567,7 +567,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 		{
 			if (not receive_packet(in, ec) and not ec)
 			{
-				CO_AWAIT boost::asio::async_read(*this, m_response, boost::asio::transfer_at_least(1), YIELD);
+				CO_AWAIT asio::async_read(*this, m_response, asio::transfer_at_least(1), YIELD);
 				continue;
 			}
 
@@ -729,7 +729,7 @@ void basic_connection::do_handshake(std::unique_ptr<detail::open_connection_op> 
 		if (ec)
 			close();
 	}
-	catch (const boost::system::system_error &e)
+	catch (const std::system_error &e)
 	{
 		op->complete(e.code());
 		close();
@@ -744,10 +744,10 @@ void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
 		op->complete({});
 	else
 	{
-		using namespace boost::asio::ip;
+		using namespace asio::ip;
 
 		// synchronous for now...
-		boost::system::error_code ec;
+		std::error_code ec;
 
 		tcp::resolver resolver(get_executor());
 		tcp::resolver::results_type endpoints = resolver.resolve(m_host, std::to_string(m_port), ec);
@@ -756,8 +756,8 @@ void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
 			op->complete(ec);
 		else
 		{
-			boost::asio::async_connect(m_next_layer, endpoints,
-				[self = shared_from_this(), op = std::move(op)](const boost::system::error_code &ec, tcp::resolver::endpoint_type)
+			asio::async_connect(m_next_layer, endpoints,
+				[self = shared_from_this(), op = std::move(op)](const std::error_code &ec, tcp::resolver::endpoint_type)
 				{
 					op->complete(ec);
 				});
@@ -849,7 +849,7 @@ void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection
 		}
 
 		m_channel->async_open(
-			[op = std::move(op)](const boost::system::error_code &ec)
+			[op = std::move(op)](const std::error_code &ec)
 			{
 				op->complete(ec);
 			});
@@ -865,7 +865,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 		// dubious...
 		case wait_type::open:
 			m_channel->async_wait(channel::wait_type::open,
-				[wait_op = std::move(op)](const boost::system::error_code ec)
+				[wait_op = std::move(op)](const std::error_code ec)
 				{
 					wait_op->complete(ec);
 				});
@@ -873,7 +873,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 
 		case wait_type::read:
 			m_channel->async_wait(channel::wait_type::read,
-				[wait_op = std::move(op)](const boost::system::error_code ec)
+				[wait_op = std::move(op)](const std::error_code ec)
 				{
 					wait_op->complete(ec);
 				});
@@ -881,7 +881,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 
 		case wait_type::write:
 			m_channel->async_wait(channel::wait_type::write,
-				[wait_op = std::move(op)](const boost::system::error_code ec)
+				[wait_op = std::move(op)](const std::error_code ec)
 				{
 					wait_op->complete(ec);
 				});

@@ -3,9 +3,9 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
-#include <pinch/channel.hpp>
+#include "pinch/channel.hpp"
 
 namespace pinch
 {
@@ -19,7 +19,7 @@ void channel::fill_open_opacket(opacket &out)
 
 void channel::open()
 {
-	async_open([](boost::system::error_code) {});
+	async_open([](std::error_code) {});
 }
 
 void channel::opened()
@@ -298,7 +298,7 @@ void channel::receive_extended_data(const char *data, size_t size, uint32_t type
 {
 }
 
-void channel::send_pending(const boost::system::error_code &ec)
+void channel::send_pending(const std::error_code &ec)
 {
 	if (ec)
 	{
@@ -326,7 +326,7 @@ void channel::send_pending(const boost::system::error_code &ec)
 			m_host_window_size -= size;
 
 			m_connection->async_write(std::move(op->m_packet),
-				[this, op = std::unique_ptr<detail::write_channel_op>(op)](const boost::system::error_code &ec, std::size_t bytes_transferred)
+				[this, op = std::unique_ptr<detail::write_channel_op>(op)](const std::error_code &ec, std::size_t bytes_transferred)
 				{
 					op->complete(ec, bytes_transferred);
 					this->send_pending(ec);
@@ -426,8 +426,8 @@ void exec_channel::handle_channel_request(const std::string &request, ipacket &i
 	if (request == "exit-status")
 		in >> status;
 
-	boost::asio::execution::execute(
-		boost::asio::require(m_executor, boost::asio::execution::blocking.never),
+	asio::execution::execute(
+		asio::require(m_executor, asio::execution::blocking.never),
 		[request, status, this]()
 		{ m_handler(request, status); });
 }

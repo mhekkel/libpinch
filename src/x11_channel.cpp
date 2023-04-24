@@ -3,15 +3,14 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
+#include "pinch/connection.hpp"
+#include "pinch/debug.hpp"
+#include "pinch/x11_channel.hpp"
+
+#include <asio/local/stream_protocol.hpp>
 
 #include <regex>
-
-#include <boost/asio/local/stream_protocol.hpp>
-
-#include <pinch/connection.hpp>
-#include <pinch/debug.hpp>
-#include <pinch/x11_channel.hpp>
 
 namespace pinch
 {
@@ -20,8 +19,8 @@ struct x11_socket_impl_base
 {
 	virtual ~x11_socket_impl_base() {}
 
-	virtual void async_read(std::shared_ptr<x11_channel> channel, boost::asio::streambuf &response) = 0;
-	virtual void async_write(channel_ptr channel, std::shared_ptr<boost::asio::streambuf> data) = 0;
+	virtual void async_read(std::shared_ptr<x11_channel> channel, asio::streambuf &response) = 0;
+	virtual void async_write(channel_ptr channel, std::shared_ptr<asio::streambuf> data) = 0;
 };
 
 template <class SOCKET>
@@ -39,19 +38,19 @@ struct x11_socket_impl : public x11_socket_impl_base
 			m_socket.close();
 	}
 
-	virtual void async_read(std::shared_ptr<x11_channel> channel, boost::asio::streambuf &response)
+	virtual void async_read(std::shared_ptr<x11_channel> channel, asio::streambuf &response)
 	{
-		boost::asio::async_read(m_socket, response, boost::asio::transfer_at_least(1),
-			[channel](const boost::system::error_code &ec, std::size_t bytes_transferred)
+		asio::async_read(m_socket, response, asio::transfer_at_least(1),
+			[channel](const std::error_code &ec, std::size_t bytes_transferred)
 			{
 				channel->receive_raw(ec, bytes_transferred);
 			});
 	}
 
-	virtual void async_write(channel_ptr channel, std::shared_ptr<boost::asio::streambuf> data)
+	virtual void async_write(channel_ptr channel, std::shared_ptr<asio::streambuf> data)
 	{
-		boost::asio::async_write(m_socket, *data,
-			[channel, data](const boost::system::error_code &ec, size_t)
+		asio::async_write(m_socket, *data,
+			[channel, data](const std::error_code &ec, size_t)
 			{
 				if (ec)
 					channel->close();
@@ -61,21 +60,21 @@ struct x11_socket_impl : public x11_socket_impl_base
 	SOCKET m_socket;
 };
 
-struct x11_datagram_impl : public x11_socket_impl<boost::asio::ip::tcp::socket>
+struct x11_datagram_impl : public x11_socket_impl<asio::ip::tcp::socket>
 {
 	template <typename Arg>
 	x11_datagram_impl(Arg &&arg, const std::string &host, const std::string &port)
 		: x11_socket_impl(std::forward<Arg>(arg))
 	{
-		using boost::asio::ip::tcp;
+		using asio::ip::tcp;
 
 		tcp::resolver resolver(arg);
 		auto endpoints = resolver.resolve(host, port);
-		boost::asio::connect(m_socket, endpoints);
+		asio::connect(m_socket, endpoints);
 	}
 };
 
-struct x11_stream_impl : public x11_socket_impl<boost::asio::local::stream_protocol::socket>
+struct x11_stream_impl : public x11_socket_impl<asio::local::stream_protocol::socket>
 {
 	template <typename Arg>
 	x11_stream_impl(Arg &&arg, const std::string &display_nr)
@@ -83,7 +82,7 @@ struct x11_stream_impl : public x11_socket_impl<boost::asio::local::stream_proto
 	{
 		const std::string kXUnixPath("/tmp/.X11-unix/X");
 
-		m_socket.connect(boost::asio::local::stream_protocol::endpoint(kXUnixPath + display_nr));
+		m_socket.connect(asio::local::stream_protocol::endpoint(kXUnixPath + display_nr));
 	}
 };
 
@@ -149,7 +148,7 @@ void x11_channel::closed()
 
 void x11_channel::receive_data(const char *data, size_t size)
 {
-	std::shared_ptr<boost::asio::streambuf> request(new boost::asio::streambuf);
+	std::shared_ptr<asio::streambuf> request(new asio::streambuf);
 	std::ostream out(request.get());
 
 	if (m_verified)
@@ -214,7 +213,7 @@ bool x11_channel::check_validation()
 	return result;
 }
 
-void x11_channel::receive_raw(const boost::system::error_code &ec, size_t size)
+void x11_channel::receive_raw(const std::error_code &ec, size_t size)
 {
 	if (ec)
 		close();
@@ -231,8 +230,8 @@ void x11_channel::receive_raw(const boost::system::error_code &ec, size_t size)
 			if (k == 0)
 				break;
 
-			boost::asio::async_write(*this, boost::asio::buffer(buffer, k),
-				[self](const boost::system::error_code &ec, size_t)
+			asio::async_write(*this, asio::buffer(buffer, k),
+				[self](const std::error_code &ec, size_t)
 				{
 					if (ec)
 						self->close();

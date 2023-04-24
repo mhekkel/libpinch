@@ -5,27 +5,28 @@
 
 #pragma once
 
-/// \file
+/// \file connection.hpp
 /// definition of the connection classes
+
+#include "pinch/crypto-engine.hpp"
+#include "pinch/error.hpp"
+#include "pinch/known_hosts.hpp"
+#include "pinch/operations.hpp"
+#include "pinch/pinch.hpp"
+#include "pinch/ssh_agent.hpp"
+
+#if __cpp_impl_coroutine
+#include <asio/execution.hpp>
+#include <asio/use_awaitable.hpp>
+#include <coroutine>
+#else
+#include <asio/spawn.hpp>
+#endif
 
 #include <chrono>
 #include <deque>
 #include <memory>
 
-#if __cpp_impl_coroutine
-#include <boost/asio/execution.hpp>
-#include <boost/asio/use_awaitable.hpp>
-#include <coroutine>
-#else
-#include <boost/asio/spawn.hpp>
-#endif
-
-#include <pinch/crypto-engine.hpp>
-#include <pinch/error.hpp>
-#include <pinch/known_hosts.hpp>
-#include <pinch/operations.hpp>
-#include <pinch/pinch.hpp>
-#include <pinch/ssh_agent.hpp>
 
 namespace pinch
 {
@@ -120,9 +121,9 @@ namespace detail
 		{
 		}
 
-		void complete(const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) override
+		void complete(const std::error_code &ec = {}, std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, boost::system::error_code> handler(m_handler, ec);
+			binder<Handler, std::error_code> handler(m_handler, ec);
 			m_work.complete(handler, handler.m_handler);
 		}
 
@@ -161,10 +162,10 @@ namespace detail
 			m_type = type;
 		}
 
-		void complete(const boost::system::error_code &ec = {},
+		void complete(const std::error_code &ec = {},
 			std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, boost::system::error_code> handler(m_handler, ec);
+			binder<Handler, std::error_code> handler(m_handler, ec);
 			m_work.complete(handler, handler.m_handler);
 		}
 
@@ -200,7 +201,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \param host The hostname to connect to, or an IP address
 	/// \param port The port to connect to
 
-	basic_connection(boost::asio::io_context &io_context, const std::string &user, const std::string &host, uint16_t port = 22)
+	basic_connection(asio::io_context &io_context, const std::string &user, const std::string &host, uint16_t port = 22)
 		: m_user(user)
 		, m_host(host)
 		, m_port(port)
@@ -219,11 +220,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	/// The type of the lowest layer. In our case that's always a tcp::socket
 	/// making the code easier.
-	using tcp_socket_type = boost::asio::ip::tcp::socket;
+	using tcp_socket_type = asio::ip::tcp::socket;
 	using lowest_layer_type = typename tcp_socket_type::lowest_layer_type;
 
 	/// The type of the executor associated with the object.
-	using executor_type = typename boost::asio::io_context::executor_type;
+	using executor_type = typename asio::io_context::executor_type;
 
 	executor_type get_executor() noexcept
 	{
@@ -245,12 +246,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// perform a handshake and log in to the server.
 	///
 	/// \param handler The completion handler, should be of form
-	///                void (boost::system::error_code)
+	///                void (std::error_code)
 	template <typename Handler>
 	auto async_open(Handler &&handler)
 	{
-		return boost::asio::async_initiate<
-			Handler, void(boost::system::error_code, std::size_t)>(
+		return asio::async_initiate<
+			Handler, void(std::error_code, std::size_t)>(
 			async_open_impl{}, handler, this);
 	}
 
@@ -277,12 +278,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \brief Asynchronously open the next layer.
 	///
 	/// \param handler The completion handler, should be of form
-	///                void (boost::system::error_code)
+	///                void (std::error_code)
 	template <typename Handler>
 	auto async_open_next_layer(Handler &&handler)
 	{
-		return boost::asio::async_initiate<Handler,
-			void(boost::system::error_code)>(
+		return asio::async_initiate<Handler,
+			void(std::error_code)>(
 			async_open_next_layer_impl{}, handler, this);
 	}
 
@@ -295,12 +296,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	///
 	/// \param type		The wait type: open, read or write
 	/// \param handler	The completion handler, should be of form
-	///               	void (boost::system::error_code)
+	///               	void (std::error_code)
 	template <typename Handler>
 	auto async_wait(wait_type type, Handler &&handler)
 	{
-		return boost::asio::async_initiate<Handler,
-			void(boost::system::error_code)>(
+		return asio::async_initiate<Handler,
+			void(std::error_code)>(
 			async_wait_impl{}, handler, this, type);
 	}
 
@@ -308,7 +309,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	///
 	/// \param p		The packet to write.
 	/// \param handler	The completion handler, should be of form
-	///               	void (boost::system::error_code, std::size_t)
+	///               	void (std::error_code, std::size_t)
 	template <typename Handler>
 	auto async_write(opacket &&p, Handler &&handler)
 	{
@@ -320,18 +321,18 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 		auto buffer = m_crypto_engine.get_next_request(std::move(p));
 
-		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::size_t)>(
+		return asio::async_compose<Handler, void(std::error_code, std::size_t)>(
 			[
 				buffer = std::move(buffer),
 				conn = this->shared_from_this(),
 				state = start
 			]
-			(auto &self, const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+			(auto &self, const std::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
 			{
 				if (not ec and state == start)
 				{
 					state = writing;
-					boost::asio::async_write(*conn, *buffer, std::move(self));
+					asio::async_write(*conn, *buffer, std::move(self));
 					return;
 				}
 
@@ -344,7 +345,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void async_write(opacket &&out)
 	{
 		async_write(std::move(out),
-			[this](const boost::system::error_code &ec, std::size_t)
+			[this](const std::error_code &ec, std::size_t)
 			{
 				if (ec)
 					this->handle_error(ec);
@@ -356,8 +357,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	auto async_write_some(const ConstBufferSequence &buffers,
 		WriteHandler &&handler)
 	{
-		return boost::asio::async_initiate<
-			WriteHandler, void(boost::system::error_code, std::size_t)>(
+		return asio::async_initiate<
+			WriteHandler, void(std::error_code, std::size_t)>(
 			async_write_impl{}, handler, this, buffers);
 	}
 
@@ -366,8 +367,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	auto async_read_some(const MutableBufferSequence &buffers,
 		ReadHandler &&handler)
 	{
-		return boost::asio::async_initiate<
-			ReadHandler, void(boost::system::error_code, std::size_t)>(
+		return asio::async_initiate<
+			ReadHandler, void(std::error_code, std::size_t)>(
 			async_read_impl{}, handler, this, buffers);
 	}
 
@@ -413,7 +414,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// are called using \a executor. This will help you to ensure callbacks are
 	/// made on the main graphics thread.
 
-	using callback_executor_type = boost::asio::execution::any_executor<boost::asio::execution::blocking_t::never_t>;
+	using callback_executor_type = asio::execution::any_executor<asio::execution::blocking_t::never_t>;
 
 	void set_callback_executor(callback_executor_type executor)
 	{
@@ -435,7 +436,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			ask
 		};
 
-		return boost::asio::async_compose<Handler, void(boost::system::error_code, bool)>(
+		return asio::async_compose<Handler, void(std::error_code, bool)>(
 			[
 				state1 = start,
 				this,
@@ -443,7 +444,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				algorithm,
 				key
 			]
-			(auto &self, boost::system::error_code ec = {}, bool accept = {}) mutable
+			(auto &self, std::error_code ec = {}, bool accept = {}) mutable
 			{
 				if (not ec)
 				{
@@ -457,8 +458,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 							if (not accept and m_accept_host_key_handler)
 							{
 								state1 = ask;
-								boost::asio::execution::execute(
-									boost::asio::require(m_callback_executor, boost::asio::execution::blocking.never),
+								asio::execution::execute(
+									asio::require(m_callback_executor, asio::execution::blocking.never),
 									std::move(self));
 								return;
 							}
@@ -516,20 +517,20 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			running
 		};
 
-		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::string)>(
+		return asio::async_compose<Handler, void(std::error_code, std::string)>(
 			[
 				state = start,
 				this
 			]
-			(auto &self, boost::system::error_code ec = {}, std::string pw = {}) mutable
+			(auto &self, std::error_code ec = {}, std::string pw = {}) mutable
 			{
 				if (not ec)
 				{
 					if (state == start)
 					{
 						state = running;
-						boost::asio::execution::execute(
-							boost::asio::require(m_callback_executor, boost::asio::execution::blocking.never),
+						asio::execution::execute(
+							asio::require(m_callback_executor, asio::execution::blocking.never),
 							std::move(self));
 						return;
 					}
@@ -568,7 +569,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			running
 		};
 
-		return boost::asio::async_compose<Handler, void(boost::system::error_code, std::vector<std::string>)>(
+		return asio::async_compose<Handler, void(std::error_code, std::vector<std::string>)>(
 			[
 				state = start,
 				name,
@@ -577,15 +578,15 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				prompts,
 				this
 			]
-			(auto &self, const boost::system::error_code &ec = {}, std::vector<std::string> reply = {}) mutable
+			(auto &self, const std::error_code &ec = {}, std::vector<std::string> reply = {}) mutable
 			{
 				if (not ec)
 				{
 					if (state == start)
 					{
 						state = running;
-						boost::asio::execution::execute(
-							boost::asio::require(m_callback_executor, boost::asio::execution::blocking.never),
+						asio::execution::execute(
+							asio::require(m_callback_executor, asio::execution::blocking.never),
 							std::move(self));
 						return;
 					}
@@ -627,7 +628,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	virtual void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) = 0;
 
 	/// \brief Handle the error in \a ec, communicate the message over all channels and close the connection
-	virtual void handle_error(const boost::system::error_code &ec);
+	virtual void handle_error(const std::error_code &ec);
 
 	/// \brief Start using the new keys in \a kex
 	void newkeys(key_exchange &kex)
@@ -642,7 +643,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \brief Internal dispatching routine for packets.
 	///
 	/// This method is used by the handshake code to fetch the next packet
-	bool receive_packet(ipacket &packet, boost::system::error_code &ec);
+	bool receive_packet(ipacket &packet, std::error_code &ec);
 
 	/// \brief dispatch an incomming packet
 	void process_packet(ipacket &in);
@@ -663,8 +664,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	uint16_t m_port;              ///< The port number
 	bool m_forward_agent = false; ///< Flag indicating we want to forward the SSH agent
 
-	boost::asio::io_context &m_io_context;
-	boost::asio::strand<boost::asio::io_context::executor_type> m_strand; ///< for our coroutines
+	asio::io_context &m_io_context;
+	asio::strand<asio::io_context::executor_type> m_strand; ///< for our coroutines
 
 	std::string m_host_version; ///< The host version string, used for generating keys
 	blob m_session_id;          ///< The session ID for this session
@@ -684,13 +685,13 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	time_point_type m_last_io;                                          ///< The last time we had an I/O
 	std::chrono::seconds m_keep_alive_interval;                         ///< How often should we send keep alive packets (in seconds)?
-	boost::asio::steady_timer m_keep_alive_timer;                       ///< The timer used for keep alive
-	void keep_alive_time_out(const boost::system::error_code &ec = {}); ///< Callback for the keep alive timer
+	asio::steady_timer m_keep_alive_timer;                       ///< The timer used for keep alive
+	void keep_alive_time_out(const std::error_code &ec = {}); ///< Callback for the keep alive timer
 	uint32_t m_keep_alive_timeouts = 0;                                 ///< The current number of timeouts
 	uint32_t m_max_keep_alive_timeouts = 3;                             ///< The maximum number of timeouts before we disconnect
 
 	blob m_private_key_hash;           ///< The private key used to authenticate
-	boost::asio::streambuf m_response; ///< Buffer for incomming response data
+	asio::streambuf m_response; ///< Buffer for incomming response data
 
 	provide_password_callback_type m_provide_password_handler;       ///< The registered password handler
 	provide_credentials_callback_type m_provide_credentials_handler; ///< The registered keyboard-interactive handler
@@ -749,16 +750,16 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
   private:
 	/// \brief The 'main loop' for reading incoming data
-	void read_loop(boost::system::error_code ec = {}, std::size_t bytes_transferred = 0);
+	void read_loop(std::error_code ec = {}, std::size_t bytes_transferred = 0);
 
 	/// \brief The actual opening code
 	void do_open(std::unique_ptr<detail::open_connection_op> op);
 
 	/// \brief The handshake code
 #if __cpp_impl_coroutine
-	boost::asio::awaitable<void> do_handshake(std::unique_ptr<detail::open_connection_op> op);
+	asio::awaitable<void> do_handshake(std::unique_ptr<detail::open_connection_op> op);
 #else
-	void do_handshake(std::unique_ptr<detail::open_connection_op> op, boost::asio::yield_context yield);
+	void do_handshake(std::unique_ptr<detail::open_connection_op> op, asio::yield_context yield);
 #endif
 };
 
@@ -780,7 +781,7 @@ class connection : public basic_connection
 	/// \param host			The hostname or ip address of the server to connect to
 	/// \param port			The port number to connect to
 
-	connection(boost::asio::io_context &io_context, const std::string &user, const std::string &host,
+	connection(asio::io_context &io_context, const std::string &user, const std::string &host,
 		uint16_t port = 22)
 		: basic_connection(io_context, user, host, port)
 		, m_io_context(io_context)
@@ -789,7 +790,7 @@ class connection : public basic_connection
 	}
 
 	/// \brief The type of the next layer.
-	using next_layer_type = boost::asio::ip::tcp::socket;
+	using next_layer_type = asio::ip::tcp::socket;
 
 	/// \brief Access to the next layer
 	const next_layer_type &next_layer() const { return m_next_layer; }
@@ -829,8 +830,8 @@ class connection : public basic_connection
 
 	friend async_open_next_layer_impl;
 
-	boost::asio::io_context &m_io_context;     ///< The IO Context we use
-	boost::asio::ip::tcp::socket m_next_layer; ///< The TCP socket
+	asio::io_context &m_io_context;     ///< The IO Context we use
+	asio::ip::tcp::socket m_next_layer; ///< The TCP socket
 };
 
 // --------------------------------------------------------------------
@@ -936,15 +937,15 @@ void basic_connection::async_read_impl::operator()(
 
 	auto c = dynamic_cast<connection *>(conn);
 	if (c)
-		boost::asio::async_read(c->next_layer(), buffers,
-			boost::asio::transfer_at_least(1),
+		asio::async_read(c->next_layer(), buffers,
+			asio::transfer_at_least(1),
 			std::move(handler));
 	else
 	{
 		auto pc = dynamic_cast<proxied_connection *>(conn);
 		if (pc)
-			boost::asio::async_read(pc->next_layer(), buffers,
-				boost::asio::transfer_at_least(1),
+			asio::async_read(pc->next_layer(), buffers,
+				asio::transfer_at_least(1),
 				std::move(handler));
 	}
 }
@@ -956,12 +957,12 @@ void basic_connection::async_write_impl::operator()(
 {
 	auto c = dynamic_cast<connection *>(conn);
 	if (c)
-		boost::asio::async_write(c->next_layer(), buffers, std::move(handler));
+		asio::async_write(c->next_layer(), buffers, std::move(handler));
 	else
 	{
 		auto pc = dynamic_cast<proxied_connection *>(conn);
 		if (pc)
-			boost::asio::async_write(pc->next_layer(), buffers, std::move(handler));
+			asio::async_write(pc->next_layer(), buffers, std::move(handler));
 	}
 }
 
@@ -984,7 +985,7 @@ void basic_connection::async_wait_impl::operator()(
 
 		case wait_type::read:
 			if (c)
-				c->next_layer().async_wait(boost::asio::socket_base::wait_read,
+				c->next_layer().async_wait(asio::socket_base::wait_read,
 					std::move(handler));
 			else
 				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(
@@ -994,7 +995,7 @@ void basic_connection::async_wait_impl::operator()(
 
 		case wait_type::write:
 			if (c)
-				c->next_layer().async_wait(boost::asio::socket_base::wait_write,
+				c->next_layer().async_wait(asio::socket_base::wait_write,
 					std::move(handler));
 			else
 				pc->do_wait(std::unique_ptr<detail::wait_connection_op>(

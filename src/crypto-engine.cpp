@@ -3,11 +3,9 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/crypto-engine.hpp>
-#include <pinch/error.hpp>
-#include <pinch/pinch.hpp>
-
-#include <boost/iostreams/filtering_stream.hpp>
+#include "pinch/pinch.hpp"
+#include "pinch/crypto-engine.hpp"
+#include "pinch/error.hpp"
 
 #include <cryptopp/aes.h>
 #include <cryptopp/cryptlib.h>
@@ -20,7 +18,7 @@
 #include <cryptopp/osrng.h>
 #include <cryptopp/rsa.h>
 
-namespace io = boost::iostreams;
+#include <cassert>
 
 // --------------------------------------------------------------------
 
@@ -148,20 +146,33 @@ std::size_t MessageAuthenticationCode::get_digest_size() const
 
 // --------------------------------------------------------------------
 
-struct packet_encryptor
+class packet_encryptor : public std::basic_streambuf<char, std::char_traits<char>>
 {
-	typedef char char_type;
-	struct category : io::multichar_output_filter_tag, io::flushable_tag
-	{
-	};
+  public:
+	using char_type = char;
+	using traits_type = std::char_traits<char>;
 
-	packet_encryptor(CryptoPP::StreamTransformation &cipher,
-		CryptoPP::MessageAuthenticationCode &signer, uint32_t blocksize, uint32_t seq_nr)
-		: m_cipher(cipher)
+	using int_type = typename traits_type::int_type;
+	using pos_type = typename traits_type::pos_type;
+	using off_type = typename traits_type::off_type;
+
+	using streambuf_type = std::basic_streambuf<char_type, traits_type>;
+
+	static constexpr size_t kBufferSize = 256;
+
+	packet_encryptor() = delete;
+	packet_encryptor(const packet_encryptor &) = delete;
+	packet_encryptor &operator=(const packet_encryptor &) = delete;
+
+	packet_encryptor(streambuf_type &upstream, CryptoPP::StreamTransformation &cipher,
+ 		CryptoPP::MessageAuthenticationCode &signer, uint32_t blocksize, uint32_t seq_nr)
+		: m_upstream(upstream)
+		, m_cipher(cipher)
 		, m_signer(signer)
 		, m_blocksize(blocksize)
-		, m_flushed(false)
 	{
+		this->setp(this->m_in_buffer.data(), this->m_in_buffer.data() + this->m_in_buffer.size());
+
 		for (int i = 3; i >= 0; --i)
 		{
 			uint8_t ch = static_cast<uint8_t>(seq_nr >> (i * 8));
@@ -171,23 +182,36 @@ struct packet_encryptor
 		m_block.reserve(m_blocksize);
 	}
 
-	template <typename Sink>
-	std::streamsize write(Sink &sink, const char *s, std::streamsize n)
+	~packet_encryptor()
 	{
-		std::streamsize result = 0;
+		if (not m_flushed)
+			overflow(traits_type::eof());
+		
+		this->setp(nullptr, nullptr);
+	}
 
-		for (std::streamsize o = 0; o < n; o += m_blocksize)
+  private:
+	/// \brief The actual work is done here
+	///
+	/// \param ch The character that did not fit, in case it is eof we need to flush
+	///
+	int_type overflow(int_type ch) override
+	{
+		auto s = reinterpret_cast<uint8_t *>(this->pbase());
+		auto n = static_cast<size_t>(this->pptr() - this->pbase());
+
+		for (size_t o = 0; o < n; o += m_blocksize)
 		{
 			size_t k = n;
 			if (k > m_blocksize - m_block.size())
 				k = m_blocksize - m_block.size();
 
-			const uint8_t *sp = reinterpret_cast<const uint8_t *>(s);
+			const uint8_t *sp = s;
 
 			m_signer.Update(sp, static_cast<size_t>(k));
 			m_block.insert(m_block.end(), sp, sp + k);
 
-			result += k;
+			// result += k;
 			s += k;
 
 			if (m_block.size() == m_blocksize)
@@ -195,39 +219,41 @@ struct packet_encryptor
 				blob block(m_blocksize);
 				m_cipher.ProcessData(block.data(), m_block.data(), m_blocksize);
 
-				for (uint32_t i = 0; i < m_blocksize; ++i)
-					io::put(sink, block[i]);
+				m_upstream.sputn(reinterpret_cast<const char *>(block.data()), block.size());
 
 				m_block.clear();
 			}
 		}
 
-		return result;
-	}
+		this->setp(this->m_in_buffer.data(), this->m_in_buffer.data() + this->m_in_buffer.size());
 
-	template <typename Sink>
-	bool flush(Sink &sink)
-	{
-		if (not m_flushed)
+		if (not traits_type::eq_int_type(ch, traits_type::eof()))
+		{
+			*this->pptr() = traits_type::to_char_type(ch);
+			this->pbump(1);
+		}
+		else if (not m_flushed)
 		{
 			assert(m_block.size() == 0);
 
 			blob digest(m_signer.DigestSize());
 			m_signer.Final(digest.data());
-			for (size_t i = 0; i < digest.size(); ++i)
-				io::put(sink, digest[i]);
+
+			m_upstream.sputn(reinterpret_cast<const char *>(digest.data()), digest.size());
 
 			m_flushed = true;
 		}
 
-		return true;
+		return ch;
 	}
 
+	streambuf_type &m_upstream;
 	CryptoPP::StreamTransformation &m_cipher;
 	CryptoPP::MessageAuthenticationCode &m_signer;
 	blob m_block;
 	uint32_t m_blocksize;
-	bool m_flushed;
+	std::array<char_type, kBufferSize> m_in_buffer;
+	bool m_flushed = false;
 };
 
 // --------------------------------------------------------------------
@@ -339,7 +365,7 @@ std::string crypto_engine::get_key_exchange_algorithm() const
 	return m_alg_kex;
 }
 
-blob crypto_engine::get_next_block(boost::asio::streambuf &buffer, bool empty)
+blob crypto_engine::get_next_block(asio::streambuf &buffer, bool empty)
 {
 	blob block(m_iblocksize);
 	buffer.sgetn(reinterpret_cast<char *>(block.data()), m_iblocksize);
@@ -368,7 +394,7 @@ blob crypto_engine::get_next_block(boost::asio::streambuf &buffer, bool empty)
 	return block;
 }
 
-std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf &buffer, boost::system::error_code &ec)
+std::unique_ptr<ipacket> crypto_engine::get_next_packet(asio::streambuf &buffer, std::error_code &ec)
 {
 	std::lock_guard lock(m_in_mutex);
 
@@ -414,27 +440,32 @@ std::unique_ptr<ipacket> crypto_engine::get_next_packet(boost::asio::streambuf &
 	return complete_and_verified ? std::move(m_packet) : std::unique_ptr<ipacket>();
 }
 
-std::unique_ptr<boost::asio::streambuf> crypto_engine::get_next_request(opacket &&p)
+std::unique_ptr<asio::streambuf> crypto_engine::get_next_request(opacket &&p)
 {
 	std::lock_guard lock(m_out_mutex);
 
-	auto request = std::make_unique<boost::asio::streambuf>();
+	auto request = std::make_unique<asio::streambuf>();
 
 	if (m_compressor)
 	{
-		boost::system::error_code ec;
+		std::error_code ec;
 		p.compress(*m_compressor, ec);
 
 		if (ec)
 			throw ec;
 	}
 
-	io::filtering_stream<io::output> out;
 	if (m_encryptor)
-		out.push(packet_encryptor(*m_encryptor.m_impl->m_stream_transformation, *m_signer.m_impl->m_verify, m_oblocksize, m_out_seq_nr));
-	out.push(*request);
-
-	p.write(out, m_oblocksize);
+	{
+		packet_encryptor eb(*request, *m_encryptor.m_impl->m_stream_transformation, *m_signer.m_impl->m_verify, m_oblocksize, m_out_seq_nr);
+		std::ostream os(&eb);
+		p.write(os, m_oblocksize);
+	}
+	else
+	{
+		std::ostream os(request.get());
+		p.write(os, m_oblocksize);
+	}
 
 	++m_out_seq_nr;
 

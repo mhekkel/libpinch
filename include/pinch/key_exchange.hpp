@@ -5,10 +5,11 @@
 
 #pragma once
 
-/// \file Definition of the key exchange object
+/// \file key_exchange.hpp
+/// Definition of the key exchange object
 
-#include <pinch/packet.hpp>
-#include <pinch/pinch.hpp>
+#include "pinch/packet.hpp"
+#include "pinch/pinch.hpp"
 
 namespace pinch
 {
@@ -68,7 +69,7 @@ class key_exchange
 	/// \param out	Might be filled, or not...
 	/// \param ec	Will contain an error code in case of trouble
 	/// \result		Returns true if the message was successfully handled
-	bool process(ipacket &in, opacket &out, boost::system::error_code &ec);
+	bool process(ipacket &in, opacket &out, std::error_code &ec);
 
 	/// \brief Enumerator for the keys, see standard
 	enum key_enum
@@ -109,7 +110,7 @@ class key_exchange
 	ipacket host_payload() const;
 
 	/// \brief process the kexinit message
-	void process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_kexinit(ipacket &in, opacket &out, std::error_code &ec);
 
 	key_exchange_impl *m_impl = nullptr;
 

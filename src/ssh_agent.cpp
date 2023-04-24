@@ -3,14 +3,11 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
-
-#include <regex>
-
-#include <pinch/connection.hpp>
-#include <pinch/detail/ssh_agent_impl.hpp>
-#include <pinch/ssh_agent.hpp>
-#include <pinch/ssh_agent_channel.hpp>
+#include "pinch/pinch.hpp"
+#include "pinch/connection.hpp"
+#include "pinch/detail/ssh_agent_impl.hpp"
+#include "pinch/ssh_agent.hpp"
+#include "pinch/ssh_agent_channel.hpp"
 
 #include <cryptopp/aes.h>
 #include <cryptopp/base64.h>
@@ -24,10 +21,9 @@
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 #include <cryptopp/md5.h>
 
-#include <boost/algorithm/string.hpp>
+#include <regex>
 
 using namespace CryptoPP;
-namespace ba = boost::algorithm;
 
 namespace pinch
 {
@@ -407,20 +403,21 @@ void ssh_agent::add(const std::string &private_key, const std::string &key_comme
 			if (line.empty())
 				break;
 
-			if (ba::starts_with(line, "Proc-Type:") and not ba::ends_with(line, "4,ENCRYPTED"))
+			if (line.compare(0, 10, "Proc-Type:") == 0 and line.compare(line.length() - 11, 11, "4,ENCRYPTED") != 0)
 			{
 				algo.clear();
 				break;
 			}
 
-			if (ba::starts_with(line, "DEK-Info:"))
+			if (line.compare(0, 9, "DEK-Info:") == 0)
 			{
 				std::string::size_type t = 9;
 				while (t < line.length() and line[t] == ' ')
 					++t;
 				line.erase(0, t);
 				t = line.find(',');
-				algo = ba::to_upper_copy(line.substr(0, t));
+				for (auto ch : line.substr(0, t))
+					algo += char(std::toupper(ch));
 				iv = line.substr(t + 1);
 			}
 		}

@@ -7,8 +7,8 @@
 
 #include <iostream>
 
-#include <pinch/connection.hpp>
-#include <pinch/terminal_channel.hpp>
+#include "pinch/connection.hpp"
+#include "pinch/terminal_channel.hpp"
 
 void SetStdinEcho(bool enable)
 {
@@ -24,7 +24,7 @@ void SetStdinEcho(bool enable)
 
 // --------------------------------------------------------------------
 
-void handler(const boost::system::error_code& error, int n)
+void handler(const std::error_code& error, int n)
 {
 	if (error)
 		std::cout << error.message() << std::endl;
@@ -35,7 +35,7 @@ void handler(const boost::system::error_code& error, int n)
 template<typename CompletionToken>
 auto async_wait2(std::future<void>& a, CompletionToken&& token)
 {
-	return boost::asio::async_completion<CompletionToken, void(boost::system::error_code)>(
+	return asio::async_completion<CompletionToken, void(std::error_code)>(
 		
 	);
 }
@@ -44,7 +44,7 @@ class seq_timed
 {
   public:
 
-	seq_timed(boost::asio::io_context& io_context)
+	seq_timed(asio::io_context& io_context)
 		: m_strand(io_context.get_executor())
 	{
 		
@@ -59,19 +59,19 @@ class seq_timed
 
   private:
 
-	boost::asio::strand<boost::asio::io_context::executor_type> m_strand;
+	asio::strand<asio::io_context::executor_type> m_strand;
 
 };
 
 int main()
 {
 
-	boost::asio::io_context io_context;
+	asio::io_context io_context;
 
-	boost::asio::strand<boost::asio::io_context::executor_type> strand(io_context.get_executor());
+	asio::strand<asio::io_context::executor_type> strand(io_context.get_executor());
 
-	// boost::asio::deadline_timer timer(strand.context());
-	boost::asio::deadline_timer timer(strand);
+	// asio::deadline_timer timer(strand.context());
+	asio::deadline_timer timer(strand);
 
 	// Construct a timer with an absolute expiry time.
 	timer.expires_from_now(boost::posix_time::seconds(3));
@@ -79,8 +79,8 @@ int main()
 	// Start an asynchronous wait.
 	timer.async_wait(std::bind(handler, std::placeholders::_1, 1));
 
-	// boost::asio::deadline_timer timer(strand.context());
-	boost::asio::deadline_timer timer2(strand);
+	// asio::deadline_timer timer(strand.context());
+	asio::deadline_timer timer2(strand);
 
 	// Construct a timer with an absolute expiry time.
 	timer2.expires_from_now(boost::posix_time::seconds(1));

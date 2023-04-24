@@ -3,17 +3,18 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
+
+#include "pinch/detail/ssh_agent_impl.hpp"
+#include "pinch/packet.hpp"
+#include "pinch/ssh_agent.hpp"
 
 #include <cerrno>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-
-#include <pinch/detail/ssh_agent_impl.hpp>
-#include <pinch/packet.hpp>
-#include <pinch/ssh_agent.hpp>
+#include <unistd.h>
 
 namespace pinch
 {
@@ -44,21 +45,21 @@ ssh_agent_impl &ssh_agent_impl::instance()
 ssh_agent_impl::ssh_agent_impl()
 	: m_fd(-1)
 {
-	const char *authSock = getenv("SSH_AUTH_SOCK");
+	const char *authSock = ::getenv("SSH_AUTH_SOCK");
 
 	if (authSock != nullptr)
 	{
 		struct sockaddr_un addr = {};
 		addr.sun_family = AF_LOCAL;
-		strcpy(addr.sun_path, authSock);
+		::strcpy(addr.sun_path, authSock);
 
-		int sock = socket(AF_LOCAL, SOCK_STREAM, 0);
+		int sock = ::socket(AF_LOCAL, SOCK_STREAM, 0);
 		if (sock >= 0)
 		{
-			if (fcntl(sock, F_SETFD, 1) < 0)
-				close(sock);
-			else if (connect(sock, (const sockaddr *)&addr, sizeof(addr)) < 0)
-				close(sock);
+			if (::fcntl(sock, F_SETFD, 1) < 0)
+				::close(sock);
+			else if (::connect(sock, (const sockaddr *)&addr, sizeof(addr)) < 0)
+				::close(sock);
 			else
 				m_fd = sock;
 		}
@@ -68,7 +69,7 @@ ssh_agent_impl::ssh_agent_impl()
 ssh_agent_impl::~ssh_agent_impl()
 {
 	if (m_fd >= 0)
-		close(m_fd);
+		::close(m_fd);
 }
 
 void ssh_agent_impl::get_identities(std::vector<std::tuple<blob, std::string>> &identities)
@@ -89,7 +90,7 @@ void ssh_agent_impl::get_identities(std::vector<std::tuple<blob, std::string>> &
 
 				reply >> blob >> comment;
 
-				identities.push_back(make_tuple(blob, comment));
+				identities.emplace_back(blob, comment);
 			}
 		}
 	}
@@ -117,11 +118,11 @@ bool ssh_agent_impl::process(const opacket &request, ipacket &reply)
 	const blob &req(request);
 	blob rep;
 
-	uint32_t l = htonl(req.size());
+	uint32_t l = ::htonl(req.size());
 
-	if (write(m_fd, &l, sizeof(l)) == sizeof(l) and
-		write(m_fd, req.data(), req.size()) == int32_t(req.size()) and
-		read(m_fd, &l, sizeof(l)) == sizeof(l))
+	if (::write(m_fd, &l, sizeof(l)) == sizeof(l) and
+		::write(m_fd, req.data(), req.size()) == int32_t(req.size()) and
+		::read(m_fd, &l, sizeof(l)) == sizeof(l))
 	{
 		l = ntohl(l);
 
@@ -135,7 +136,7 @@ bool ssh_agent_impl::process(const opacket &request, ipacket &reply)
 				if (k > sizeof(b))
 					k = sizeof(b);
 
-				if (read(m_fd, b, k) != k)
+				if (::read(m_fd, b, k) != k)
 					break;
 
 				rep.insert(rep.end(), b, b + k);

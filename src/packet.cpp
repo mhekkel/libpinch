@@ -3,20 +3,16 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
-#include <random>
-
-#include <boost/algorithm/string.hpp>
-
-#include <zlib.h>
-
-#include <pinch/channel.hpp>
-#include <pinch/packet.hpp>
+#include "pinch/channel.hpp"
+#include "pinch/packet.hpp"
 
 #include <cryptopp/integer.h>
 
-namespace ba = boost::algorithm;
+#include <zlib.h>
+
+#include <random>
 
 namespace pinch
 {
@@ -94,7 +90,7 @@ opacket &opacket::operator=(const opacket &rhs)
 	return *this;
 }
 
-void opacket::compress(compression_helper &compressor, boost::system::error_code &ec)
+void opacket::compress(compression_helper &compressor, std::error_code &ec)
 {
 	z_stream &zstream(compressor);
 
@@ -195,7 +191,17 @@ opacket &opacket::operator<<(const std::string &v)
 
 opacket &opacket::operator<<(const std::vector<std::string> &v)
 {
-	return this->operator<<(ba::join(v, ","));
+	std::ostringstream os;
+	bool first = true;
+	for (auto &s : v)
+	{
+		if (not first)
+			os << ',';
+		first = false;
+		os << s;
+	}
+
+	return this->operator<<(os.str());
 }
 
 opacket &opacket::operator<<(const char *v[])
@@ -353,7 +359,7 @@ ipacket &ipacket::operator=(ipacket &&rhs)
 	return *this;
 }
 
-void ipacket::decompress(compression_helper &decompressor, boost::system::error_code &ec)
+void ipacket::decompress(compression_helper &decompressor, std::error_code &ec)
 {
 	assert(m_complete);
 
@@ -554,7 +560,17 @@ ipacket &ipacket::operator>>(std::vector<std::string> &v)
 {
 	std::string s;
 	this->operator>>(s);
-	ba::split(v, s, ba::is_any_of(","));
+
+	v = {""};
+
+	for (char ch : s)
+	{
+		if (ch == ',')
+			v.emplace_back("");
+		else
+			v.back() += ch;
+	}
+
 	return *this;
 }
 

@@ -1,7 +1,7 @@
 //[ first_example 
 #include <iostream>
 
-#include <pinch/connection_pool.hpp>
+#include "pinch/connection_pool.hpp"
 
 int main(int argc, char* const argv[])
 {
@@ -12,7 +12,7 @@ int main(int argc, char* const argv[])
 	}
 
 	/*<< We must provide an io_context to the connection_pool >>*/
-	boost::asio::io_context io_context;
+	asio::io_context io_context;
 
 	/*<< Setup a connection pool >>*/
 	pinch::connection_pool pool(io_context);
@@ -41,7 +41,7 @@ int main(int argc, char* const argv[])
 		}, io_context.get_executor());
 
 	/*<< Open a execution channel with the command 'uptime' >>*/
-	channel->async_open([](boost::system::error_code ec)
+	channel->async_open([](std::error_code ec)
 	{
 		std::cout << "open result: " << ec.message() << std::endl;
 	});

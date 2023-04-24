@@ -5,7 +5,8 @@
 
 #pragma once
 
-/// \file Common types in this library
+/// \file types.hpp
+/// Common types in this library
 
 #include <cstdint>
 #include <vector>

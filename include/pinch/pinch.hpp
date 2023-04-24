@@ -5,10 +5,11 @@
 
 #pragma once
 
-/// \file Generic header, not much here
+/// \file pinch.hpp
+/// Generic header, not much here
 
-#include <pinch/types.hpp>
+#include "pinch/types.hpp"
 
-#if DEBUG
-#include <pinch/debug.hpp>
+#ifndef NDEBUG
+#include "pinch/debug.hpp"
 #endif

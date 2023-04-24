@@ -5,17 +5,18 @@
 
 #pragma once
 
-#include <pinch/pinch.hpp>
-#include <pinch/types.hpp>
+#include "pinch/pinch.hpp"
+#include "pinch/types.hpp"
 
-#include <boost/asio/dispatch.hpp>
+#include <asio/dispatch.hpp>
 
 #include <functional>
 #include <future>
 #include <string>
 #include <type_traits>
 
-/// \file This file contains the class known_hosts which is used to keep track of
+/// \file known_hosts.hpp
+/// This file contains the class known_hosts which is used to keep track of
 /// already trusted host keys.
 
 namespace pinch

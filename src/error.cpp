@@ -3,8 +3,8 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/error.hpp>
-#include <pinch/pinch.hpp>
+#include "pinch/error.hpp"
+#include "pinch/pinch.hpp"
 
 namespace pinch::error
 {
@@ -12,10 +12,10 @@ namespace pinch::error
 namespace detail
 {
 
-	class ssh_category : public boost::system::error_category
+	class ssh_category : public std::error_category
 	{
 	  public:
-		const char *name() const BOOST_SYSTEM_NOEXCEPT
+		const char *name() const noexcept
 		{
 			return "ssh";
 		}
@@ -52,10 +52,10 @@ namespace detail
 		}
 	};
 
-	class disconnect_category : public boost::system::error_category
+	class disconnect_category : public std::error_category
 	{
 	  public:
-		const char *name() const BOOST_SYSTEM_NOEXCEPT
+		const char *name() const noexcept
 		{
 			return "ssh.disconnect";
 		}
@@ -104,13 +104,13 @@ namespace detail
 
 } // namespace detail
 
-boost::system::error_category &ssh_category()
+std::error_category &ssh_category()
 {
 	static detail::ssh_category impl;
 	return impl;
 }
 
-boost::system::error_category &disconnect_category()
+std::error_category &disconnect_category()
 {
 	static detail::disconnect_category impl;
 	return impl;

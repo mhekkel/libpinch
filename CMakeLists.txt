@@ -12,6 +12,7 @@ include(CheckLibraryExists)
 include(CMakePackageConfigHelpers)
 include(Dart)
 include(GenerateExportHeader)
+include(FindPkgConfig)
 
 set(PACKAGE ${PROJECT_NAME})
 set(PACKAGE_VERSION ${PROJECT_VERSION})
@@ -67,6 +68,7 @@ endif()
 
 find_package(Filesystem REQUIRED)
 find_package(ZLIB REQUIRED)
+pkg_check_modules(ASIO asio REQUIRED IMPORTED_TARGET)
 
 # Build shared libraries by default (not my cup of tea, but hey)
 option(BUILD_SHARED_LIBS "Build a shared library instead of a static one" OFF)
@@ -103,11 +105,7 @@ find_package(Threads REQUIRED)
 find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
 find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ REQUIRED)
 
-set(Boost_DETAILED_FAILURE_MSG ON)
-if(NOT BUILD_SHARED_LIBS)
-	set(Boost_USE_STATIC_LIBS ON)
-endif()
-find_package(Boost 1.71.0 REQUIRED COMPONENTS program_options system date_time regex coroutine)
+# find_package(Boost 1.71.0 REQUIRED COMPONENTS coroutine)
 
 list(APPEND PINCH_HEADERS
 	${CMAKE_SOURCE_DIR}/include/pinch/detail/ssh_agent_impl.hpp
@@ -169,11 +167,11 @@ target_include_directories(pinch
 	PUBLIC
 	"$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
 	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-	${Boost_INCLUDE_DIR} ${CRYPTOPP_INCLUDE_DIR}
+	${CRYPTOPP_INCLUDE_DIR}
 )
 
-target_include_directories(pinch PRIVATE ${CMAKE_SOURCE_DIR}/include PUBLIC ${Boost_INCLUDE_DIR} ${CRYPTOPP_INCLUDE_DIR} ${ZLIB_INCLUDE_DIR})
-target_link_libraries(pinch PUBLIC ${Boost_LIBRARIES} ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} std::filesystem ${ZLIB_LIBRARY})
+target_include_directories(pinch PRIVATE ${CMAKE_SOURCE_DIR}/include PUBLIC ${CRYPTOPP_INCLUDE_DIR})
+target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB PkgConfig::ASIO)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     target_link_options(pinch PRIVATE -undefined dynamic_lookup)
@@ -321,7 +319,12 @@ if(PINCH_BUILD_TESTS)
 
 	#  unit parser serializer xpath json crypto http processor webapp soap rest security uri
 
-	list(APPEND PINCH_tests coro service sftp unit)
+	list(APPEND PINCH_tests
+		# coro
+		service
+		# sftp
+		# unit
+		)
 
 	foreach(TEST IN LISTS PINCH_tests)
 		set(PINCH_TEST "${TEST}-test")

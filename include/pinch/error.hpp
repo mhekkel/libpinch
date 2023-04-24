@@ -5,12 +5,12 @@
 
 #pragma once
 
-/// \brief Build on boost::system::error_code by extending it with SSH messages
+/// \brief Build on std::error_code by extending it with SSH messages
+
+#include "pinch/pinch.hpp"
 
 #include <exception>
-
-#include <boost/system/error_code.hpp>
-#include <pinch/pinch.hpp>
+#include <system_error>
 
 namespace pinch
 {
@@ -104,13 +104,13 @@ namespace error
 		keep_alive_timeout
 	};
 
-	boost::system::error_category &ssh_category();
-	boost::system::error_category &disconnect_category();
+	std::error_category &ssh_category();
+	std::error_category &disconnect_category();
 
 } // namespace error
 } // namespace pinch
 
-namespace boost::system
+namespace std
 {
 
 template <>
@@ -125,19 +125,19 @@ struct is_error_code_enum<pinch::error::disconnect_errors>
 	static const bool value = true;
 };
 
-} // namespace boost::system
+} // namespace std
 
 namespace pinch::error
 {
 
-inline boost::system::error_code make_error_code(ssh_errors e)
+inline std::error_code make_error_code(ssh_errors e)
 {
-	return boost::system::error_code(static_cast<int>(e), ssh_category());
+	return std::error_code(static_cast<int>(e), ssh_category());
 }
 
-inline boost::system::error_code make_error_code(disconnect_errors e)
+inline std::error_code make_error_code(disconnect_errors e)
 {
-	return boost::system::error_code(static_cast<int>(e), disconnect_category());
+	return std::error_code(static_cast<int>(e), disconnect_category());
 }
 
 } // namespace pinch::error

@@ -3,7 +3,7 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
 #include <cryptopp/aes.h>
 #include <cryptopp/des.h>
@@ -19,8 +19,8 @@
 #include <cryptopp/rsa.h>
 #include <cryptopp/xed25519.h>
 
-#include <pinch/channel.hpp>
-#include <pinch/crypto-engine.hpp>
+#include "pinch/channel.hpp"
+#include "pinch/crypto-engine.hpp"
 
 using namespace CryptoPP;
 
@@ -154,7 +154,7 @@ struct key_exchange_impl
 
 	virtual void calculate_hash(const std::string &host_version, ipacket &hostkey, CryptoPP::Integer &f) = 0;
 
-	virtual bool process(ipacket &in, opacket &out, boost::system::error_code &ec)
+	virtual bool process(ipacket &in, opacket &out, std::error_code &ec)
 	{
 		bool handled = true;
 
@@ -193,7 +193,7 @@ struct key_exchange_impl
 		}
 	}
 
-	void process_kex_dh_reply(ipacket &in, opacket &out, boost::system::error_code &ec);
+	void process_kex_dh_reply(ipacket &in, opacket &out, std::error_code &ec);
 
 	virtual void derive_keys() = 0;
 
@@ -203,7 +203,7 @@ struct key_exchange_impl
 	CryptoPP::Integer m_x, m_e, m_K, m_p, m_q, m_g;
 };
 
-void key_exchange_impl::process_kex_dh_reply(ipacket &in, opacket &out, boost::system::error_code &ec)
+void key_exchange_impl::process_kex_dh_reply(ipacket &in, opacket &out, std::error_code &ec)
 {
 	ipacket hostkey, signature;
 	Integer f;
@@ -323,7 +323,7 @@ class key_exchange_dh_group : public key_exchange_impl
 		m_g = 2;
 	}
 
-	virtual bool process(ipacket &in, opacket &out, boost::system::error_code &ec);
+	virtual bool process(ipacket &in, opacket &out, std::error_code &ec);
 	virtual void calculate_hash(const std::string &host_version, ipacket &hostkey, CryptoPP::Integer &f);
 
 	virtual void derive_keys()
@@ -333,7 +333,7 @@ class key_exchange_dh_group : public key_exchange_impl
 };
 
 template <class HashAlgorithm>
-bool key_exchange_dh_group<HashAlgorithm>::process(ipacket &in, opacket &out, boost::system::error_code &ec)
+bool key_exchange_dh_group<HashAlgorithm>::process(ipacket &in, opacket &out, std::error_code &ec)
 {
 	bool handled = true;
 
@@ -378,7 +378,7 @@ class key_exchange_dh_gex : public key_exchange_impl
 	{
 	}
 
-	virtual bool process(ipacket &in, opacket &out, boost::system::error_code &ec);
+	virtual bool process(ipacket &in, opacket &out, std::error_code &ec);
 	virtual void calculate_hash(const std::string &host_version, ipacket &hostkey, Integer &f);
 
 	virtual void derive_keys()
@@ -392,7 +392,7 @@ class key_exchange_dh_gex : public key_exchange_impl
 };
 
 template <typename HashAlgorithm>
-bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket &in, opacket &out, boost::system::error_code &ec)
+bool key_exchange_dh_gex<HashAlgorithm>::process(ipacket &in, opacket &out, std::error_code &ec)
 {
 	bool handled = true;
 
@@ -465,7 +465,7 @@ key_exchange::~key_exchange()
 	delete m_impl;
 }
 
-bool key_exchange::process(ipacket &in, opacket &out, boost::system::error_code &ec)
+bool key_exchange::process(ipacket &in, opacket &out, std::error_code &ec)
 {
 	bool handled = true;
 
@@ -542,7 +542,7 @@ opacket key_exchange::init()
 	return out;
 }
 
-void key_exchange::process_kexinit(ipacket &in, opacket &out, boost::system::error_code &ec)
+void key_exchange::process_kexinit(ipacket &in, opacket &out, std::error_code &ec)
 {
 	m_host_payload = in;
 

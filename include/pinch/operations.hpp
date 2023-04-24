@@ -7,9 +7,9 @@
 
 /// \brief helper function and classes for async operations
 
-#include <pinch/pinch.hpp>
+#include "pinch/pinch.hpp"
 
-#include <boost/asio.hpp>
+#include <asio.hpp>
 
 namespace pinch::detail
 {
@@ -22,14 +22,14 @@ class operation
   public:
 	virtual ~operation() {}
 
-	virtual void complete(const boost::system::error_code &ec = {}, std::size_t bytes_transferred = 0) = 0;
+	virtual void complete(const std::error_code &ec = {}, std::size_t bytes_transferred = 0) = 0;
 };
 
 // --------------------------------------------------------------------
-/// \brief looks and works like a copy of the same code in boost::asio
+/// \brief looks and works like a copy of the same code in asio
 
 template <typename Handler, typename IoExecutor,
-	typename HandlerExecutor = typename boost::asio::associated_executor_t<Handler, IoExecutor>>
+	typename HandlerExecutor = typename asio::associated_executor_t<Handler, IoExecutor>>
 class handler_work
 {
   public:
@@ -38,7 +38,7 @@ class handler_work
 
 	explicit handler_work(Handler &handler) noexcept
 		: m_io_executor()
-		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
+		, m_executor(asio::get_associated_executor(handler, m_io_executor))
 		, m_ex_guard(m_executor)
 		, m_ex_io_guard(m_io_executor)
 	{
@@ -46,7 +46,7 @@ class handler_work
 
 	handler_work(Handler &handler, const IoExecutor &io_ex) noexcept
 		: m_io_executor(io_ex)
-		, m_executor(boost::asio::get_associated_executor(handler, m_io_executor))
+		, m_executor(asio::get_associated_executor(handler, m_io_executor))
 		, m_ex_guard(m_executor)
 		, m_ex_io_guard(m_io_executor)
 	{
@@ -55,14 +55,14 @@ class handler_work
 	template <typename Function>
 	void complete(Function &function, Handler &handler)
 	{
-		boost::asio::dispatch(m_executor, std::forward<Function>(function));
+		asio::dispatch(m_executor, std::forward<Function>(function));
 	}
 
   private:
 	IoExecutor m_io_executor;
 	HandlerExecutor m_executor;
-	boost::asio::executor_work_guard<HandlerExecutor> m_ex_guard;
-	boost::asio::executor_work_guard<IoExecutor> m_ex_io_guard;
+	asio::executor_work_guard<HandlerExecutor> m_ex_guard;
+	asio::executor_work_guard<IoExecutor> m_ex_io_guard;
 };
 
 // --------------------------------------------------------------------
