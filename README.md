@@ -6,7 +6,7 @@ This library provides asynchronous SSH for use in client applications. The histo
 Building
 --------
 
-Building libpinch requires a modern C++ compiler with support for C++20 coroutines and a recent [ASIO](https://think-async.com/Asio/), and then version 1.26. This is tricky, since there are many problems when using any other version, including the ones available in Boost.
+Building libpinch requires a modern C++ compiler with support for C++20 coroutines and a recent [ASIO](https://think-async.com/Asio/) version 1.26. This is tricky, since there are many problems when using any other version, including the ones available in Boost.
 
 Another requirement is a recent version of [Crypto++](https://cryptopp.com/).
 
