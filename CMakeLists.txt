@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(libpinch VERSION 1.1.0 LANGUAGES CXX)
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 option(USE_BOOST_ASIO "Use the asio library from Boost instead of the non-boost version" ON)
 
@@ -115,59 +115,60 @@ find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQ
 find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ REQUIRED)
 
 list(APPEND PINCH_HEADERS
-	${CMAKE_SOURCE_DIR}/include/pinch.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/detail/ssh_agent_impl.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/error.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/terminal_channel.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/ssh_agent.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/ssh_agent_channel.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/x11_channel.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/packet.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/crypto-engine.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/digest.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/known_hosts.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/port_forwarding.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/sftp_channel.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/debug.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/operations.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/connection.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/connection_pool.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/channel.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/key_exchange.hpp
-	${CMAKE_SOURCE_DIR}/include/pinch/types.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/detail/ssh_agent_impl.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/error.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/terminal_channel.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/ssh_agent.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/ssh_agent_channel.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/x11_channel.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/packet.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/crypto-engine.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/digest.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/known_hosts.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/port_forwarding.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/sftp_channel.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/debug.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/operations.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/connection.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/connection_pool.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/channel.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/key_exchange.hpp
+	${PROJECT_SOURCE_DIR}/include/pinch/types.hpp
 )
 
 list(APPEND PINCH_SRC
-	${CMAKE_SOURCE_DIR}/src/known_hosts.cpp
-	${CMAKE_SOURCE_DIR}/src/port_forwarding.cpp
-	${CMAKE_SOURCE_DIR}/src/connection.cpp
-	${CMAKE_SOURCE_DIR}/src/debug.cpp
-	${CMAKE_SOURCE_DIR}/src/error.cpp
-	${CMAKE_SOURCE_DIR}/src/sftp_channel.cpp
-	${CMAKE_SOURCE_DIR}/src/ssh_agent.cpp
-	${CMAKE_SOURCE_DIR}/src/terminal_channel.cpp
-	${CMAKE_SOURCE_DIR}/src/crypto-engine.cpp
-	${CMAKE_SOURCE_DIR}/src/digest.cpp
-	${CMAKE_SOURCE_DIR}/src/connection_pool.cpp
-	${CMAKE_SOURCE_DIR}/src/x11_channel.cpp
-	${CMAKE_SOURCE_DIR}/src/packet.cpp
-	${CMAKE_SOURCE_DIR}/src/channel.cpp
-	${CMAKE_SOURCE_DIR}/src/key_exchange.cpp
+	${PROJECT_SOURCE_DIR}/src/known_hosts.cpp
+	${PROJECT_SOURCE_DIR}/src/port_forwarding.cpp
+	${PROJECT_SOURCE_DIR}/src/connection.cpp
+	${PROJECT_SOURCE_DIR}/src/debug.cpp
+	${PROJECT_SOURCE_DIR}/src/error.cpp
+	${PROJECT_SOURCE_DIR}/src/sftp_channel.cpp
+	${PROJECT_SOURCE_DIR}/src/ssh_agent.cpp
+	${PROJECT_SOURCE_DIR}/src/terminal_channel.cpp
+	${PROJECT_SOURCE_DIR}/src/crypto-engine.cpp
+	${PROJECT_SOURCE_DIR}/src/digest.cpp
+	${PROJECT_SOURCE_DIR}/src/connection_pool.cpp
+	${PROJECT_SOURCE_DIR}/src/x11_channel.cpp
+	${PROJECT_SOURCE_DIR}/src/packet.cpp
+	${PROJECT_SOURCE_DIR}/src/channel.cpp
+	${PROJECT_SOURCE_DIR}/src/key_exchange.cpp
 )
 
 if(MSVC)
 	list(APPEND PINCH_SRC
-		${CMAKE_SOURCE_DIR}/src/win_ssh_agent_impl.cpp
+		${PROJECT_SOURCE_DIR}/src/win_ssh_agent_impl.cpp
 	)
 endif()
 
 if(UNIX)
 	list(APPEND PINCH_SRC
-		${CMAKE_SOURCE_DIR}/src/posix_ssh_agent_impl.cpp
+		${PROJECT_SOURCE_DIR}/src/posix_ssh_agent_impl.cpp
 	)
 endif()
 
 add_library(pinch ${PINCH_SRC} ${PINCH_HEADERS})
+add_library(pinch::pinch ALIAS pinch)
 set_target_properties(pinch PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(pinch
@@ -177,7 +178,7 @@ target_include_directories(pinch
 	${CRYPTOPP_INCLUDE_DIR} ${ASIO_INCLUDE_DIR}
 )
 
-target_include_directories(pinch PRIVATE ${CMAKE_SOURCE_DIR}/include PUBLIC ${CRYPTOPP_INCLUDE_DIR})
+target_include_directories(pinch PRIVATE ${PROJECT_SOURCE_DIR}/include PUBLIC ${CRYPTOPP_INCLUDE_DIR})
 target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
@@ -211,7 +212,7 @@ install(
 )
 
 install(
-	FILES "${CMAKE_SOURCE_DIR}/include/pinch.hpp"
+	FILES "${PROJECT_SOURCE_DIR}/include/pinch.hpp"
 	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 	COMPONENT Devel
 )
@@ -300,7 +301,7 @@ if(PINCH_BUILD_DOC)
 	if(UNIX)
 		set(QUICKBOOK_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/quickbook.sh")
 
-		configure_file(${CMAKE_SOURCE_DIR}/doc/tools/quickbook.sh.in
+		configure_file(${PROJECT_SOURCE_DIR}/doc/tools/quickbook.sh.in
 			${CMAKE_CURRENT_BINARY_DIR}/tmp/quickbook.sh
 			@ONLY)
 		file(COPY ${CMAKE_CURRENT_BINARY_DIR}/tmp/quickbook.sh
@@ -311,15 +312,15 @@ if(PINCH_BUILD_DOC)
 		set(QUICKBOOK_SCRIPT ${QUICKBOOK})
 	endif()
 
-	configure_file(${CMAKE_SOURCE_DIR}/doc/Jamfile.v2.in ${CMAKE_SOURCE_DIR}/doc/Jamfile.v2 @ONLY)
+	configure_file(${PROJECT_SOURCE_DIR}/doc/Jamfile.v2.in ${PROJECT_SOURCE_DIR}/doc/Jamfile.v2 @ONLY)
 	
-	add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/doc/html/index.html
-			${CMAKE_SOURCE_DIR}/doc/html ${CMAKE_SOURCE_DIR}/doc/bin
-			${CMAKE_SOURCE_DIR}/doc/autodoc.xml
-		COMMAND ${BJAM} ${CMAKE_SOURCE_DIR}/doc
-		DEPENDS ${CMAKE_SOURCE_DIR}/doc/Jamfile.v2)
-	add_custom_target(doc ALL DEPENDS ${CMAKE_SOURCE_DIR}/doc/html/index.html)
-	install(DIRECTORY ${CMAKE_SOURCE_DIR}/doc/html DESTINATION ${CMAKE_INSTALL_DOCDIR}/${PACKAGE_NAME})
+	add_custom_command(OUTPUT ${PROJECT_SOURCE_DIR}/doc/html/index.html
+			${PROJECT_SOURCE_DIR}/doc/html ${PROJECT_SOURCE_DIR}/doc/bin
+			${PROJECT_SOURCE_DIR}/doc/autodoc.xml
+		COMMAND ${BJAM} ${PROJECT_SOURCE_DIR}/doc
+		DEPENDS ${PROJECT_SOURCE_DIR}/doc/Jamfile.v2)
+	add_custom_target(doc ALL DEPENDS ${PROJECT_SOURCE_DIR}/doc/html/index.html)
+	install(DIRECTORY ${PROJECT_SOURCE_DIR}/doc/html DESTINATION ${CMAKE_INSTALL_DOCDIR}/${PACKAGE_NAME})
 endif()
 
 # Test applications
@@ -352,7 +353,7 @@ if(PINCH_BUILD_TESTS)
 		target_include_directories(${PINCH_TEST} PRIVATE
 			${CMAKE_CURRENT_SOURCE_DIR}/include
 			${CMAKE_CURRENT_BINARY_DIR}  # for config.h
-			${CMAKE_SOURCE_DIR}/include
+			${PROJECT_SOURCE_DIR}/include
 		)
 
 		target_link_libraries(${PINCH_TEST} PRIVATE pinch)
@@ -370,7 +371,7 @@ if(PINCH_BUILD_TESTS)
 
 		add_test(NAME ${PINCH_TEST}
 			COMMAND $<TARGET_FILE:${PINCH_TEST}> ${PINCH_TEST_ARGS}
-			WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test)
+			WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/test)
 
 	endforeach()
 endif()

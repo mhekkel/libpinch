@@ -70,6 +70,21 @@ class key_exchange
 	/// \result		Returns true if the message was successfully handled
 	bool process(ipacket &in, opacket &out, system_ns::error_code &ec);
 
+	/// \brief Process a message during key exchange, second version.
+	/// This version throws a system_ns::system_error on failure.
+	///
+	/// \param in	The incomming packet
+	/// \result		Returns a packet that may be empty, or not
+	opacket process(ipacket &in)
+	{
+		system_ns::error_code ec;
+		opacket out;
+		process(in, out, ec);
+		if (ec)
+			throw system_ns::system_error(ec);
+		return out;
+	}
+
 	/// \brief Enumerator for the keys, see standard
 	enum key_enum
 	{

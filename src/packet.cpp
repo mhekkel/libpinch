@@ -169,22 +169,11 @@ void opacket::write(std::ostream &os, int blocksize) const
 //	m_data.insert(m_data.end(), data, data + size);
 // }
 
-opacket &opacket::operator<<(const char *v)
+opacket &opacket::operator<<(std::string_view v)
 {
-	assert(v != nullptr);
-	uint32_t len = strlen(v);
-	this->operator<<(len);
-	const uint8_t *s = reinterpret_cast<const uint8_t *>(v);
-	m_data.insert(m_data.end(), s, s + len);
-	return *this;
-}
-
-opacket &opacket::operator<<(const std::string &v)
-{
-	uint32_t len = v.length();
-	this->operator<<(len);
-	const uint8_t *s = reinterpret_cast<const uint8_t *>(v.c_str());
-	m_data.insert(m_data.end(), s, s + len);
+	this->operator<<((uint32_t)v.length());
+	const uint8_t *s = reinterpret_cast<const uint8_t *>(v.data());
+	m_data.insert(m_data.end(), s, s + v.length());
 	return *this;
 }
 
@@ -201,22 +190,6 @@ opacket &opacket::operator<<(const std::vector<std::string> &v)
 	}
 
 	return this->operator<<(os.str());
-}
-
-opacket &opacket::operator<<(const char *v[])
-{
-	std::string s;
-	bool first = true;
-
-	for (const char **i = v; *i != nullptr; ++i)
-	{
-		if (not first)
-			s += ',';
-		first = false;
-		s += *i;
-	}
-
-	return this->operator<<(s);
 }
 
 opacket &opacket::operator<<(const CryptoPP::Integer &v)

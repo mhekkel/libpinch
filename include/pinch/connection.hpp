@@ -17,6 +17,7 @@
 
 #include <chrono>
 #include <deque>
+#include <iostream>
 #include <memory>
 
 namespace pinch
@@ -296,7 +297,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			async_wait_impl{}, handler, this, type);
 	}
 
-	/// \brief Asynchronously write an complete SSH packet.
+	/// \brief Asynchronously write a complete SSH packet.
 	///
 	/// \param p		The packet to write.
 	/// \param handler	The completion handler, should be of form
@@ -634,7 +635,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \brief Internal dispatching routine for packets.
 	///
 	/// This method is used by the handshake code to fetch the next packet
-	bool receive_packet(ipacket &packet, system_ns::error_code &ec);
+	std::unique_ptr<ipacket> receive_packet();
 
 	/// \brief dispatch an incomming packet
 	void process_packet(ipacket &in);

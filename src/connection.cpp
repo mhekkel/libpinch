@@ -225,22 +225,18 @@ void basic_connection::process_packet(ipacket &in)
 		async_write(std::move(out));
 }
 
-bool basic_connection::receive_packet(ipacket &packet, system_ns::error_code &ec)
+std::unique_ptr<ipacket> basic_connection::receive_packet()
 {
-	if (packet.complete())
-		packet.clear();
+	system_ns::error_code ec;
 
-	bool result = false;
-	ec = {};
+	auto result = m_crypto_engine.get_next_packet(m_response, ec);
 
-	auto p = m_crypto_engine.get_next_packet(m_response, ec);
+	if (ec)
+		throw system_ns::system_error(ec);
 
-	if (not ec and p)
+	if (result)
 	{
-		result = true;
-		std::swap(packet, *p);
-
-		switch ((message_type)packet)
+		switch ((message_type)*result)
 		{
 			case msg_disconnect:
 				close();
@@ -253,7 +249,7 @@ bool basic_connection::receive_packet(ipacket &packet, system_ns::error_code &ec
 			case msg_ignore:
 			case msg_unimplemented:
 			case msg_debug:
-				result = false;
+				result.reset(nullptr);
 				break;
 
 			default:;
@@ -453,7 +449,6 @@ void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 	else
 	{
 		m_auth_state = handshake;
-
 		asio_ns::co_spawn(get_executor(), do_handshake(std::move(op)), asio_ns::detached);
 	}
 }
@@ -481,55 +476,41 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 		while (std::isspace(host_version.back()))
 			host_version.pop_back();
 
-		if (host_version.substr(0, 7) != "SSH-2.0")
+		if (not host_version.starts_with("SSH-2.0"))
 			throw system_ns::system_error(error::make_error_code(error::protocol_version_not_supported));
 
 		auto kex = std::make_unique<key_exchange>(host_version);
-		async_write(kex->init());
+		co_await async_write(kex->init(), asio_ns::use_awaitable);
 
 		co_await asio_ns::async_read(*this, m_response, asio_ns::transfer_at_least(8), asio_ns::use_awaitable);
 
-		ipacket in;
-
-		system_ns::error_code ec;
-		while (not ec)
+		for (;;)
 		{
-			if (not receive_packet(in, ec) and not ec)
+			auto in = receive_packet();
+
+			if (not in)
 			{
 				co_await asio_ns::async_read(*this, m_response, asio_ns::transfer_at_least(1), asio_ns::use_awaitable);
 				continue;
 			}
 
-			if (in == msg_newkeys)
+			if (*in == msg_newkeys)
 			{
 				if (co_await async_accept_host_key(kex->get_host_key_pk_type(), kex->get_host_key(), asio_ns::use_awaitable))
 					break;
 
-				ec = error::make_error_code(error::host_key_not_verifiable);
+				throw system_ns::system_error(error::make_error_code(error::host_key_not_verifiable));
 				break;
 			}
 
-			opacket out;
-			if (kex->process(in, out, ec))
-			{
-				if (out)
-					async_write(std::move(out));
-
-				continue;
-			}
-
-			if (not ec)
-				ec = error::make_error_code(error::key_exchange_failed);
+			opacket out = kex->process(*in);
+			if (out)
+				co_await async_write(std::move(out), asio_ns::use_awaitable);
 		}
-
-		if (ec)
-			throw system_ns::system_error(ec);
 
 		newkeys(*kex);
 
-		opacket out = msg_service_request;
-		out << "ssh-userauth";
-		async_write(std::move(out));
+		co_await async_write(opacket(msg_service_request, "ssh-userauth"), asio_ns::use_awaitable);
 
 		// we might not be known yet
 		ssh_agent::instance().register_connection(shared_from_this());
@@ -544,21 +525,20 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 		auth_state_type auth_state = auth_state_type::none;
 		int password_attempts = 0;
 
-		while (not ec and m_auth_state != authenticated)
+		while (m_auth_state != authenticated)
 		{
-			if (not receive_packet(in, ec) and not ec)
+			auto in = receive_packet();
+
+			if (not in)
 			{
 				co_await asio_ns::async_read(*this, m_response, asio_ns::transfer_at_least(1), asio_ns::use_awaitable);
 				continue;
 			}
 
-			switch ((message_type)in)
+			switch ((message_type)*in)
 			{
 				case msg_service_accept:
-					out = msg_userauth_request;
-					out << m_user << "ssh-connection"
-						<< "none";
-					async_write(std::move(out));
+					co_await async_write(opacket(msg_userauth_request, m_user, "ssh-connection", "none"), asio_ns::use_awaitable);
 					continue;
 
 				case msg_userauth_failure:
@@ -566,7 +546,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 					std::string s;
 					bool partial;
 
-					in >> s >> partial;
+					*in >> s >> partial;
 
 					private_key_hash.clear();
 
@@ -574,26 +554,22 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 					{
 						auto &pk = private_keys.front();
 
-						out = opacket(msg_userauth_request)
-						      << m_user << "ssh-connection"
-						      << "publickey" << false
-						      << pk.get_type() << pk.get_blob();
+						opacket out(msg_userauth_request,
+							m_user, "ssh-connection",
+							"publickey", false,
+							pk.get_type(), pk.get_blob());
 
 						private_keys.pop_front();
 						auth_state = auth_state_type::public_key;
-						async_write(std::move(out));
+
+						co_await async_write(std::move(out), asio_ns::use_awaitable);
 						continue;
 					}
 
 					if (choose_protocol(s, "keyboard-interactive") == "keyboard-interactive" and ++password_attempts <= 3)
 					{
-						out = opacket(msg_userauth_request)
-						      << m_user << "ssh-connection"
-						      << "keyboard-interactive"
-						      << "en"
-						      << "";
 						auth_state = auth_state_type::keyboard_interactive;
-						async_write(std::move(out));
+						co_await async_write(opacket(msg_userauth_request, m_user, "ssh-connection", "keyboard-interactive", "en", ""), asio_ns::use_awaitable);
 						continue;
 					}
 
@@ -601,29 +577,21 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 					{
 						std::string password = co_await async_provide_password(asio_ns::use_awaitable);
 						if (password.empty())
-						{
-							password_attempts = 4;
-							ec = error::make_error_code(error::auth_cancelled_by_user);
-							continue;
-						}
+							throw system_ns::system_error(error::make_error_code(error::auth_cancelled_by_user));
 
 						auth_state = auth_state_type::password;
-						out = opacket(msg_userauth_request)
-						      << m_user << "ssh-connection"
-						      << "password" << false << password;
-						async_write(std::move(out));
+						co_await async_write(opacket(msg_userauth_request, m_user, "ssh-connection", "password", false, password), asio_ns::use_awaitable);
 						continue;
 					}
 
 					auth_state = auth_state_type::error;
-					ec = error::make_error_code(error::no_more_auth_methods_available);
-					continue;
+					throw system_ns::system_error(error::make_error_code(error::no_more_auth_methods_available));
 				}
 
 				case msg_userauth_banner:
 				{
 					std::string msg, lang;
-					in >> msg >> lang;
+					*in >> msg >> lang;
 					handle_banner(msg, lang);
 					break;
 				}
@@ -631,17 +599,17 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 				case msg_userauth_info_request:
 					if (auth_state == auth_state_type::public_key)
 					{
-						out = msg_userauth_request;
-
 						std::string alg;
 						ipacket blob;
 
-						in >> alg >> blob;
+						*in >> alg >> blob;
 
 						opacket session_id;
 						session_id << kex->session_id();
 
 						ssh_private_key pk(ssh_agent::instance().get_key(blob));
+
+						opacket out(msg_userauth_request);
 
 						out << m_user << "ssh-connection"
 							<< "publickey" << true << pk.get_type() << blob
@@ -650,7 +618,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 						// store the hash for this private key
 						private_key_hash = pk.get_hash();
 
-						async_write(std::move(out));
+						co_await async_write(std::move(out), asio_ns::use_awaitable);
 						continue;
 					}
 
@@ -659,39 +627,33 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 						std::string name, instruction, language;
 						int32_t numPrompts = 0;
 
-						in >> name >> instruction >> language >> numPrompts;
+						*in >> name >> instruction >> language >> numPrompts;
 
 						if (numPrompts == 0)
-						{
-							out = msg_userauth_info_response;
-							out << numPrompts;
-						}
+							co_await async_write(opacket(msg_userauth_info_response, numPrompts), asio_ns::use_awaitable);
 						else
 						{
 							std::vector<prompt> prompts(numPrompts);
 
 							for (auto &p : prompts)
-								in >> p.str >> p.echo;
+								*in >> p.str >> p.echo;
 
 							auto replies = co_await async_provide_credentials(name, instruction, language, prompts, asio_ns::use_awaitable);
 
 							if (replies.empty())
-							{
-								ec = error::make_error_code(error::auth_cancelled_by_user);
-								continue;
-							}
+								throw system_ns::system_error(error::make_error_code(error::auth_cancelled_by_user));
 
-							out = opacket(msg_userauth_info_response)
-							      << replies.size();
+							opacket out(msg_userauth_info_response, replies.size());
 
 							for (auto &r : replies)
 								out << r;
+							
+							co_await async_write(std::move(out), asio_ns::use_awaitable);
 						}
-						async_write(std::move(out));
 						continue;
 					}
 
-					ec = make_error_code(error::protocol_error);
+					throw system_ns::system_error(make_error_code(error::protocol_error));
 					break;
 
 				case msg_userauth_success:
@@ -699,17 +661,14 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 					break;
 
 				default:
-#if DEBUG
+#ifndef NDEBUG
 					std::cerr << "Unexpected packet: " << in << std::endl;
 #endif
 					break;
 			}
 		}
 
-		op->complete(ec);
-
-		if (ec)
-			close();
+		op->complete({});
 	}
 	catch (const system_ns::system_error &e)
 	{

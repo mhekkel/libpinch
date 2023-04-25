@@ -437,7 +437,7 @@ class channel : public std::enable_shared_from_this<channel>
 				if (not ec and state == start)
 				{
 					opacket packet(msg_channel_data);
-					packet << me->m_host_channel_id << std::make_pair(static_cast<const char *>(buffer.data()), n);
+					packet << me->m_host_channel_id << std::string_view(static_cast<const char *>(buffer.data()), n);
 
 					state = sending;
 
@@ -483,7 +483,7 @@ class channel : public std::enable_shared_from_this<channel>
 				if (not ec and n > 0)
 				{
 					opacket packet(msg);
-					packet << me->m_host_channel_id << std::make_pair(reinterpret_cast<const char *>(data.data()) + offset, n);
+					packet << me->m_host_channel_id << std::string_view(reinterpret_cast<const char *>(data.data()) + offset, n);
 					offset += n;
 
 					me->async_write_packet(std::move(packet), std::move(self));

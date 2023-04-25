@@ -35,6 +35,6 @@ namespace system_ns = ::boost::system;
 #include <coroutine>
 
 namespace asio_ns = ::asio;
-namespace system_ns = ::std::system;
+namespace system_ns = ::std;
 
 #endif

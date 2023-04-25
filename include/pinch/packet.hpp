@@ -161,6 +161,16 @@ class opacket
 	/// \param message	The data will start with this message
 	opacket(message_type message);
 
+	/// \brief Construtor
+	///
+	/// \param message	The data will start with message \a message and will contain the optional data elements \a v
+	template <typename... Ts>
+	opacket(message_type message, Ts ...v)
+		: opacket(message)
+	{
+		(operator<<(std::forward<Ts>(v)), ...);
+	}
+
 	/// \brief Copy constructor
 	opacket(const opacket &rhs);
 
@@ -207,23 +217,12 @@ class opacket
 		return *this;
 	}
 
-	opacket &operator<<(const char *v);
-	opacket &operator<<(const std::string &v);
+	opacket &operator<<(std::string_view v);
 	opacket &operator<<(const std::vector<std::string> &v);
-	opacket &operator<<(const char *v[]);
 	opacket &operator<<(const blob &v);
 	opacket &operator<<(const CryptoPP::Integer &v);
 	opacket &operator<<(const opacket &v);
 	opacket &operator<<(const ipacket &v);
-
-	// for ranges:
-	opacket &operator<<(const std::pair<const char *, std::size_t> &v)
-	{
-		operator<<(uint32_t(v.second));
-		m_data.insert(m_data.end(), reinterpret_cast<const uint8_t *>(v.first),
-			reinterpret_cast<const uint8_t *>(v.first + v.second));
-		return *this;
-	}
 
   protected:
 	blob m_data;
