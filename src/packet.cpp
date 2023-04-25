@@ -89,7 +89,7 @@ opacket &opacket::operator=(const opacket &rhs)
 	return *this;
 }
 
-void opacket::compress(compression_helper &compressor, system_ns::error_code &ec)
+void opacket::compress(compression_helper &compressor, asio_system_ns::error_code &ec)
 {
 	z_stream &zstream(compressor);
 
@@ -331,7 +331,7 @@ ipacket &ipacket::operator=(ipacket &&rhs)
 	return *this;
 }
 
-void ipacket::decompress(compression_helper &decompressor, system_ns::error_code &ec)
+void ipacket::decompress(compression_helper &decompressor, asio_system_ns::error_code &ec)
 {
 	assert(m_complete);
 

@@ -20,7 +20,7 @@ class operation
   public:
 	virtual ~operation() {}
 
-	virtual void complete(const system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) = 0;
+	virtual void complete(const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) = 0;
 };
 
 // --------------------------------------------------------------------

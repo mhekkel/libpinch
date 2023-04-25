@@ -168,14 +168,14 @@ auto async_function_wrapper(Handler &&handler, Executor &executor, Function func
 	std::packaged_task<result_type()> task(std::bind(func, args...));
 	std::future<result_type> result = task.get_future();
 
-	return asio_ns::async_compose<Handler, void(system_ns::error_code, result_type)>(
+	return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, result_type)>(
 		[
 			task = std::move(task),
 			result = std::move(result),
 			state = start,
 			&executor
 		]
-		(auto &self, system_ns::error_code ec = {}, result_type r = {}) mutable
+		(auto &self, asio_system_ns::error_code ec = {}, result_type r = {}) mutable
 		{
 			std::cout << "composed in thread " << thread_name::instance()() << std::endl;
 
@@ -231,7 +231,7 @@ void run_coro(my_executor& executor, asio_ns::yield_context yield)
 {
 	std::cout << "run_coro in thread " << thread_name::instance()() << std::endl;
 
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 	std::string pw = async_provide_password(executor, yield[ec]);
 
 	std::cout << "(run_coro) The password is "<< pw << std::endl;
@@ -249,7 +249,7 @@ void run_coro_2(Provider &provider, asio_ns::yield_context yield)
 {
 	std::cout << "run_coro_2 in thread " << thread_name::instance()() << std::endl;
 
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 	std::string pw = async_provide_password_2(provider, yield[ec]);
 
 	std::cout << "(run_coro_2) The password is "<< pw << std::endl;
@@ -259,7 +259,7 @@ void run_coro_3(asio_ns::execution::any_executor<asio_ns::execution::blocking_t:
 {
 	std::cout << "run_coro_3 in thread " << thread_name::instance()() << std::endl;
 
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 	std::string pw = async_provide_password(executor, yield[ec]);
 
 	std::cout << "(run_coro_3) The password is "<< pw << std::endl;
@@ -269,18 +269,18 @@ void run_coro_3(asio_ns::execution::any_executor<asio_ns::execution::blocking_t:
 
 void run_coro_4(asio_ns::execution::any_executor<asio_ns::execution::blocking_t::never_t> executor)
 {
-	auto handler = [](const system_ns::error_code &ec = {})
+	auto handler = [](const asio_system_ns::error_code &ec = {})
 	{
 		std::cout << "callback in thread " << thread_name::instance()() << std::endl;
 
 	};
 	using handler_type = decltype(handler);
 
-	asio_ns::async_compose<handler_type, void(system_ns::error_code)>(
+	asio_ns::async_compose<handler_type, void(asio_system_ns::error_code)>(
 		[
 			
 		]
-		(auto& self, const system_ns::error_code &ec = {}) mutable
+		(auto& self, const asio_system_ns::error_code &ec = {}) mutable
 		{
 			std::cout << "operating in thread " << thread_name::instance()() << std::endl;
 
@@ -291,7 +291,7 @@ void run_coro_4(asio_ns::execution::any_executor<asio_ns::execution::blocking_t:
 
 void run_coro_5(asio_ns::execution::any_executor<asio_ns::execution::blocking_t::never_t> executor)
 {
-	auto handler = [](const system_ns::error_code &ec = {})
+	auto handler = [](const asio_system_ns::error_code &ec = {})
 	{
 		std::cout << "callback in thread " << thread_name::instance()() << std::endl;
 
@@ -300,11 +300,11 @@ void run_coro_5(asio_ns::execution::any_executor<asio_ns::execution::blocking_t:
 	auto h2 = asio_ns::bind_executor(executor, handler);
 	using handler_type = decltype(h2);
 
-	asio_ns::async_compose<handler_type, void(system_ns::error_code)>(
+	asio_ns::async_compose<handler_type, void(asio_system_ns::error_code)>(
 		[
 			
 		]
-		(auto& self, const system_ns::error_code &ec = {}) mutable
+		(auto& self, const asio_system_ns::error_code &ec = {}) mutable
 		{
 			std::cout << "operating in thread " << thread_name::instance()() << std::endl;
 
@@ -318,7 +318,7 @@ void run_coro_6(asio_ns::execution::any_executor<asio_ns::execution::blocking_t:
 {
 	std::cout << "run_coro_6 in thread " << thread_name::instance()() << std::endl;
 
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 	std::string pw = async_provide_password(executor, yield[ec]);
 
 	std::cout << "(run_coro_6) The password is "<< pw << std::endl;
@@ -328,7 +328,7 @@ void run_coro_7(asio_ns::execution::any_executor<asio_ns::execution::blocking_t:
 {
 	std::cout << "run_coro_7 in thread " << thread_name::instance()() << std::endl;
 
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 	auto pw = async_provide_password(executor, asio_ns::use_future);
 
 	pw.wait();
@@ -444,7 +444,7 @@ int main()
 
 
 	asio_ns::signal_set sigset(io_context, SIGHUP, SIGINT);
-	sigset.async_wait([&io_context, &queue](system_ns::error_code, int signal)
+	sigset.async_wait([&io_context, &queue](asio_system_ns::error_code, int signal)
 	{
 		io_context.stop();
 		queue.stop();

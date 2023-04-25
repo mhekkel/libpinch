@@ -94,7 +94,7 @@ class bound_port : public std::enable_shared_from_this<bound_port>
 	uint16_t local_port() const { return m_local_port; }
 
   private:
-	virtual void handle_accept(const system_ns::error_code &ec = {});
+	virtual void handle_accept(const asio_system_ns::error_code &ec = {});
 
 	std::shared_ptr<basic_connection> m_connection;
 	ip::tcp::acceptor m_acceptor;
@@ -126,7 +126,7 @@ void bound_port::listen(uint16_t local_port)
 	handle_accept();
 }
 
-void bound_port::handle_accept(const system_ns::error_code &ec)
+void bound_port::handle_accept(const asio_system_ns::error_code &ec)
 {
 	if (not ec)
 	{
@@ -153,7 +153,7 @@ class port_forwarding_connection : public forwarding_connection
 	virtual void start()
 	{
 		std::shared_ptr<forwarding_connection> self(shared_from_this());
-		m_channel->async_open([self](const system_ns::error_code &ec)
+		m_channel->async_open([self](const asio_system_ns::error_code &ec)
 			{
 			if (not ec)
 				self->start_copy_data(); });
@@ -176,8 +176,8 @@ class socks5_forwarding_connection : public forwarding_connection
 	void write_error(uint8_t error_code);
 	void wrote_error();
 
-	void handshake(const system_ns::error_code &ec, size_t bytes_transferred);
-	void channel_open(const system_ns::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4);
+	void handshake(const asio_system_ns::error_code &ec, size_t bytes_transferred);
+	void channel_open(const asio_system_ns::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4);
 
 	std::shared_ptr<socks5_forwarding_connection> self() { return std::dynamic_pointer_cast<socks5_forwarding_connection>(shared_from_this()); }
 
@@ -213,7 +213,7 @@ void socks5_forwarding_connection::start()
 		std::bind(&socks5_forwarding_connection::handshake, self(), _1, _2));
 }
 
-void socks5_forwarding_connection::handshake(const system_ns::error_code &ec, size_t bytes_transferred)
+void socks5_forwarding_connection::handshake(const asio_system_ns::error_code &ec, size_t bytes_transferred)
 {
 	using namespace std::placeholders;
 
@@ -303,7 +303,7 @@ void socks5_forwarding_connection::handshake(const system_ns::error_code &ec, si
 				m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
 
 				auto self = shared_from_this();
-				m_channel->async_open([self, this, remote_address, remote_port](system_ns::error_code ec)
+				m_channel->async_open([self, this, remote_address, remote_port](asio_system_ns::error_code ec)
 					{ channel_open(ec, remote_address, remote_port, true); });
 			}
 			else
@@ -404,14 +404,14 @@ void socks5_forwarding_connection::handshake(const system_ns::error_code &ec, si
 
 			m_channel.reset(new forwarding_channel(m_connection, remote_address, remote_port));
 			auto self = shared_from_this();
-			m_channel->async_open([self, this, remote_address, remote_port](system_ns::error_code ec)
+			m_channel->async_open([self, this, remote_address, remote_port](asio_system_ns::error_code ec)
 				{ channel_open(ec, remote_address, remote_port, false); });
 			break;
 		}
 	}
 }
 
-void socks5_forwarding_connection::channel_open(const system_ns::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4)
+void socks5_forwarding_connection::channel_open(const asio_system_ns::error_code &ec, const std::string &remote_address, uint16_t remote_port, bool socks4)
 {
 	if (not ec)
 	{
@@ -433,7 +433,7 @@ void socks5_forwarding_connection::channel_open(const system_ns::error_code &ec,
 		}
 
 		asio_ns::async_write(m_socket, asio_ns::buffer(m_buffer),
-			[](const system_ns::error_code &ec, size_t bytes_transferred) {});
+			[](const asio_system_ns::error_code &ec, size_t bytes_transferred) {});
 
 		start_copy_data();
 	}
@@ -496,7 +496,7 @@ void port_forward_listener::forward_socks5(uint16_t local_port)
 	m_bound_ports.push_back(p);
 }
 
-// void port_forward_listener::accept_failed(const system_ns::error_code& ec, bound_port* e)
+// void port_forward_listener::accept_failed(const asio_system_ns::error_code& ec, bound_port* e)
 //{
 //	//m_bound_ports.erase(remove(m_bound_ports.begin(), m_bound_ports.end(), e), m_bound_ports.end());
 //	//delete e;

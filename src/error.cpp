@@ -11,7 +11,7 @@ namespace pinch::error
 namespace detail
 {
 
-	class ssh_category : public system_ns::error_category
+	class ssh_category : public asio_system_ns::error_category
 	{
 	  public:
 		const char *name() const noexcept
@@ -51,7 +51,7 @@ namespace detail
 		}
 	};
 
-	class disconnect_category : public system_ns::error_category
+	class disconnect_category : public asio_system_ns::error_category
 	{
 	  public:
 		const char *name() const noexcept
@@ -103,13 +103,13 @@ namespace detail
 
 } // namespace detail
 
-system_ns::error_category &ssh_category()
+asio_system_ns::error_category &ssh_category()
 {
 	static detail::ssh_category impl;
 	return impl;
 }
 
-system_ns::error_category &disconnect_category()
+asio_system_ns::error_category &disconnect_category()
 {
 	static detail::disconnect_category impl;
 	return impl;

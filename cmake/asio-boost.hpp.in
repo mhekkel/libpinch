@@ -5,16 +5,16 @@
 
 #pragma once
 
-#include <asio.hpp>
+#include <boost/asio.hpp>
 
 #if not __cpp_impl_coroutine
 #error "libpinch now requires coroutines"
 #endif
 
-#include <asio/execution.hpp>
-#include <asio/use_awaitable.hpp>
+#include <boost/asio/execution.hpp>
+#include <boost/asio/use_awaitable.hpp>
 
 #include <coroutine>
 
-namespace asio_ns = ::asio;
-namespace asio_system_ns = ::std;
+namespace asio_ns = ::boost::asio;
+namespace asio_system_ns = ::boost::system;

@@ -18,7 +18,7 @@ void channel::fill_open_opacket(opacket &out)
 
 void channel::open()
 {
-	async_open([](system_ns::error_code) {});
+	async_open([](asio_system_ns::error_code) {});
 }
 
 void channel::opened()
@@ -297,7 +297,7 @@ void channel::receive_extended_data(const char *data, size_t size, uint32_t type
 {
 }
 
-void channel::send_pending(const system_ns::error_code &ec)
+void channel::send_pending(const asio_system_ns::error_code &ec)
 {
 	if (ec)
 	{
@@ -325,7 +325,7 @@ void channel::send_pending(const system_ns::error_code &ec)
 			m_host_window_size -= size;
 
 			m_connection->async_write(std::move(op->m_packet),
-				[this, op = std::unique_ptr<detail::write_channel_op>(op)](const system_ns::error_code &ec, std::size_t bytes_transferred)
+				[this, op = std::unique_ptr<detail::write_channel_op>(op)](const asio_system_ns::error_code &ec, std::size_t bytes_transferred)
 				{
 					op->complete(ec, bytes_transferred);
 					this->send_pending(ec);

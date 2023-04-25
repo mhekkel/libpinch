@@ -4,7 +4,7 @@ project(libpinch VERSION 1.1.0 LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-option(USE_BOOST_ASIO "Use the asio library from Boost instead of the non-boost version" ON)
+option(USE_BOOST_ASIO "Use the asio library from Boost instead of the non-boost version" OFF)
 
 include(GNUInstallDirs)
 include(CheckFunctionExists)
@@ -72,11 +72,16 @@ find_package(Filesystem REQUIRED)
 find_package(ZLIB REQUIRED)
 
 if(USE_BOOST_ASIO)
-	find_package(Boost COMPONENTS headers system REQUIRED)
+	find_package(Boost 1.81 COMPONENTS headers REQUIRED)
 	set(ASIO_INCLUDE_DIR ${Boost_INCLUDE_DIR})
-	add_compile_definitions(USE_BOOST_ASIO)
+	message(STATUS "Using asio from boost")
+
+	configure_file(${PROJECT_SOURCE_DIR}/cmake/asio-boost.hpp.in ${PROJECT_SOURCE_DIR}/include/pinch/asio.hpp @ONLY)
 else()
-	pkg_check_modules(ASIO asio REQUIRED IMPORTED_TARGET)
+	pkg_check_modules(ASIO asio>=1.26 REQUIRED IMPORTED_TARGET)
+	message(STATUS "Using standalone asio")
+
+	configure_file(${PROJECT_SOURCE_DIR}/cmake/asio.hpp.in ${PROJECT_SOURCE_DIR}/include/pinch/asio.hpp @ONLY)
 endif()
 
 # Build shared libraries by default (not my cup of tea, but hey)

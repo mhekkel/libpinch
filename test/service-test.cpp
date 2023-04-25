@@ -193,7 +193,7 @@ asio_ns::streambuf buffer;
 void read_from_channel(pinch::channel_ptr ch, int start = 1)
 {
 	asio_ns::async_read(*ch, buffer, asio_ns::transfer_at_least(1),
-		[ch, start](const system_ns::error_code &ec, std::size_t bytes_transferred) mutable {
+		[ch, start](const asio_system_ns::error_code &ec, std::size_t bytes_transferred) mutable {
 			if (ec)
 				std::cerr << ec.message() << std::endl;
 			else
@@ -255,11 +255,11 @@ auto async_val(Handler &&handler, Executor &executor, Function func, Args... arg
 	std::packaged_task<result_type()> task(std::bind(func, args...));
 	std::future<result_type> result = task.get_future();
 
-	return asio_ns::async_compose<Handler, void(system_ns::error_code, result_type)>(
+	return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, result_type)>(
 		[task = std::move(task),
 			result = std::move(result),
 			state = start,
-			executor](auto &self, system_ns::error_code ec = {}, result_type r = {}) mutable {
+			executor](auto &self, asio_system_ns::error_code ec = {}, result_type r = {}) mutable {
 			if (not ec)
 			{
 				if (state == start)
@@ -316,7 +316,7 @@ auto async_ask_password_2(Handler &&handler, Executor &executor)
 
 struct AsyncImpl
 {
-	void operator()(system_ns::error_code ec, std::string password)
+	void operator()(asio_system_ns::error_code ec, std::string password)
 	{
 		std::cout << "And the password is " << password << std::endl
 				  << "  ==> in thread " << this_thread_name()  << std::endl;
@@ -383,7 +383,7 @@ int main()
 	conn->set_provide_password_callback(asio_ns::bind_executor(executor, &provide_password));
 
 	auto open_cb = asio_ns::bind_executor(executor,
-		[t = channel, conn, &queue, &io_context](const system_ns::error_code &ec) {
+		[t = channel, conn, &queue, &io_context](const asio_system_ns::error_code &ec) {
 			std::cout << "handler, ec = " << ec.message() << " thread: " << this_thread_name()  << std::endl;
 
 			if (ec)
@@ -411,7 +411,7 @@ int main()
 	});
 
 	asio_ns::signal_set sigset(io_context, SIGHUP, SIGINT);
-	sigset.async_wait([&io_context, &queue](system_ns::error_code, int signal) { io_context.stop(); queue.stop(); });
+	sigset.async_wait([&io_context, &queue](asio_system_ns::error_code, int signal) { io_context.stop(); queue.stop(); });
 
 	conn->keep_alive(std::chrono::seconds(5));
 

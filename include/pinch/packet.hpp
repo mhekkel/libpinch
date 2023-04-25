@@ -184,7 +184,7 @@ class opacket
 	opacket &operator=(opacket &&rhs);
 
 	/// \brief Compress the contents of the packet
-	void compress(compression_helper &compressor, system_ns::error_code &ec);
+	void compress(compression_helper &compressor, asio_system_ns::error_code &ec);
 
 	/// \brief Write the contents of the packet to \a os padded to \a blocksize
 	void write(std::ostream &os, int blocksize) const;
@@ -294,7 +294,7 @@ class ipacket
 	uint32_t nr() const { return m_number; }
 
 	/// \brief Decompress the contents
-	void decompress(compression_helper &decompressor, system_ns::error_code &ec);
+	void decompress(compression_helper &decompressor, asio_system_ns::error_code &ec);
 
 	/// \brief The size of the data
 	uint32_t size() const { return m_length; }

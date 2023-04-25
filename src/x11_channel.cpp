@@ -38,7 +38,7 @@ struct x11_socket_impl : public x11_socket_impl_base
 	virtual void async_read(std::shared_ptr<x11_channel> channel, asio_ns::streambuf &response)
 	{
 		asio_ns::async_read(m_socket, response, asio_ns::transfer_at_least(1),
-			[channel](const system_ns::error_code &ec, std::size_t bytes_transferred)
+			[channel](const asio_system_ns::error_code &ec, std::size_t bytes_transferred)
 			{
 				channel->receive_raw(ec, bytes_transferred);
 			});
@@ -47,7 +47,7 @@ struct x11_socket_impl : public x11_socket_impl_base
 	virtual void async_write(channel_ptr channel, std::shared_ptr<asio_ns::streambuf> data)
 	{
 		asio_ns::async_write(m_socket, *data,
-			[channel, data](const system_ns::error_code &ec, size_t)
+			[channel, data](const asio_system_ns::error_code &ec, size_t)
 			{
 				if (ec)
 					channel->close();
@@ -210,7 +210,7 @@ bool x11_channel::check_validation()
 	return result;
 }
 
-void x11_channel::receive_raw(const system_ns::error_code &ec, size_t size)
+void x11_channel::receive_raw(const asio_system_ns::error_code &ec, size_t size)
 {
 	if (ec)
 		close();
@@ -228,7 +228,7 @@ void x11_channel::receive_raw(const system_ns::error_code &ec, size_t size)
 				break;
 
 			asio_ns::async_write(*this, asio_ns::buffer(buffer, k),
-				[self](const system_ns::error_code &ec, size_t)
+				[self](const asio_system_ns::error_code &ec, size_t)
 				{
 					if (ec)
 						self->close();

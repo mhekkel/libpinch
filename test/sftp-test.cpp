@@ -21,7 +21,7 @@ class client
 		: m_first(true)
 	{
 		m_channel.reset(new pinch::terminal_channel(connection));
-		m_channel->open_with_pty(80, 24, "xterm", true, true, "", [this](const system_ns::error_code &ec) {
+		m_channel->open_with_pty(80, 24, "xterm", true, true, "", [this](const asio_system_ns::error_code &ec) {
 			if (ec)
 			{
 				std::cerr << "error opening channel: " << ec.message() << std::endl;
@@ -32,7 +32,7 @@ class client
 		});
 
 		m_sftp_channel.reset(new pinch::sftp_channel(connection));
-		m_sftp_channel->async_init(3, [this](const system_ns::error_code &ec, int version) {
+		m_sftp_channel->async_init(3, [this](const asio_system_ns::error_code &ec, int version) {
 			if (ec or version != 3)
 			{
 				std::cerr << "error sftp opening channel: " << ec.message() << std::endl;
@@ -41,7 +41,7 @@ class client
 			else
 			{
 				m_sftp_channel->read_dir("/home/maarten",
-					[](const system_ns::error_code &ec, const std::list<std::tuple<std::string, std::string, pinch::file_attributes>> &files) {
+					[](const asio_system_ns::error_code &ec, const std::list<std::tuple<std::string, std::string, pinch::file_attributes>> &files) {
 						if (ec)
 							std::cerr << "read dir error: " << ec.message() << std::endl;
 						else
@@ -54,7 +54,7 @@ class client
 		});
 	}
 
-	void written(const system_ns::error_code &ec, std::size_t bytes_received)
+	void written(const asio_system_ns::error_code &ec, std::size_t bytes_received)
 	{
 		if (ec)
 		{
@@ -63,7 +63,7 @@ class client
 		}
 	}
 
-	void received(const system_ns::error_code &ec, std::size_t bytes_received)
+	void received(const asio_system_ns::error_code &ec, std::size_t bytes_received)
 	{
 		if (ec)
 		{
@@ -81,7 +81,7 @@ class client
 				//						const char k_cmd[] = "xclock\n";
 				//						asio_ns::const_buffers_1 b(k_cmd, strlen(k_cmd));
 				//
-				//						asio_ns::async_write(m_channel, b, [this](const system_ns::error_code& ec, size_t bytes_transferred)
+				//						asio_ns::async_write(m_channel, b, [this](const asio_system_ns::error_code& ec, size_t bytes_transferred)
 				//						{
 				//							this->written(ec, bytes_transferred);
 				//						});
@@ -94,7 +94,7 @@ class client
 
 			asio_ns::async_read(*m_channel, m_response,
 				asio_ns::transfer_at_least(1),
-				[this](const system_ns::error_code &ec, size_t bytes_transferred) {
+				[this](const asio_system_ns::error_code &ec, size_t bytes_transferred) {
 					this->received(ec, bytes_transferred);
 				});
 		}
@@ -134,7 +134,7 @@ int main(int argc, char *const argv[])
 
 		client *c = nullptr;
 
-		//		connection.async_connect([&connection, &c](const system_ns::error_code& ec)
+		//		connection.async_connect([&connection, &c](const asio_system_ns::error_code& ec)
 		//		{
 		//			if (ec)
 		//			{
@@ -146,7 +146,7 @@ int main(int argc, char *const argv[])
 		//		});
 
 		asio_ns::signal_set sigset(io_context, SIGHUP, SIGINT);
-		sigset.async_wait([&io_context](system_ns::error_code, int signal) { io_context.stop(); });
+		sigset.async_wait([&io_context](asio_system_ns::error_code, int signal) { io_context.stop(); });
 
 		io_context.run();
 	}

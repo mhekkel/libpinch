@@ -20,7 +20,7 @@ class x11_channel : public channel
 	x11_channel(std::shared_ptr<basic_connection> inConnection);
 	~x11_channel();
 
-	void receive_raw(const system_ns::error_code &ec, std::size_t bytes_received);
+	void receive_raw(const asio_system_ns::error_code &ec, std::size_t bytes_received);
 
   protected:
 	virtual void opened();

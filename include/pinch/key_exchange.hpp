@@ -68,22 +68,14 @@ class key_exchange
 	/// \param out	Might be filled, or not...
 	/// \param ec	Will contain an error code in case of trouble
 	/// \result		Returns true if the message was successfully handled
-	bool process(ipacket &in, opacket &out, system_ns::error_code &ec);
+	bool process(ipacket &in, opacket &out, asio_system_ns::error_code &ec);
 
-	/// \brief Process a message during key exchange, second version.
-	/// This version throws a system_ns::system_error on failure.
+	/// \brief Process a message during key exchange
+	/// This method throws a asio_system_ns::system_error on failure.
 	///
 	/// \param in	The incomming packet
 	/// \result		Returns a packet that may be empty, or not
-	opacket process(ipacket &in)
-	{
-		system_ns::error_code ec;
-		opacket out;
-		process(in, out, ec);
-		if (ec)
-			throw system_ns::system_error(ec);
-		return out;
-	}
+	opacket process(ipacket &in);
 
 	/// \brief Enumerator for the keys, see standard
 	enum key_enum
@@ -124,7 +116,7 @@ class key_exchange
 	ipacket host_payload() const;
 
 	/// \brief process the kexinit message
-	void process_kexinit(ipacket &in, opacket &out, system_ns::error_code &ec);
+	void process_kexinit(ipacket &in, opacket &out, asio_system_ns::error_code &ec);
 
 	key_exchange_impl *m_impl = nullptr;
 

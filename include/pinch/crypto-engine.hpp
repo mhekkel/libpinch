@@ -124,7 +124,7 @@ class crypto_engine
 	///
 	/// Will return an empty pointer in case the packet is not complete yet
 	/// and needs more input.
-	std::unique_ptr<ipacket> get_next_packet(asio_ns::streambuf &buffer, system_ns::error_code &ec);
+	std::unique_ptr<ipacket> get_next_packet(asio_ns::streambuf &buffer, asio_system_ns::error_code &ec);
 
 	/// \brief Package the packet in \a p as a streambuf
 	std::unique_ptr<asio_ns::streambuf> get_next_request(opacket &&p);

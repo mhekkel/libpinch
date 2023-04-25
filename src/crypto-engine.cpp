@@ -393,7 +393,7 @@ blob crypto_engine::get_next_block(asio_ns::streambuf &buffer, bool empty)
 	return block;
 }
 
-std::unique_ptr<ipacket> crypto_engine::get_next_packet(asio_ns::streambuf &buffer, system_ns::error_code &ec)
+std::unique_ptr<ipacket> crypto_engine::get_next_packet(asio_ns::streambuf &buffer, asio_system_ns::error_code &ec)
 {
 	std::lock_guard lock(m_in_mutex);
 
@@ -447,7 +447,7 @@ std::unique_ptr<asio_ns::streambuf> crypto_engine::get_next_request(opacket &&p)
 
 	if (m_compressor)
 	{
-		system_ns::error_code ec;
+		asio_system_ns::error_code ec;
 		p.compress(*m_compressor, ec);
 
 		if (ec)

@@ -41,7 +41,7 @@ int main(int argc, char* const argv[])
 		}, io_context.get_executor());
 
 	/*<< Open a execution channel with the command 'uptime' >>*/
-	channel->async_open([](system_ns::error_code ec)
+	channel->async_open([](asio_system_ns::error_code ec)
 	{
 		std::cout << "open result: " << ec.message() << std::endl;
 	});

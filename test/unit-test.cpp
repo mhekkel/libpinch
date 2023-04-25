@@ -23,7 +23,7 @@ void SetStdinEcho(bool enable)
 
 // --------------------------------------------------------------------
 
-void handler(const system_ns::error_code& error, int n)
+void handler(const asio_system_ns::error_code& error, int n)
 {
 	if (error)
 		std::cout << error.message() << std::endl;
@@ -34,7 +34,7 @@ void handler(const system_ns::error_code& error, int n)
 template<typename CompletionToken>
 auto async_wait2(std::future<void>& a, CompletionToken&& token)
 {
-	return asio_ns::async_completion<CompletionToken, void(system_ns::error_code)>(
+	return asio_ns::async_completion<CompletionToken, void(asio_system_ns::error_code)>(
 		
 	);
 }

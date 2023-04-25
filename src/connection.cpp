@@ -65,7 +65,7 @@ void basic_connection::userauth_success(const std::string &host_version, const b
 		keep_alive_time_out();
 }
 
-void basic_connection::handle_error(const system_ns::error_code &ec)
+void basic_connection::handle_error(const asio_system_ns::error_code &ec)
 {
 	if (ec)
 	{
@@ -102,7 +102,7 @@ void basic_connection::rekey()
 
 // the read loop, this routine keeps calling itself until an error condition is met
 
-void basic_connection::read_loop(system_ns::error_code ec, std::size_t bytes_transferred)
+void basic_connection::read_loop(asio_system_ns::error_code ec, std::size_t bytes_transferred)
 {
 	if (ec)
 	{
@@ -149,7 +149,7 @@ void basic_connection::process_packet(ipacket &in)
 	m_keep_alive_timeouts = 0;
 
 	opacket out;
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 
 	if (not(m_kex and m_kex->process(in, out, ec)))
 		switch ((message_type)in)
@@ -227,12 +227,12 @@ void basic_connection::process_packet(ipacket &in)
 
 std::unique_ptr<ipacket> basic_connection::receive_packet()
 {
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 
 	auto result = m_crypto_engine.get_next_packet(m_response, ec);
 
 	if (ec)
-		throw system_ns::system_error(ec);
+		throw asio_system_ns::system_error(ec);
 
 	if (result)
 	{
@@ -387,7 +387,7 @@ void basic_connection::keep_alive(std::chrono::seconds interval, uint32_t max_ti
 	}
 }
 
-void basic_connection::keep_alive_time_out(const system_ns::error_code &ec)
+void basic_connection::keep_alive_time_out(const asio_system_ns::error_code &ec)
 {
 	if (ec == asio_ns::error::operation_aborted)
 		return;
@@ -404,7 +404,7 @@ void basic_connection::keep_alive_time_out(const system_ns::error_code &ec)
 		{
 			opacket out(msg_global_request);
 			out << "keepalive@salt.hekkelman.com" << true;
-			async_write(std::move(out), [this](system_ns::error_code ec, std::size_t bytes_transferred)
+			async_write(std::move(out), [this](asio_system_ns::error_code ec, std::size_t bytes_transferred)
 				{
 				if (ec)
 					handle_error(ec); });
@@ -439,12 +439,12 @@ void basic_connection::forward_socks5(uint16_t local_port)
 
 void basic_connection::do_open(std::unique_ptr<detail::open_connection_op> op)
 {
-	system_ns::error_code ec;
+	asio_system_ns::error_code ec;
 
 	if (m_auth_state == authenticated)
 		op->complete(ec);
 	else if (m_auth_state == handshake)
-		async_wait(detail::connection_wait_type::open, [op = std::move(op)](system_ns::error_code ec)
+		async_wait(detail::connection_wait_type::open, [op = std::move(op)](asio_system_ns::error_code ec)
 			{ op->complete(ec); });
 	else
 	{
@@ -477,7 +477,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 			host_version.pop_back();
 
 		if (not host_version.starts_with("SSH-2.0"))
-			throw system_ns::system_error(error::make_error_code(error::protocol_version_not_supported));
+			throw asio_system_ns::system_error(error::make_error_code(error::protocol_version_not_supported));
 
 		auto kex = std::make_unique<key_exchange>(host_version);
 		co_await async_write(kex->init(), asio_ns::use_awaitable);
@@ -499,7 +499,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 				if (co_await async_accept_host_key(kex->get_host_key_pk_type(), kex->get_host_key(), asio_ns::use_awaitable))
 					break;
 
-				throw system_ns::system_error(error::make_error_code(error::host_key_not_verifiable));
+				throw asio_system_ns::system_error(error::make_error_code(error::host_key_not_verifiable));
 				break;
 			}
 
@@ -577,7 +577,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 					{
 						std::string password = co_await async_provide_password(asio_ns::use_awaitable);
 						if (password.empty())
-							throw system_ns::system_error(error::make_error_code(error::auth_cancelled_by_user));
+							throw asio_system_ns::system_error(error::make_error_code(error::auth_cancelled_by_user));
 
 						auth_state = auth_state_type::password;
 						co_await async_write(opacket(msg_userauth_request, m_user, "ssh-connection", "password", false, password), asio_ns::use_awaitable);
@@ -585,7 +585,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 					}
 
 					auth_state = auth_state_type::error;
-					throw system_ns::system_error(error::make_error_code(error::no_more_auth_methods_available));
+					throw asio_system_ns::system_error(error::make_error_code(error::no_more_auth_methods_available));
 				}
 
 				case msg_userauth_banner:
@@ -641,7 +641,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 							auto replies = co_await async_provide_credentials(name, instruction, language, prompts, asio_ns::use_awaitable);
 
 							if (replies.empty())
-								throw system_ns::system_error(error::make_error_code(error::auth_cancelled_by_user));
+								throw asio_system_ns::system_error(error::make_error_code(error::auth_cancelled_by_user));
 
 							opacket out(msg_userauth_info_response, replies.size());
 
@@ -653,7 +653,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 						continue;
 					}
 
-					throw system_ns::system_error(make_error_code(error::protocol_error));
+					throw asio_system_ns::system_error(make_error_code(error::protocol_error));
 					break;
 
 				case msg_userauth_success:
@@ -670,7 +670,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 
 		op->complete({});
 	}
-	catch (const system_ns::system_error &e)
+	catch (const asio_system_ns::system_error &e)
 	{
 		op->complete(e.code());
 		close();
@@ -693,7 +693,7 @@ void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
 		using namespace asio_ns::ip;
 
 		// synchronous for now...
-		system_ns::error_code ec;
+		asio_system_ns::error_code ec;
 
 		tcp::resolver resolver(get_executor());
 		tcp::resolver::results_type endpoints = resolver.resolve(m_host, std::to_string(m_port), ec);
@@ -703,7 +703,7 @@ void connection::open_next_layer(std::unique_ptr<detail::wait_connection_op> op)
 		else
 		{
 			asio_ns::async_connect(m_next_layer, endpoints,
-				[self = shared_from_this(), op = std::move(op)](const system_ns::error_code &ec, tcp::resolver::endpoint_type)
+				[self = shared_from_this(), op = std::move(op)](const asio_system_ns::error_code &ec, tcp::resolver::endpoint_type)
 				{
 					op->complete(ec);
 				});
@@ -795,7 +795,7 @@ void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection
 		}
 
 		m_channel->async_open(
-			[op = std::move(op)](const system_ns::error_code &ec)
+			[op = std::move(op)](const asio_system_ns::error_code &ec)
 			{
 				op->complete(ec);
 			});
@@ -811,7 +811,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 		// dubious...
 		case wait_type::open:
 			m_channel->async_wait(channel::wait_type::open,
-				[wait_op = std::move(op)](const system_ns::error_code ec)
+				[wait_op = std::move(op)](const asio_system_ns::error_code ec)
 				{
 					wait_op->complete(ec);
 				});
@@ -819,7 +819,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 
 		case wait_type::read:
 			m_channel->async_wait(channel::wait_type::read,
-				[wait_op = std::move(op)](const system_ns::error_code ec)
+				[wait_op = std::move(op)](const asio_system_ns::error_code ec)
 				{
 					wait_op->complete(ec);
 				});
@@ -827,7 +827,7 @@ void proxied_connection::do_wait(std::unique_ptr<detail::wait_connection_op> op)
 
 		case wait_type::write:
 			m_channel->async_wait(channel::wait_type::write,
-				[wait_op = std::move(op)](const system_ns::error_code ec)
+				[wait_op = std::move(op)](const asio_system_ns::error_code ec)
 				{
 					wait_op->complete(ec);
 				});

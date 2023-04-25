@@ -5,7 +5,7 @@
 
 #pragma once
 
-/// \brief Build on system_ns::error_code by extending it with SSH messages
+/// \brief Build on asio_system_ns::error_code by extending it with SSH messages
 
 #include "pinch/asio.hpp"
 
@@ -104,8 +104,8 @@ namespace error
 		keep_alive_timeout
 	};
 
-	system_ns::error_category &ssh_category();
-	system_ns::error_category &disconnect_category();
+	asio_system_ns::error_category &ssh_category();
+	asio_system_ns::error_category &disconnect_category();
 
 } // namespace error
 } // namespace pinch
@@ -134,14 +134,14 @@ struct is_error_code_enum<pinch::error::disconnect_errors>
 namespace pinch::error
 {
 
-inline system_ns::error_code make_error_code(ssh_errors e)
+inline asio_system_ns::error_code make_error_code(ssh_errors e)
 {
-	return system_ns::error_code(static_cast<int>(e), ssh_category());
+	return asio_system_ns::error_code(static_cast<int>(e), ssh_category());
 }
 
-inline system_ns::error_code make_error_code(disconnect_errors e)
+inline asio_system_ns::error_code make_error_code(disconnect_errors e)
 {
-	return system_ns::error_code(static_cast<int>(e), disconnect_category());
+	return asio_system_ns::error_code(static_cast<int>(e), disconnect_category());
 }
 
 } // namespace pinch::error

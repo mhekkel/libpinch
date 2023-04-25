@@ -113,9 +113,9 @@ namespace detail
 		{
 		}
 
-		void complete(const system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) override
+		void complete(const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, system_ns::error_code> handler(m_handler, ec);
+			binder<Handler, asio_system_ns::error_code> handler(m_handler, ec);
 			m_work.complete(handler, handler.m_handler);
 		}
 
@@ -154,10 +154,10 @@ namespace detail
 			m_type = type;
 		}
 
-		void complete(const system_ns::error_code &ec = {},
+		void complete(const asio_system_ns::error_code &ec = {},
 			std::size_t bytes_transferred = 0) override
 		{
-			binder<Handler, system_ns::error_code> handler(m_handler, ec);
+			binder<Handler, asio_system_ns::error_code> handler(m_handler, ec);
 			m_work.complete(handler, handler.m_handler);
 		}
 
@@ -238,12 +238,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// perform a handshake and log in to the server.
 	///
 	/// \param handler The completion handler, should be of form
-	///                void (system_ns::error_code)
+	///                void (asio_system_ns::error_code)
 	template <typename Handler>
 	auto async_open(Handler &&handler)
 	{
 		return asio_ns::async_initiate<
-			Handler, void(system_ns::error_code, std::size_t)>(
+			Handler, void(asio_system_ns::error_code, std::size_t)>(
 			async_open_impl{}, handler, this);
 	}
 
@@ -270,12 +270,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// \brief Asynchronously open the next layer.
 	///
 	/// \param handler The completion handler, should be of form
-	///                void (system_ns::error_code)
+	///                void (asio_system_ns::error_code)
 	template <typename Handler>
 	auto async_open_next_layer(Handler &&handler)
 	{
 		return asio_ns::async_initiate<Handler,
-			void(system_ns::error_code)>(
+			void(asio_system_ns::error_code)>(
 			async_open_next_layer_impl{}, handler, this);
 	}
 
@@ -288,12 +288,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	///
 	/// \param type		The wait type: open, read or write
 	/// \param handler	The completion handler, should be of form
-	///               	void (system_ns::error_code)
+	///               	void (asio_system_ns::error_code)
 	template <typename Handler>
 	auto async_wait(wait_type type, Handler &&handler)
 	{
 		return asio_ns::async_initiate<Handler,
-			void(system_ns::error_code)>(
+			void(asio_system_ns::error_code)>(
 			async_wait_impl{}, handler, this, type);
 	}
 
@@ -301,7 +301,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	///
 	/// \param p		The packet to write.
 	/// \param handler	The completion handler, should be of form
-	///               	void (system_ns::error_code, std::size_t)
+	///               	void (asio_system_ns::error_code, std::size_t)
 	template <typename Handler>
 	auto async_write(opacket &&p, Handler &&handler)
 	{
@@ -313,13 +313,13 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 		auto buffer = m_crypto_engine.get_next_request(std::move(p));
 
-		return asio_ns::async_compose<Handler, void(system_ns::error_code, std::size_t)>(
+		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::size_t)>(
 			[
 				buffer = std::move(buffer),
 				conn = this->shared_from_this(),
 				state = start
 			]
-			(auto &self, const system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+			(auto &self, const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
 			{
 				if (not ec and state == start)
 				{
@@ -337,7 +337,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	void async_write(opacket &&out)
 	{
 		async_write(std::move(out),
-			[this](const system_ns::error_code &ec, std::size_t)
+			[this](const asio_system_ns::error_code &ec, std::size_t)
 			{
 				if (ec)
 					this->handle_error(ec);
@@ -350,7 +350,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		WriteHandler &&handler)
 	{
 		return asio_ns::async_initiate<
-			WriteHandler, void(system_ns::error_code, std::size_t)>(
+			WriteHandler, void(asio_system_ns::error_code, std::size_t)>(
 			async_write_impl{}, handler, this, buffers);
 	}
 
@@ -360,7 +360,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		ReadHandler &&handler)
 	{
 		return asio_ns::async_initiate<
-			ReadHandler, void(system_ns::error_code, std::size_t)>(
+			ReadHandler, void(asio_system_ns::error_code, std::size_t)>(
 			async_read_impl{}, handler, this, buffers);
 	}
 
@@ -428,7 +428,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			ask
 		};
 
-		return asio_ns::async_compose<Handler, void(system_ns::error_code, bool)>(
+		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, bool)>(
 			[
 				state1 = start,
 				this,
@@ -436,7 +436,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				algorithm,
 				key
 			]
-			(auto &self, system_ns::error_code ec = {}, bool accept = {}) mutable
+			(auto &self, asio_system_ns::error_code ec = {}, bool accept = {}) mutable
 			{
 				if (not ec)
 				{
@@ -509,12 +509,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			running
 		};
 
-		return asio_ns::async_compose<Handler, void(system_ns::error_code, std::string)>(
+		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::string)>(
 			[
 				state = start,
 				this
 			]
-			(auto &self, system_ns::error_code ec = {}, std::string pw = {}) mutable
+			(auto &self, asio_system_ns::error_code ec = {}, std::string pw = {}) mutable
 			{
 				if (not ec)
 				{
@@ -561,7 +561,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 			running
 		};
 
-		return asio_ns::async_compose<Handler, void(system_ns::error_code, std::vector<std::string>)>(
+		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::vector<std::string>)>(
 			[
 				state = start,
 				name,
@@ -570,7 +570,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 				prompts,
 				this
 			]
-			(auto &self, const system_ns::error_code &ec = {}, std::vector<std::string> reply = {}) mutable
+			(auto &self, const asio_system_ns::error_code &ec = {}, std::vector<std::string> reply = {}) mutable
 			{
 				if (not ec)
 				{
@@ -620,7 +620,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	virtual void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) = 0;
 
 	/// \brief Handle the error in \a ec, communicate the message over all channels and close the connection
-	virtual void handle_error(const system_ns::error_code &ec);
+	virtual void handle_error(const asio_system_ns::error_code &ec);
 
 	/// \brief Start using the new keys in \a kex
 	void newkeys(key_exchange &kex)
@@ -678,7 +678,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	time_point_type m_last_io;                                          ///< The last time we had an I/O
 	std::chrono::seconds m_keep_alive_interval;                         ///< How often should we send keep alive packets (in seconds)?
 	asio_ns::steady_timer m_keep_alive_timer;                       ///< The timer used for keep alive
-	void keep_alive_time_out(const system_ns::error_code &ec = {}); ///< Callback for the keep alive timer
+	void keep_alive_time_out(const asio_system_ns::error_code &ec = {}); ///< Callback for the keep alive timer
 	uint32_t m_keep_alive_timeouts = 0;                                 ///< The current number of timeouts
 	uint32_t m_max_keep_alive_timeouts = 3;                             ///< The maximum number of timeouts before we disconnect
 
@@ -742,7 +742,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
   private:
 	/// \brief The 'main loop' for reading incoming data
-	void read_loop(system_ns::error_code ec = {}, std::size_t bytes_transferred = 0);
+	void read_loop(asio_system_ns::error_code ec = {}, std::size_t bytes_transferred = 0);
 
 	/// \brief The actual opening code
 	void do_open(std::unique_ptr<detail::open_connection_op> op);
