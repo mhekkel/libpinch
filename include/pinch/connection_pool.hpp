@@ -96,17 +96,6 @@ class connection_pool
 
 	using entry_list = std::vector<entry>;
 
-	struct entry
-	{
-		std::string user;
-		std::string host;
-		uint16_t port;
-		std::shared_ptr<basic_connection> connection;
-		proxy *m_proxy = nullptr;
-	};
-
-	using entry_list = std::vector<entry>;
-
 	asio_ns::io_context &m_io_context;
 	entry_list m_entries;
 	proxy_list m_proxies;
