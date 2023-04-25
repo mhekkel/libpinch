@@ -790,8 +790,15 @@ void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection
 
 		if (m_accept_host_key_handler)
 		{
-			m_proxy->set_accept_host_key_handler([this](const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)
-				{ return this->m_accept_host_key_handler(host, algorithm, key, state); });
+			if (m_callback_executor)
+				m_proxy->set_callback_executor(m_callback_executor);
+
+			m_proxy->set_accept_host_key_handler(
+				[this]
+				(const std::string &host, const std::string &algorithm, const blob &key, host_key_state state)
+				{
+					return this->m_accept_host_key_handler(host, algorithm, key, state);
+				});
 		}
 
 		m_channel->async_open(
@@ -799,6 +806,22 @@ void proxied_connection::open_next_layer(std::unique_ptr<detail::wait_connection
 			{
 				op->complete(ec);
 			});
+	}
+}
+
+void proxied_connection::keep_alive(std::chrono::seconds interval, uint32_t max_timeouts)
+{
+	m_proxy->keep_alive(interval, max_timeouts);
+
+	m_keep_alive_interval = interval;
+	m_max_keep_alive_timeouts = max_timeouts;
+
+	m_keep_alive_timer.cancel();
+
+	if (m_keep_alive_interval > std::chrono::seconds(0))
+	{
+		m_keep_alive_timer.expires_after(m_keep_alive_interval);
+		m_keep_alive_timer.async_wait(std::bind(&proxied_connection::keep_alive_time_out, this, std::placeholders::_1));
 	}
 }
 

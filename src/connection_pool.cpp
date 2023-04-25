@@ -22,24 +22,13 @@ connection_pool::~connection_pool()
 		e.connection.reset();
 }
 
-void connection_pool::register_proxy(const std::string &destination_host, uint16_t destination_port,
-	const std::string &proxy_user, const std::string &proxy_host, uint16_t proxy_port, const std::string &proxy_cmd)
-{
-	proxy p = {destination_host, destination_port, proxy_cmd, proxy_user, proxy_host, proxy_port};
-	proxy_list::iterator pi = find(m_proxies.begin(), m_proxies.end(), p);
-	if (pi == m_proxies.end())
-		m_proxies.push_back(p);
-	else
-		*pi = p;
-}
-
 std::shared_ptr<basic_connection> connection_pool::get(const std::string &user, const std::string &host, uint16_t port)
 {
 	std::shared_ptr<basic_connection> result;
 
 	for (auto &e : m_entries)
 	{
-		if (e.user == user and e.host == host and e.port == port)
+		if (e.user == user and e.host == host and e.port == port and e.m_proxy == nullptr)
 		{
 			result = e.connection;
 			break;
@@ -62,10 +51,14 @@ std::shared_ptr<basic_connection> connection_pool::get(const std::string &user, 
 {
 	std::shared_ptr<basic_connection> result;
 
+	auto p = proxy{ proxy_cmd, proxy_user, proxy_host, proxy_port };
+	proxy_list::iterator pi = find(m_proxies.begin(), m_proxies.end(), p);
+	if (pi == m_proxies.end())
+		pi = m_proxies.insert(m_proxies.end(), p);
+
 	for (auto &e : m_entries)
 	{
-		if (e.user == user and e.host == host and e.port == port and
-			dynamic_cast<proxied_connection *>(e.connection.get()) != nullptr)
+		if (e.user == user and e.host == host and e.port == port and e.m_proxy == &*pi)
 		{
 			result = e.connection;
 			break;

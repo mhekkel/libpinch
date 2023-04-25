@@ -8,6 +8,7 @@
 #include "pinch.hpp"
 
 #include <iostream>
+#include <thread>
 
 void SetStdinEcho(bool enable)
 {

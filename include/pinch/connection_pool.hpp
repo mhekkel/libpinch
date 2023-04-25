@@ -54,18 +54,6 @@ class connection_pool
 		const std::string &proxy_user, const std::string &proxy_host,
 		uint16_t proxy_port, const std::string &proxy_cmd = {});
 
-	/// \brief Register a default proxy for a connection
-	///
-	/// \param destination_host	The hostname or ip address of the server
-	/// \param destination_port	The port to connect to
-	/// \param proxy_user		The username to use when authenticating to the proxy host
-	/// \param proxy_host		The hostname or ip address of the proxy server
-	/// \param proxy_port		The port at the proxy server to connect to
-	/// \param proxy_cmd	The proxy command to use, e.g. /usr/bin/netcat. Leave empty to use direct-tcpip
-	void register_proxy(const std::string &destination_host, uint16_t destination_port,
-		const std::string &proxy_user, const std::string &proxy_host,
-		uint16_t proxy_port, const std::string &proxy_cmd);
-
 	/// \brief Close all connections
 	void disconnect_all();
 
@@ -79,20 +67,8 @@ class connection_pool
 	connection_pool(const connection_pool &);
 	connection_pool &operator=(const connection_pool &);
 
-	struct entry
-	{
-		std::string user;
-		std::string host;
-		uint16_t port;
-		std::shared_ptr<basic_connection> connection;
-	};
-
-	using entry_list = std::list<entry>;
-
 	struct proxy
 	{
-		std::string destination_host;
-		uint16_t destination_port;
 		std::string proxy_cmd;
 		std::string proxy_user;
 		std::string proxy_host;
@@ -100,12 +76,36 @@ class connection_pool
 
 		bool operator==(const proxy &rhs) const
 		{
-			return destination_host == rhs.destination_host and
-			       destination_port == rhs.destination_port;
+			return proxy_cmd == rhs.proxy_cmd and
+			       proxy_user == rhs.proxy_user and
+			       proxy_host == rhs.proxy_host and
+			       proxy_port == rhs.proxy_port;
 		}
 	};
 
 	using proxy_list = std::list<proxy>;
+
+	struct entry
+	{
+		std::string user;
+		std::string host;
+		uint16_t port;
+		std::shared_ptr<basic_connection> connection;
+		proxy *m_proxy = nullptr;
+	};
+
+	using entry_list = std::vector<entry>;
+
+	struct entry
+	{
+		std::string user;
+		std::string host;
+		uint16_t port;
+		std::shared_ptr<basic_connection> connection;
+		proxy *m_proxy = nullptr;
+	};
+
+	using entry_list = std::vector<entry>;
 
 	asio_ns::io_context &m_io_context;
 	entry_list m_entries;

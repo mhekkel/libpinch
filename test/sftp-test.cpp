@@ -7,6 +7,7 @@
 #include "pinch.hpp"
 
 #include <iostream>
+#include <thread>
 
 #if defined(_MSC_VER)
 #pragma comment(lib, "libz")

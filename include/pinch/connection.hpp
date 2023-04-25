@@ -261,7 +261,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// Internally, connection keeps track of when the last I/O took
 	/// place and if this call is made within the kKeepAliveInterval
 	/// nothing will happen.
-	void keep_alive(std::chrono::seconds interval = std::chrono::seconds(5), uint32_t max_timeouts = 3);
+	virtual void keep_alive(std::chrono::seconds interval = std::chrono::seconds(5), uint32_t max_timeouts = 3);
 
   protected:
 	/// \brief Return true if the next layer is open.
@@ -837,7 +837,7 @@ class proxied_connection : public basic_connection
 	///
 	///	Historically, a command like /bin/nc or /usr/bin/netcat is
 	///	used to establish a transparent connection to the next server.
-	///	Use the next constructor if you want direct-tcpip instead.
+	///	Use the next constructor instead of this one if you want direct-tcpip.
 	///
 	/// \param proxy	The basic_connection to use as proxy.
 	/// \param nc_cmd	The netcat command, or ProxyCommand as called in OpenSSH.
@@ -883,6 +883,11 @@ class proxied_connection : public basic_connection
 
 	/// \brief Is the proxy channel open?
 	virtual bool next_layer_is_open() const override;
+
+	/// \brief If you want to keep the connection alive, even without
+	/// any traffic, you should call this method specifying the time between
+	/// the dummy packets.
+	void keep_alive(std::chrono::seconds interval = std::chrono::seconds(5), uint32_t max_timeouts = 3) override;
 
   private:
 	friend async_wait_impl;
