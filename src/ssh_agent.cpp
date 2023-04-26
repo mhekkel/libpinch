@@ -369,13 +369,7 @@ int OPENSSL_EVP_BytesToKey(HashTransformation &hash,
 void ssh_agent::add(const std::string &private_key, const std::string &key_comment, std::function<bool(std::string &)> provide_password)
 {
 	AutoSeededRandomPool prng;
-	std::regex rx(
-		"^-+BEGIN RSA PRIVATE KEY-+\\n"
-		"(?:"
-		"((?:^[^:]+:\\s*\\S.+\\n)+)"
-		"\\n)?"
-		"([ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\\s]+)=*\\n"
-		"-+END RSA PRIVATE KEY-+\n?");
+	std::regex rx(R"(^-+BEGIN RSA PRIVATE KEY-+\r?\n(?:((?:^[^:]+:\s*\S.+\r?\n)+)\r?\n)?([ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\s]+)=*\r?\n-+END RSA PRIVATE KEY-+\r?\n?)");
 
 	std::smatch m;
 

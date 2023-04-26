@@ -310,7 +310,23 @@ void sftp_channel::do_readfile(std::unique_ptr<detail::sftp_readfile_op> op)
 		op->complete(std::make_error_code(std::errc::io_error));
 	else
 	{
+		op->m_blocksize = m_max_send_packet_size - 4 * sizeof(uint32_t);
 		write(opacket((message_type)SSH_FXP_OPEN, op->m_id, op->m_path, uint32_t(SSH_FXF_READ), uint32_t(0)));
+		m_sftp_ops.push_back(op.release());
+	}
+}
+
+void sftp_channel::do_writefile(std::unique_ptr<detail::sftp_writefile_op> op)
+{
+	if (op->m_ec)
+		op->complete(op->m_ec);
+	else if (not op->m_file.is_open())
+		op->complete(std::make_error_code(std::errc::io_error));
+	else
+	{
+		op->m_blocksize = m_max_send_packet_size - 4 * sizeof(uint32_t);
+		write(opacket((message_type)SSH_FXP_OPEN, op->m_id, op->m_path,
+			uint32_t(SSH_FXF_READ | SSH_FXF_WRITE | SSH_FXF_CREAT | SSH_FXF_TRUNC), uint32_t(0)));
 		m_sftp_ops.push_back(op.release());
 	}
 }
@@ -378,8 +394,6 @@ namespace detail
 		return out;
 	}
 
-	const uint32_t kBlockSize = kMaxPacketSize - 4 * sizeof(uint32_t);
-
 	opacket sftp_readfile_op::process(ipacket &p)
 	{
 		opacket out;
@@ -422,7 +436,7 @@ namespace detail
 	
 				m_offset = 0;
 
-				out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, kBlockSize);
+				out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, m_blocksize);
 				break;
 			}
 
@@ -437,7 +451,65 @@ namespace detail
 				if (m_offset == m_filesize)
 					out = opacket((message_type)SSH_FXP_CLOSE, m_id, m_handle);
 				else
-					out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, kBlockSize);
+					out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, m_blocksize);
+				break;
+			}
+
+			default:;
+		}
+
+		return out;
+	}
+
+	opacket sftp_writefile_op::process(ipacket &p)
+	{
+		opacket out;
+
+		switch ((sftp_messages)p.message())
+		{
+			case SSH_FXP_STATUS:
+			{
+				uint32_t error;
+				std::string message, language_tag;
+				p >> error >> message >> language_tag;
+
+				if (error or m_offset >= m_filesize)
+				{
+					if (not m_handle.empty())
+						out = opacket((message_type)SSH_FXP_CLOSE, m_id, m_handle);
+
+					complete(error::make_error_code(error::sftp_error(error)));
+				}
+				else
+				{
+					blob b;
+					auto blockSize = m_blocksize;
+					if (blockSize > m_filesize - m_offset)
+						blockSize = m_filesize - m_offset;
+					
+					b.resize(blockSize);
+
+					m_file.read(reinterpret_cast<char*>(b.data()), blockSize);
+					out = opacket((message_type)SSH_FXP_WRITE, m_id, m_handle, m_offset, b);
+					m_offset += blockSize;
+				}
+				break;
+			}
+
+			case SSH_FXP_HANDLE:
+			{
+				p >> m_handle;
+
+				blob b;
+				auto blockSize = m_blocksize;
+				if (blockSize > m_filesize)
+					blockSize = m_filesize;
+				
+				b.resize(blockSize);
+
+				m_file.read(reinterpret_cast<char*>(b.data()), blockSize);
+				out = opacket((message_type)SSH_FXP_WRITE, m_id, m_handle, m_offset, b);
+				m_offset = blockSize;
 				break;
 			}
 
