@@ -304,6 +304,17 @@ void sftp_channel::do_readdir(std::unique_ptr<detail::sftp_readdir_op> op)
 	m_sftp_ops.push_back(op.release());
 }
 
+void sftp_channel::do_readfile(std::unique_ptr<detail::sftp_readfile_op> op)
+{
+	if (not op->m_file.is_open())
+		op->complete(std::make_error_code(std::errc::io_error));
+	else
+	{
+		write(opacket((message_type)SSH_FXP_OPEN, op->m_id, op->m_path, uint32_t(SSH_FXF_READ), uint32_t(0)));
+		m_sftp_ops.push_back(op.release());
+	}
+}
+
 // --------------------------------------------------------------------
 
 namespace detail
@@ -358,6 +369,75 @@ namespace detail
 					out = opacket((message_type)SSH_FXP_READDIR);
 					out << m_id << m_handle;
 				}
+				break;
+			}
+
+			default:;
+		}
+
+		return out;
+	}
+
+	const uint32_t kBlockSize = kMaxPacketSize - 4 * sizeof(uint32_t);
+
+	opacket sftp_readfile_op::process(ipacket &p)
+	{
+		opacket out;
+
+		switch ((sftp_messages)p.message())
+		{
+			case SSH_FXP_STATUS:
+			{
+				uint32_t error;
+				std::string message, language_tag;
+				p >> error >> message >> language_tag;
+
+				if (not error and not m_handle.empty())
+				{
+					out = opacket((message_type)SSH_FXP_CLOSE);
+					out << m_id << m_handle;
+				}
+
+				complete(error::make_error_code(error::sftp_error(error)));
+				break;
+			}
+
+			case SSH_FXP_HANDLE:
+			{
+				p >> m_handle;
+				out = opacket((message_type)SSH_FXP_FSTAT);
+				out << m_id << m_handle;
+				break;
+			}
+
+			case SSH_FXP_ATTRS:
+			{
+				m_filesize = 0;
+
+				uint32_t flags;
+				p >> flags;
+	
+				if (flags & SSH_FILEXFER_ATTR_SIZE)
+					p >> m_filesize;
+	
+				m_offset = 0;
+
+				out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, kBlockSize);
+				break;
+			}
+
+			case SSH_FXP_DATA:
+			{
+				blob data;
+				p >> data;
+
+				m_offset += data.size();
+				m_file.write(reinterpret_cast<char*>(data.data()), data.size());
+
+				if (m_offset == m_filesize)
+					out = opacket((message_type)SSH_FXP_CLOSE, m_id, m_handle);
+				else
+					out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, kBlockSize);
 				break;
 			}
 

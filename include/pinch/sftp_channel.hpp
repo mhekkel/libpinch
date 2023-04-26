@@ -9,6 +9,9 @@
 
 #include "pinch/channel.hpp"
 
+#include <filesystem>
+#include <fstream>
+
 namespace pinch
 {
 
@@ -148,6 +151,57 @@ namespace detail
 		IoExecutor m_io_executor;
 	};
 
+	class sftp_readfile_op : public sftp_operation
+	{
+	  public:
+		asio_system_ns::error_code m_ec;
+
+		virtual opacket process(ipacket &p) override;
+
+		std::string m_path;
+		std::ofstream m_file;
+		int64_t m_offset = 0;
+		int64_t m_filesize = 0;
+
+		enum
+		{
+			open_file,
+			fstat_file,
+			read_file,
+			close_file
+		} m_state = open_file;
+	};
+
+	template <typename Handler, typename IoExecutor>
+	class sftp_readfile_handler : public sftp_readfile_op
+	{
+	  public:
+		sftp_readfile_handler(Handler &&h, const IoExecutor &io_ex, uint32_t id, const std::string &path, const std::filesystem::path &outfile)
+			: m_handler(std::forward<Handler>(h))
+			, m_io_executor(io_ex)
+		{
+			m_id = id;
+			m_path = path;
+			m_file.open(outfile);
+		}
+
+		virtual void complete(const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) override
+		{
+			handler_work<Handler, IoExecutor> w(m_handler, m_io_executor);
+
+			binder<Handler, asio_system_ns::error_code, size_t> handler(m_handler, m_ec, m_offset);
+
+			w.complete(handler, handler.m_handler);
+
+			m_completed = true;
+		}
+
+	  private:
+		Handler m_handler;
+		IoExecutor m_io_executor;
+	};
+
+
 } // namespace detail
 
 // --------------------------------------------------------------------
@@ -175,11 +229,17 @@ class sftp_channel : public channel
 			async_readdir_impl{}, handler, this, m_request_id++, path);
 	}
 
-	//	template<typename Handler>
-	//	void			read_file(const std::string& path, Handler&& handler);
-	//
-	//	template<typename Handler>
-	//	void			write_file(const std::string& path, Handler&& handler);
+	template <typename Handler>
+	void read_file(const std::string &path, const std::filesystem::path &output, Handler &&handler)
+	{
+		return asio_ns::async_initiate<Handler, void(asio_system_ns::error_code,size_t)>(async_readfile_impl{}, handler, this, m_request_id++, path, output);
+	}
+
+	// template <typename Handler>
+	// void write_file(const std::string &path, std::istream &&input, Handler &&handler)
+	// {
+	// 	return asio_ns::async_initiate<Handler, void(asio_system_ns::error_code,size_t)>(async_writefile_impl{}, handler, this, m_request_id++, path, std::move(input));
+	// }
 
   private:
 	virtual void receive_data(const char *data, size_t size) override;
@@ -231,11 +291,21 @@ class sftp_channel : public channel
 		}
 	};
 
+	struct async_readfile_impl
+	{
+		template <typename Handler>
+		void operator()(Handler &&handler, sftp_channel *ch, uint32_t request_id, const std::string &path, const std::filesystem::path &output)
+		{
+			ch->do_readfile(std::unique_ptr<detail::sftp_readfile_op>(new detail::sftp_readfile_handler(std::move(handler), ch->get_executor(), request_id, path, output)));
+		}
+	};
+
   private:
 	friend struct async_sftp_init_impl;
 
 	void do_init(std::unique_ptr<detail::sftp_init_op> op);
 	void do_readdir(std::unique_ptr<detail::sftp_readdir_op> op);
+	void do_readfile(std::unique_ptr<detail::sftp_readfile_op> op);
 
 	std::unique_ptr<detail::sftp_init_op> m_init_op;
 };
