@@ -436,7 +436,11 @@ namespace detail
 	
 				m_offset = 0;
 
-				out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, m_blocksize);
+				int32_t blockSize = m_blocksize;
+				if (blockSize > m_filesize)
+					blockSize = m_filesize;
+
+				out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, blockSize);
 				break;
 			}
 
@@ -451,7 +455,14 @@ namespace detail
 				if (m_offset == m_filesize)
 					out = opacket((message_type)SSH_FXP_CLOSE, m_id, m_handle);
 				else
-					out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, m_blocksize);
+				{
+					int32_t blockSize = m_blocksize;
+					if (blockSize + m_offset > m_filesize)
+						blockSize = m_filesize - m_offset;
+
+					out = opacket((message_type)SSH_FXP_READ, m_id, m_handle, m_offset, blockSize);
+				}
+
 				break;
 			}
 

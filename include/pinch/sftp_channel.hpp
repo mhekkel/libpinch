@@ -162,7 +162,7 @@ namespace detail
 		std::ofstream m_file;
 		int64_t m_offset = 0;
 		int64_t m_filesize = 0;
-		int64_t m_blocksize = 0;
+		int32_t m_blocksize = 0;
 
 		enum
 		{
