@@ -130,7 +130,7 @@ bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer &e, Integer
 			RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
 			0, nullptr, &cbPublicKeyStruc))
 	{
-		vector<uint8_t> b(cbPublicKeyStruc);
+		std::vector<uint8_t> b(cbPublicKeyStruc);
 
 		if (::CryptDecodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
 				RSA_CSP_PUBLICKEYBLOB, pk->PublicKey.pbData, pk->PublicKey.cbData,
@@ -145,7 +145,7 @@ bool MCertificateStore::GetPublicKey(PCCERT_CONTEXT context, Integer &e, Integer
 
 				// public key is in little endian format
 				uint32_t len = pkd->bitlen / 8;
-				reverse(data, data + len);
+				std::reverse(data, data + len);
 
 				e = pkd->pubexp;
 				n = Integer(data, len);
@@ -227,7 +227,7 @@ LRESULT CALLBACK MCertificateStore::WndProc(HWND hwnd, UINT message, WPARAM wPar
 							opacket wrapped;
 							wrapped << out;
 
-							const vector<uint8_t> &data(wrapped);
+							const std::vector<uint8_t> &data(wrapped);
 
 							copy(data.begin(), data.end(), p);
 							result = 1;
@@ -277,24 +277,27 @@ void expose_pageant(bool expose)
 class MWinSshPrivateKeyImpl : public ssh_private_key_impl
 {
   public:
-	MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext,
-		Integer &e, Integer &n);
+	MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext, const blob &b);
 	virtual ~MWinSshPrivateKeyImpl();
 
-	virtual vector<uint8_t> sign(const vector<uint8_t> &session_id, const opacket &p);
+	virtual blob sign(const blob &session_id, const opacket &data);
 
-	virtual vector<uint8_t> get_hash() const;
-	virtual string get_comment() const;
+	virtual std::string get_type() const
+	{
+		return "";
+	}
+
+	virtual blob get_hash() const;
+	virtual std::string get_comment() const;
 
   private:
 	PCCERT_CONTEXT mCertificateContext;
 };
 
-MWinSshPrivateKeyImpl::MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext, Integer &e, Integer &n)
-	: mCertificateContext(inCertificateContext)
+MWinSshPrivateKeyImpl::MWinSshPrivateKeyImpl(PCCERT_CONTEXT inCertificateContext, const blob &b)
+	: ssh_private_key_impl(b)
+	, mCertificateContext(inCertificateContext)
 {
-	m_e = e;
-	m_n = n;
 }
 
 MWinSshPrivateKeyImpl::~MWinSshPrivateKeyImpl()
@@ -303,13 +306,13 @@ MWinSshPrivateKeyImpl::~MWinSshPrivateKeyImpl()
 		::CertFreeCertificateContext(mCertificateContext);
 }
 
-vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t> &session_id, const opacket &inData)
+blob MWinSshPrivateKeyImpl::sign(const blob &session_id, const opacket &inData)
 {
 	BOOL freeKey = false;
 	DWORD keySpec, cb;
 	HCRYPTPROV key;
 
-	vector<uint8_t> digest;
+	std::vector<uint8_t> digest;
 
 	if (::CryptAcquireCertificatePrivateKey(mCertificateContext, 0, nullptr, &key, &keySpec, &freeKey))
 	{
@@ -317,7 +320,7 @@ vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t> &session_id, c
 
 		if (::CryptCreateHash(key, CALG_SHA1, 0, 0, &hash))
 		{
-			const vector<uint8_t> &data(inData);
+			const std::vector<uint8_t> &data(inData);
 
 			if ((session_id.size() == 0 or ::CryptHashData(hash, session_id.data(), session_id.size(), 0)) and
 				(data.size() == 0 or ::CryptHashData(hash, data.data(), data.size(), 0)))
@@ -327,7 +330,7 @@ vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t> &session_id, c
 
 				if (cb > 0)
 				{
-					digest = vector<uint8_t>(cb);
+					digest = std::vector<uint8_t>(cb);
 
 					if (::CryptSignHash(hash, keySpec, nullptr, 0, digest.data(), &cb))
 					{
@@ -349,9 +352,9 @@ vector<uint8_t> MWinSshPrivateKeyImpl::sign(const vector<uint8_t> &session_id, c
 	return signature;
 }
 
-string MWinSshPrivateKeyImpl::get_comment() const
+std::string MWinSshPrivateKeyImpl::get_comment() const
 {
-	string comment;
+	std::string comment;
 
 	// now we have a public key, try to fetch a comment as well
 	DWORD types[] = {CERT_NAME_UPN_TYPE, CERT_NAME_FRIENDLY_DISPLAY_TYPE,
@@ -363,14 +366,14 @@ string MWinSshPrivateKeyImpl::get_comment() const
 			CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, nullptr, 0);
 		if (cb > 1)
 		{
-			vector<wchar_t> b(cb);
+			std::vector<wchar_t> b(cb);
 			::CertGetNameString(mCertificateContext, type,
 				CERT_NAME_DISABLE_IE4_UTF8_FLAG, nullptr, b.data(), cb);
 
 			while (cb > 0 and b[cb - 1] == 0)
 				--cb;
 
-			comment = string(b.begin(), b.begin() + cb);
+			comment = std::string(b.begin(), b.begin() + cb);
 
 			if (not comment.empty())
 				break;
@@ -380,10 +383,10 @@ string MWinSshPrivateKeyImpl::get_comment() const
 	return comment;
 }
 
-vector<uint8_t> MWinSshPrivateKeyImpl::get_hash() const
+blob MWinSshPrivateKeyImpl::get_hash() const
 {
 	// create a hash for this key
-	vector<uint8_t> result(20); // SHA1 hash is always 20 bytes
+	blob result(20); // SHA1 hash is always 20 bytes
 	DWORD cbHash = 20;
 
 	if (not ::CertGetCertificateContextProperty(mCertificateContext,
@@ -397,9 +400,9 @@ vector<uint8_t> MWinSshPrivateKeyImpl::get_hash() const
 
 // --------------------------------------------------------------------
 
-// ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const string& inHash)
+// ssh_private_key_impl* ssh_private_key_impl::create_for_hash(const std::string& inHash)
 //{
-////	string hash;
+////	std::string hash;
 ////
 ////	Base64Decoder d(new StringSink(hash));
 ////	d.Put(reinterpret_cast<const uint8_t*>(inHash.c_str()), inHash.length());
@@ -418,11 +421,36 @@ vector<uint8_t> MWinSshPrivateKeyImpl::get_hash() const
 //	return nullptr;
 //}
 
-ssh_private_key_impl *ssh_private_key_impl::create_for_blob(ipacket &inBlob)
+// ssh_private_key_impl *ssh_private_key_impl::create_for_blob(ipacket &inBlob)
+// {
+// 	ssh_private_key_impl *result = nullptr;
+// 	PCCERT_CONTEXT context = nullptr;
+// 	MCertificateStore &store(MCertificateStore::Instance());
+
+// 	while (context = ::CertEnumCertificatesInStore(store, context))
+// 	{
+// 		Integer e, n;
+
+// 		if (store.GetPublicKey(context, e, n))
+// 		{
+// 			opacket blob;
+// 			blob << "ssh-rsa" << e << n;
+
+// 			if (blob == inBlob)
+// 			{
+// 				result = new MWinSshPrivateKeyImpl(context, e, n);
+// 				break;
+// 			}
+// 		}
+// 	}
+
+// 	return result;
+// }
+
+void ssh_private_key_impl::create_list(std::vector<ssh_private_key> &outKeys)
 {
-	ssh_private_key_impl *result = nullptr;
-	PCCERT_CONTEXT context = nullptr;
 	MCertificateStore &store(MCertificateStore::Instance());
+	PCCERT_CONTEXT context = nullptr;
 
 	while (context = ::CertEnumCertificatesInStore(store, context))
 	{
@@ -430,31 +458,13 @@ ssh_private_key_impl *ssh_private_key_impl::create_for_blob(ipacket &inBlob)
 
 		if (store.GetPublicKey(context, e, n))
 		{
-			opacket blob;
-			blob << "ssh-rsa" << e << n;
+			opacket p;
+			p << e << n;
 
-			if (blob == inBlob)
-			{
-				result = new MWinSshPrivateKeyImpl(context, e, n);
-				break;
-			}
+			blob b{ p.data(), p.data() + p.size() };
+
+			outKeys.push_back(ssh_private_key(new MWinSshPrivateKeyImpl(::CertDuplicateCertificateContext(context), b)));
 		}
-	}
-
-	return result;
-}
-
-void ssh_private_key_impl::create_list(vector<ssh_private_key> &outKeys)
-{
-	MCertificateStore &store(MCertificateStore::Instance());
-	PCCERT_CONTEXT context = nullptr;
-
-	while (context = ::CertEnumCertificatesInStore(store, context))
-	{
-		Integer e, n;
-
-		if (store.GetPublicKey(context, e, n))
-			outKeys.push_back(ssh_private_key(new MWinSshPrivateKeyImpl(::CertDuplicateCertificateContext(context), e, n)));
 	}
 }
 
