@@ -143,7 +143,7 @@ void opacket::write(std::ostream &os, int blocksize) const
 	while (padding_size < 4)
 		padding_size += blocksize;
 
-	std::uniform_int_distribution<uint8_t> rb;
+	std::uniform_int_distribution<short> rb;
 	for (uint32_t i = 0; i < padding_size; ++i)
 		padding.push_back(rb(rng));
 

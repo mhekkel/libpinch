@@ -489,7 +489,7 @@ ssh_private_key ssh_agent::get_key(ipacket &b) const
 {
 	for (auto &key : m_private_keys)
 	{
-		if ((blob)b == key.get_blob())
+		if (b.operator pinch::blob() == key.get_blob())
 			return key;
 	}
 
