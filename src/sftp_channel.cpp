@@ -287,10 +287,7 @@ void sftp_channel::do_init(std::unique_ptr<detail::sftp_init_op> op)
 			op->complete(ec);
 		else
 		{
-			opacket out((message_type)SSH_FXP_INIT);
-			out << uint32_t(op->m_version);
-			write(std::move(out));
-
+			write(opacket((message_type)SSH_FXP_INIT, op->m_version));
 			m_init_op = std::move(op);
 		} });
 }

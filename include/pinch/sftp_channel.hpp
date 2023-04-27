@@ -62,7 +62,7 @@ namespace detail
 	class sftp_init_op : public operation
 	{
 	  public:
-		int m_version;
+		uint32_t m_version;
 	};
 
 	template <typename Handler, typename IoExecutor>
