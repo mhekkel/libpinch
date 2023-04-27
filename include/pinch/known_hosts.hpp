@@ -87,8 +87,6 @@ class known_hosts
 
 	std::vector<host_key> m_host_keys;
 	std::mutex m_mutex;
-
-	static std::unique_ptr<known_hosts> s_instance;
 };
 
 } // namespace pinch

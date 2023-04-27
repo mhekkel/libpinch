@@ -14,7 +14,6 @@ include(CheckLibraryExists)
 include(CMakePackageConfigHelpers)
 include(Dart)
 include(GenerateExportHeader)
-include(FindPkgConfig)
 
 set(PACKAGE ${PROJECT_NAME})
 set(PACKAGE_VERSION ${PROJECT_VERSION})
@@ -76,13 +75,18 @@ find_package(Filesystem REQUIRED)
 find_package(ZLIB REQUIRED)
 
 if(USE_BOOST_ASIO)
-	find_package(Boost 1.81 COMPONENTS headers REQUIRED)
+	find_package(Boost 1.80 COMPONENTS headers REQUIRED)
 	set(ASIO_INCLUDE_DIR ${Boost_INCLUDE_DIR})
 	message(STATUS "Using asio from boost")
 
 	configure_file(${PROJECT_SOURCE_DIR}/cmake/asio-boost.hpp.in ${PROJECT_SOURCE_DIR}/include/pinch/asio.hpp @ONLY)
 else()
-	pkg_check_modules(ASIO asio>=1.26 REQUIRED IMPORTED_TARGET)
+	if(MSVC)
+		find_file(ASIO asio.hpp)
+	else()
+		pkg_check_modules(ASIO asio>=1.26 REQUIRED IMPORTED_TARGET)
+	endif()
+
 	message(STATUS "Using standalone asio")
 
 	configure_file(${PROJECT_SOURCE_DIR}/cmake/asio.hpp.in ${PROJECT_SOURCE_DIR}/include/pinch/asio.hpp @ONLY)
