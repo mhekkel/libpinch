@@ -72,6 +72,28 @@ elseif(MSVC)
 endif()
 
 find_package(Filesystem REQUIRED)
+
+if(MSVC)
+	# Avoid linking the shared library of zlib
+	# Search ZLIB_ROOT first if it is set.
+	if(ZLIB_ROOT)
+		set(_ZLIB_SEARCH_ROOT PATHS ${ZLIB_ROOT} NO_DEFAULT_PATH)
+		list(APPEND _ZLIB_SEARCHES _ZLIB_SEARCH_ROOT)
+	endif()
+
+	# Normal search.
+	set(_ZLIB_x86 "(x86)")
+	set(_ZLIB_SEARCH_NORMAL
+		PATHS "[HKEY_LOCAL_MACHINE\\SOFTWARE\\GnuWin32\\Zlib;InstallPath]"
+			"$ENV{ProgramFiles}/zlib"
+			"$ENV{ProgramFiles${_ZLIB_x86}}/zlib")
+	unset(_ZLIB_x86)
+	list(APPEND _ZLIB_SEARCHES _ZLIB_SEARCH_NORMAL)
+
+	foreach(search ${_ZLIB_SEARCHES})
+    	find_library(ZLIB_LIBRARY NAMES zlibstatic NAMES_PER_DIR ${${search}} PATH_SUFFIXES lib)
+	endforeach()
+endif()
 find_package(ZLIB REQUIRED)
 
 if(USE_BOOST_ASIO)
@@ -112,6 +134,8 @@ if(MSVC)
 
 	get_WIN32_WINNT(ver)
 	add_definitions(-D_WIN32_WINNT=${ver})
+
+	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 set(CMAKE_THREAD_PREFER_PTHREAD)
@@ -119,7 +143,7 @@ set(THREADS_PREFER_PTHREAD_FLAG)
 find_package(Threads REQUIRED)
 
 find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
-find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ REQUIRED)
+find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ cryptlib REQUIRED)
 
 list(APPEND PINCH_HEADERS
 	${PROJECT_SOURCE_DIR}/include/pinch.hpp
@@ -191,6 +215,11 @@ target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT}
 if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
 	target_link_options(pinch PRIVATE -undefined dynamic_lookup)
 endif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+
+if(MSVC)
+	target_compile_options(pinch PUBLIC "/ZI")
+	target_link_options(pinch PUBLIC "/INCREMENTAL")
+endif()
 
 set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR})
 set(LIBRARY_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR})
