@@ -930,9 +930,7 @@ void basic_connection::async_read_impl::operator()(
 
 	auto c = dynamic_cast<connection *>(conn);
 	if (c)
-		asio_ns::async_read(c->next_layer(), buffers,
-			asio_ns::transfer_at_least(1),
-			std::move(handler));
+		c->next_layer().async_read_some(buffers, std::move(handler));
 	else
 	{
 		auto pc = dynamic_cast<proxied_connection *>(conn);
