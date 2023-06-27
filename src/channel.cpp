@@ -425,10 +425,8 @@ void exec_channel::handle_channel_request(const std::string &request, ipacket &i
 	if (request == "exit-status")
 		in >> status;
 
-	asio_ns::execution::execute(
-		asio_ns::require(m_executor, asio_ns::execution::blocking.never),
-		[request, status, this]()
-		{ m_handler(request, status); });
+	asio_ns::require(m_executor, asio_ns::execution::blocking.never).execute(
+		[request, status, this]() { m_handler(request, status); });
 }
 
 } // namespace pinch
