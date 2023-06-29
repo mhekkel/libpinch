@@ -133,8 +133,7 @@ void basic_connection::read_loop(asio_system_ns::error_code ec, std::size_t byte
 		}
 
 		using namespace std::placeholders;
-		asio_ns::async_read(*this, m_response, asio_ns::transfer_at_least(1),
-			std::bind(&basic_connection::read_loop, this, _1, _2));
+		async_read_some(asio_ns::basic_streambuf_ref(m_response), std::bind(&basic_connection::read_loop, this, _1, _2));
 	}
 	catch (...)
 	{
@@ -482,7 +481,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 		auto kex = std::make_unique<key_exchange>(host_version);
 		co_await async_write(kex->init(), asio_ns::use_awaitable);
 
-		co_await asio_ns::async_read(*this, m_response, asio_ns::transfer_at_least(8), asio_ns::use_awaitable);
+		co_await async_read_some(asio_ns::basic_streambuf_ref(m_response), asio_ns::use_awaitable);
 
 		for (;;)
 		{
@@ -490,7 +489,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 
 			if (not in)
 			{
-				co_await asio_ns::async_read(*this, m_response, asio_ns::transfer_at_least(1), asio_ns::use_awaitable);
+				co_await async_read_some(asio_ns::basic_streambuf_ref(m_response), asio_ns::use_awaitable);
 				continue;
 			}
 
@@ -531,7 +530,7 @@ asio_ns::awaitable<void> basic_connection::do_handshake(std::unique_ptr<detail::
 
 			if (not in)
 			{
-				co_await asio_ns::async_read(*this, m_response, asio_ns::transfer_at_least(1), asio_ns::use_awaitable);
+				co_await async_read_some(asio_ns::basic_streambuf_ref(m_response), asio_ns::use_awaitable);
 				continue;
 			}
 

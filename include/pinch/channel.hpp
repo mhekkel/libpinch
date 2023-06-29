@@ -577,7 +577,7 @@ class channel : public std::enable_shared_from_this<channel>
 		{
 			if (not ch->is_open())
 				handler(error::make_error_code(error::connection_lost), 0);
-			else if (asio_ns::buffer_size(buffers) == 0)
+			else if (buffers.size() == 0)
 				handler(asio_system_ns::error_code(), 0);
 			else
 				ch->add_read_op(new detail::read_channel_handler{
