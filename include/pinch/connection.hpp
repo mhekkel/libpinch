@@ -450,9 +450,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 							if (not accept and m_accept_host_key_handler)
 							{
 								state1 = ask;
-								asio_ns::execution::execute(
-									asio_ns::require(m_callback_executor, asio_ns::execution::blocking.never),
-									std::move(self));
+								asio_ns::require(m_callback_executor, asio_ns::execution::blocking.never).execute(std::move(self));
 								return;
 							}
 							break;
@@ -521,9 +519,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 					if (state == start)
 					{
 						state = running;
-						asio_ns::execution::execute(
-							asio_ns::require(m_callback_executor, asio_ns::execution::blocking.never),
-							std::move(self));
+						asio_ns::require(m_callback_executor, asio_ns::execution::blocking.never).execute(std::move(self));
 						return;
 					}
 
@@ -577,9 +573,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 					if (state == start)
 					{
 						state = running;
-						asio_ns::execution::execute(
-							asio_ns::require(m_callback_executor, asio_ns::execution::blocking.never),
-							std::move(self));
+						asio_ns::require(m_callback_executor, asio_ns::execution::blocking.never).execute(std::move(self));
 						return;
 					}
 
@@ -675,14 +669,14 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	// messages
 	using time_point_type = std::chrono::time_point<std::chrono::steady_clock>;
 
-	time_point_type m_last_io;                                          ///< The last time we had an I/O
-	std::chrono::seconds m_keep_alive_interval;                         ///< How often should we send keep alive packets (in seconds)?
-	asio_ns::steady_timer m_keep_alive_timer;                       ///< The timer used for keep alive
+	time_point_type m_last_io;                                           ///< The last time we had an I/O
+	std::chrono::seconds m_keep_alive_interval;                          ///< How often should we send keep alive packets (in seconds)?
+	asio_ns::steady_timer m_keep_alive_timer;                            ///< The timer used for keep alive
 	void keep_alive_time_out(const asio_system_ns::error_code &ec = {}); ///< Callback for the keep alive timer
-	uint32_t m_keep_alive_timeouts = 0;                                 ///< The current number of timeouts
-	uint32_t m_max_keep_alive_timeouts = 3;                             ///< The maximum number of timeouts before we disconnect
+	uint32_t m_keep_alive_timeouts = 0;                                  ///< The current number of timeouts
+	uint32_t m_max_keep_alive_timeouts = 3;                              ///< The maximum number of timeouts before we disconnect
 
-	blob m_private_key_hash;           ///< The private key used to authenticate
+	blob m_private_key_hash;       ///< The private key used to authenticate
 	asio_ns::streambuf m_response; ///< Buffer for incomming response data
 
 	provide_password_callback_type m_provide_password_handler;       ///< The registered password handler
@@ -930,9 +924,8 @@ void basic_connection::async_read_impl::operator()(
 
 	auto c = dynamic_cast<connection *>(conn);
 	if (c)
-		asio_ns::async_read(c->next_layer(), buffers,
-			asio_ns::transfer_at_least(1),
-			std::move(handler));
+		// c->next_layer().async_read_some(buffers, std::move(handler));
+		asio_ns::async_read(c->next_layer(), buffers, asio_ns::transfer_at_least(1), std::move(handler));
 	else
 	{
 		auto pc = dynamic_cast<proxied_connection *>(conn);

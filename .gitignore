@@ -5,3 +5,4 @@ doc/bin/
 doc/html/
 doc/autodoc.xml
 build/
+include/pinch/asio.hpp

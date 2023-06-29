@@ -14,7 +14,6 @@ include(CheckLibraryExists)
 include(CMakePackageConfigHelpers)
 include(Dart)
 include(GenerateExportHeader)
-include(FindPkgConfig)
 
 set(PACKAGE ${PROJECT_NAME})
 set(PACKAGE_VERSION ${PROJECT_VERSION})
@@ -73,16 +72,45 @@ elseif(MSVC)
 endif()
 
 find_package(Filesystem REQUIRED)
+
+if(MSVC)
+	# Avoid linking the shared library of zlib
+	# Search ZLIB_ROOT first if it is set.
+	if(ZLIB_ROOT)
+		set(_ZLIB_SEARCH_ROOT PATHS ${ZLIB_ROOT} NO_DEFAULT_PATH)
+		list(APPEND _ZLIB_SEARCHES _ZLIB_SEARCH_ROOT)
+	endif()
+
+	# Normal search.
+	set(_ZLIB_x86 "(x86)")
+	set(_ZLIB_SEARCH_NORMAL
+		PATHS "[HKEY_LOCAL_MACHINE\\SOFTWARE\\GnuWin32\\Zlib;InstallPath]"
+			"$ENV{ProgramFiles}/zlib"
+			"$ENV{ProgramFiles${_ZLIB_x86}}/zlib")
+	unset(_ZLIB_x86)
+	list(APPEND _ZLIB_SEARCHES _ZLIB_SEARCH_NORMAL)
+
+	foreach(search ${_ZLIB_SEARCHES})
+    	find_library(ZLIB_LIBRARY NAMES zlibstatic NAMES_PER_DIR ${${search}} PATH_SUFFIXES lib)
+	endforeach()
+endif()
 find_package(ZLIB REQUIRED)
 
 if(USE_BOOST_ASIO)
-	find_package(Boost 1.81 COMPONENTS headers REQUIRED)
+	# message(FATAL_ERROR "Boost ASIO is not working properly")
+
+	find_package(Boost 1.82 COMPONENTS headers REQUIRED)
 	set(ASIO_INCLUDE_DIR ${Boost_INCLUDE_DIR})
 	message(STATUS "Using asio from boost")
 
 	configure_file(${PROJECT_SOURCE_DIR}/cmake/asio-boost.hpp.in ${PROJECT_SOURCE_DIR}/include/pinch/asio.hpp @ONLY)
 else()
-	pkg_check_modules(ASIO asio>=1.26 REQUIRED IMPORTED_TARGET)
+	if(MSVC)
+		find_file(ASIO asio.hpp)
+	else()
+		pkg_check_modules(ASIO asio>=1.28 REQUIRED IMPORTED_TARGET)
+	endif()
+
 	message(STATUS "Using standalone asio")
 
 	configure_file(${PROJECT_SOURCE_DIR}/cmake/asio.hpp.in ${PROJECT_SOURCE_DIR}/include/pinch/asio.hpp @ONLY)
@@ -119,6 +147,8 @@ if(MSVC)
 
 	get_WIN32_WINNT(ver)
 	add_definitions(-D_WIN32_WINNT=${ver})
+
+	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 set(CMAKE_THREAD_PREFER_PTHREAD)
@@ -126,7 +156,7 @@ set(THREADS_PREFER_PTHREAD_FLAG)
 find_package(Threads REQUIRED)
 
 find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
-find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ REQUIRED)
+find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ cryptlib REQUIRED)
 
 list(APPEND PINCH_HEADERS
 	${PROJECT_SOURCE_DIR}/include/pinch.hpp
@@ -198,6 +228,11 @@ target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT}
 if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
 	target_link_options(pinch PRIVATE -undefined dynamic_lookup)
 endif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+
+if(MSVC)
+	target_compile_options(pinch PUBLIC "/ZI")
+	target_link_options(pinch PUBLIC "/INCREMENTAL")
+endif()
 
 set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR})
 set(LIBRARY_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR})
