@@ -154,34 +154,54 @@ class opacket
 	friend bool operator==(const ipacket &, const opacket &);
 
 	/// \brief Simple constructor, create fully empty packet
-	opacket();
+	opacket()
+		: m_data(0)
+	{
+	}
 
 	/// \brief Construtor
 	///
 	/// \param message	The data will start with this message
-	opacket(message_type message);
+	opacket(message_type message)
+		: m_data(1)
+	{
+		m_data[0] = message;
+	}
 
 	/// \brief Construtor
 	///
 	/// \param message	The data will start with message \a message and will contain the optional data elements \a v
 	template <typename... Ts>
-	opacket(message_type message, Ts ...v)
+	opacket(message_type message, Ts... v)
 		: opacket(message)
 	{
 		(operator<<(std::forward<Ts>(v)), ...);
 	}
 
 	/// \brief Copy constructor
-	opacket(const opacket &rhs);
+	opacket(const opacket &rhs)
+		: m_data(rhs.m_data)
+	{
+	}
 
 	/// \brief Move constructor
-	opacket(opacket &&rhs);
+	opacket(opacket &&rhs)
+	{
+		swap(*this, rhs);
+	}
 
-	/// \brief Copy operator
-	opacket &operator=(const opacket &rhs);
+	/// \brief Copy/move operator
+	opacket &operator=(opacket rhs)
+	{
+		swap(*this, rhs);
+		return *this;
+	}
 
-	/// \brief Move operator
-	opacket &operator=(opacket &&rhs);
+	/// \brief swap
+	friend void swap(opacket &a, opacket &b) noexcept
+	{
+		std::swap(a.m_data, b.m_data);
+	}
 
 	/// \brief Compress the contents of the packet
 	void compress(compression_helper &compressor, asio_system_ns::error_code &ec);
@@ -258,28 +278,85 @@ class ipacket
 	friend bool operator==(const ipacket &, const opacket &);
 
 	/// \brief Constructor taking a sequence number
-	ipacket(uint32_t nr = 0);
+	ipacket(uint32_t nr = 0)
+		: m_message(msg_undefined)
+		, m_padding(0)
+		, m_owned(false)
+		, m_complete(false)
+		, m_number(nr)
+		, m_offset(0)
+		, m_length(0)
+		, m_data(nullptr)
+	{
+	}
 
 	/// \brief Copy constructor
-	ipacket(const ipacket &rhs);
+	ipacket(const ipacket &rhs)
+		: m_message(rhs.m_message)
+		, m_padding(rhs.m_padding)
+		, m_owned(false)
+		, m_complete(rhs.m_complete)
+		, m_number(rhs.m_number)
+		, m_offset(rhs.m_offset)
+		, m_length(rhs.m_length)
+		, m_data(rhs.m_data)
+	{
+	}
 
 	/// \brief Move constructor
-	ipacket(ipacket &&rhs);
+	ipacket(ipacket &&rhs)
+	{
+		swap(*this, rhs);
+	}
 
-	/// \brief Constructor taking raw data
-	ipacket(const uint8_t *data, std::size_t size);
+	/// \brief Copy/move operator
+	ipacket &operator=(ipacket rhs)
+	{
+		swap(*this, rhs);
+		return *this;
+	}
 
 	/// \brief Constructor creating a new ipacket from a blob
-	ipacket(message_type msg, const blob &b);
+	ipacket(message_type msg, const blob &b)
+	{
+		m_data = new uint8_t[b.size() + 1];
+		memcpy(m_data + 1, b.data(), b.size());
+		m_owned = true;
+		m_complete = true;
+		m_length = b.size();
+		m_padding = 0;
+		m_data[0] = m_message = msg;
+		m_offset = 1;
+	}
+
+	/// \brief Constructor taking raw data
+	ipacket(const uint8_t *data, std::size_t size)
+	{
+		m_data = new uint8_t[size];
+		memcpy(m_data, data, size);
+		m_owned = true;
+		m_complete = true;
+		m_length = size;
+		m_padding = 0;
+		m_message = (message_type)m_data[0];
+		m_offset = 1;
+	}
 
 	/// \brief destructor
 	~ipacket();
 
-	/// \brief Copy operator
-	ipacket &operator=(const ipacket &rhs);
-
-	/// \brief Move operator
-	ipacket &operator=(ipacket &&rhs);
+	/// \brief swap
+	friend void swap(ipacket &a, ipacket &b) noexcept
+	{
+		std::swap(a.m_message, b.m_message);
+		std::swap(a.m_padding, b.m_padding);
+		std::swap(a.m_owned, b.m_owned);
+		std::swap(a.m_complete, b.m_complete);
+		std::swap(a.m_number, b.m_number);
+		std::swap(a.m_offset, b.m_offset);
+		std::swap(a.m_length, b.m_length);
+		std::swap(a.m_data, b.m_data);
+	}
 
 	/// \brief Return true if the packet is complete, i.e. it contains all the data it should contain
 	bool complete();

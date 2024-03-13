@@ -260,12 +260,9 @@ class channel : public std::enable_shared_from_this<channel>
 		};
 
 		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code)>(
-			[
-				state = start,
+			[state = start,
 				this,
-				me = shared_from_this()
-			]
-			(auto &self, const asio_system_ns::error_code ec = {}, std::size_t = {}) mutable
+				me = shared_from_this()](auto &self, const asio_system_ns::error_code ec = {}, std::size_t = {}) mutable
 			{
 				if (not ec)
 				{
@@ -423,12 +420,9 @@ class channel : public std::enable_shared_from_this<channel>
 		};
 
 		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::size_t)>(
-			[
-				me = shared_from_this(),
+			[me = shared_from_this(),
 				buffer,
-				state = start
-			]
-			(auto &self, const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+				state = start](auto &self, const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
 			{
 				std::size_t n = buffer.size();
 				if (n > me->m_max_send_packet_size)
@@ -456,7 +450,7 @@ class channel : public std::enable_shared_from_this<channel>
 	auto async_write_packet(opacket &&out, Handler &&handler)
 	{
 		return asio_ns::async_initiate<Handler, void(asio_system_ns::error_code,
-														std::size_t)>(
+													std::size_t)>(
 			async_write_impl{}, handler, this, std::move(out));
 	}
 
@@ -468,13 +462,10 @@ class channel : public std::enable_shared_from_this<channel>
 	auto send_data(const Data &&data, message_type msg, Handler &&handler)
 	{
 		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::size_t)>(
-			[
-				me = shared_from_this(),
+			[me = shared_from_this(),
 				data = std::move(data),
 				offset = 0ULL,
-				msg
-			]
-			(auto &self, const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+				msg](auto &self, const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
 			{
 				std::size_t n = data.size() - offset;
 				if (n > me->m_max_send_packet_size)
@@ -534,8 +525,6 @@ class channel : public std::enable_shared_from_this<channel>
 	void send_pending(const asio_system_ns::error_code &ec = {});
 	void push_received();
 	void check_wait();
-	void add_read_op(detail::read_channel_op *op);
-	void add_write_op(detail::write_channel_op *op);
 
 	virtual void receive_data(const char *data, std::size_t size);
 	virtual void receive_extended_data(const char *data, std::size_t size,
@@ -555,9 +544,9 @@ class channel : public std::enable_shared_from_this<channel>
 	uint32_t m_host_window_size;
 
 	std::deque<char> m_received;
-	std::deque<detail::read_channel_op *> m_read_ops;
-	std::deque<detail::write_channel_op *> m_write_ops;
-	std::deque<detail::wait_channel_op *> m_wait_ops;
+	std::deque<std::shared_ptr<detail::read_channel_op>> m_read_ops;
+	std::deque<std::shared_ptr<detail::write_channel_op>> m_write_ops;
+	std::deque<std::shared_ptr<detail::wait_channel_op>> m_wait_ops;
 	bool m_eof;
 
 	message_callback_type m_banner_handler;
@@ -580,8 +569,12 @@ class channel : public std::enable_shared_from_this<channel>
 			else if (buffers.size() == 0)
 				handler(asio_system_ns::error_code(), 0);
 			else
-				ch->add_read_op(new detail::read_channel_handler{
-					std::move(handler), ch->get_executor(), buffers});
+			{
+				ch->m_read_ops.emplace_back(new detail::read_channel_handler{
+					std::move(handler), ch->get_executor(), buffers });
+				ch->get_executor().execute([ch]()
+					{ ch->push_received(); });
+			}
 		}
 	};
 
@@ -596,7 +589,7 @@ class channel : public std::enable_shared_from_this<channel>
 				handler(error::make_error_code(error::connection_lost), 0);
 			else
 			{
-				ch->add_write_op(new detail::write_channel_handler(
+				ch->m_write_ops.emplace_back(new detail::write_channel_handler(
 					std::move(handler), ch->get_executor(), std::move(packet), packet.size() - sizeof(uint32_t)));
 				ch->send_pending();
 			}
@@ -608,7 +601,7 @@ class channel : public std::enable_shared_from_this<channel>
 		template <typename Handler>
 		void operator()(Handler &&handler, channel *ch, wait_type type)
 		{
-			ch->m_wait_ops.push_back(new detail::wait_channel_handler(
+			ch->m_wait_ops.emplace_back(new detail::wait_channel_handler(
 				std::move(handler), ch->get_executor(), type));
 			ch->check_wait();
 		}

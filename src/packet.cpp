@@ -54,41 +54,6 @@ compression_helper::operator z_stream &()
 
 // --------------------------------------------------------------------
 
-opacket::opacket()
-	: m_data(0)
-{
-}
-
-opacket::opacket(message_type message)
-	: m_data(1)
-{
-	m_data[0] = message;
-}
-
-opacket::opacket(const opacket &rhs)
-	: m_data(rhs.m_data)
-{
-}
-
-opacket::opacket(opacket &&rhs)
-	: m_data(move(rhs.m_data))
-{
-}
-
-opacket &opacket::operator=(opacket &&rhs)
-{
-	if (this != &rhs)
-		m_data = move(rhs.m_data);
-	return *this;
-}
-
-opacket &opacket::operator=(const opacket &rhs)
-{
-	if (this != &rhs)
-		m_data = rhs.m_data;
-	return *this;
-}
-
 void opacket::compress(compression_helper &compressor, asio_system_ns::error_code &ec)
 {
 	z_stream &zstream(compressor);
@@ -225,73 +190,6 @@ opacket &opacket::operator<<(const opacket &v)
 
 // --------------------------------------------------------------------
 
-ipacket::ipacket(uint32_t nr)
-	: m_message(msg_undefined)
-	, m_padding(0)
-	, m_owned(false)
-	, m_complete(false)
-	, m_number(nr)
-	, m_offset(0)
-	, m_length(0)
-	, m_data(nullptr)
-{
-}
-
-ipacket::ipacket(const ipacket &rhs)
-	: m_message(rhs.m_message)
-	, m_padding(rhs.m_padding)
-	, m_owned(false)
-	, m_complete(rhs.m_complete)
-	, m_number(rhs.m_number)
-	, m_offset(rhs.m_offset)
-	, m_length(rhs.m_length)
-	, m_data(rhs.m_data)
-{
-}
-
-ipacket::ipacket(ipacket &&rhs)
-	: m_message(rhs.m_message)
-	, m_padding(rhs.m_padding)
-	, m_owned(rhs.m_owned)
-	, m_complete(rhs.m_complete)
-	, m_number(rhs.m_number)
-	, m_offset(rhs.m_offset)
-	, m_length(rhs.m_length)
-	, m_data(rhs.m_data)
-{
-	rhs.m_message = msg_undefined;
-	rhs.m_padding = 0;
-	rhs.m_owned = false;
-	rhs.m_complete = false;
-	rhs.m_number = 0;
-	rhs.m_offset = rhs.m_length = 0;
-	rhs.m_data = nullptr;
-}
-
-ipacket::ipacket(const uint8_t *data, size_t size)
-{
-	m_data = new uint8_t[size];
-	memcpy(m_data, data, size);
-	m_owned = true;
-	m_complete = true;
-	m_length = size;
-	m_padding = 0;
-	m_message = (message_type)m_data[0];
-	m_offset = 1;
-}
-
-ipacket::ipacket(message_type msg, const blob &b)
-{
-	m_data = new uint8_t[b.size() + 1];
-	memcpy(m_data + 1, b.data(), b.size());
-	m_owned = true;
-	m_complete = true;
-	m_length = b.size();
-	m_padding = 0;
-	m_data[0] = m_message = msg;
-	m_offset = 1;
-}
-
 ipacket::~ipacket()
 {
 #if DEBUG
@@ -304,31 +202,6 @@ ipacket::~ipacket()
 	if (m_owned)
 		delete[] m_data;
 #endif
-}
-
-ipacket &ipacket::operator=(ipacket &&rhs)
-{
-	if (this != &rhs)
-	{
-		m_message = rhs.m_message;
-		rhs.m_message = msg_undefined;
-		m_padding = rhs.m_padding;
-		rhs.m_padding = 0;
-		m_complete = rhs.m_complete;
-		rhs.m_complete = false;
-		m_owned = rhs.m_owned;
-		rhs.m_owned = false;
-		m_number = rhs.m_number;
-		rhs.m_number = 0;
-		m_offset = rhs.m_offset;
-		rhs.m_offset = 0;
-		m_length = rhs.m_length;
-		rhs.m_length = 0;
-		m_data = rhs.m_data;
-		rhs.m_data = nullptr;
-	}
-
-	return *this;
 }
 
 void ipacket::decompress(compression_helper &decompressor, asio_system_ns::error_code &ec)

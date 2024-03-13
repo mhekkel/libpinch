@@ -3,7 +3,6 @@
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
 
-
 #include "pinch/channel.hpp"
 
 namespace pinch
@@ -39,24 +38,15 @@ void channel::closed()
 	m_channel_open = false;
 
 	for (auto op : m_read_ops)
-	{
 		op->complete(error::make_error_code(error::channel_closed));
-		delete op;
-	}
 	m_read_ops.clear();
 
 	for (auto op : m_write_ops)
-	{
 		op->complete(error::make_error_code(error::channel_closed));
-		delete op;
-	}
 	m_write_ops.clear();
 
 	for (auto op : m_wait_ops)
-	{
 		op->complete(error::make_error_code(error::channel_closed));
-		delete op;
-	}
 	m_wait_ops.clear();
 }
 
@@ -306,46 +296,31 @@ void channel::send_pending(const asio_system_ns::error_code &ec)
 			auto op = m_write_ops.front();
 			m_write_ops.pop_front();
 			op->complete(ec);
-			delete op;
 		}
 
 		close();
 		return;
 	}
 
-	if (not m_write_ops.empty())
+	while (not m_write_ops.empty())
 	{
-		auto op = m_write_ops.front();
-
-		std::size_t size = op->m_packet.size() - 9;
-		if (size <= m_host_window_size)
+		if (auto op = m_write_ops.front(); op->m_packet.size() - 9 <= m_host_window_size)
 		{
 			m_write_ops.pop_front();
 
-			m_host_window_size -= size;
+			m_host_window_size -= op->m_packet.size() - 9;
 
 			m_connection->async_write(std::move(op->m_packet),
-				[this, op = std::unique_ptr<detail::write_channel_op>(op)](const asio_system_ns::error_code &ec, std::size_t bytes_transferred)
+				[self = shared_from_this(), op](const asio_system_ns::error_code &ec, std::size_t bytes_transferred)
 				{
 					op->complete(ec, bytes_transferred);
-					this->send_pending(ec);
 				});
 		}
+		else
+			break;
 	}
 
 	check_wait();
-}
-
-void channel::add_read_op(detail::read_channel_op *handler)
-{
-	m_read_ops.push_back(handler);
-	get_executor().execute([this]()
-		{ push_received(); });
-}
-
-void channel::add_write_op(detail::write_channel_op *op)
-{
-	m_write_ops.push_back(op);
 }
 
 void channel::push_received()
@@ -359,7 +334,6 @@ void channel::push_received()
 		m_received.erase(m_received.begin(), b);
 
 		handler->complete();
-		delete handler;
 	}
 
 	if (m_received.empty() and m_eof)
@@ -382,7 +356,6 @@ void channel::check_wait()
 					m_wait_ops.erase(std::find(m_wait_ops.begin(), m_wait_ops.end(), op));
 
 					op->complete();
-					delete op;
 				}
 				break;
 
@@ -392,7 +365,6 @@ void channel::check_wait()
 					m_wait_ops.erase(std::find(m_wait_ops.begin(), m_wait_ops.end(), op));
 
 					op->complete();
-					delete op;
 				}
 				break;
 
@@ -402,7 +374,6 @@ void channel::check_wait()
 					m_wait_ops.erase(std::find(m_wait_ops.begin(), m_wait_ops.end(), op));
 
 					op->complete();
-					delete op;
 				}
 				break;
 		}
@@ -425,8 +396,8 @@ void exec_channel::handle_channel_request(const std::string &request, ipacket &i
 	if (request == "exit-status")
 		in >> status;
 
-	asio_ns::require(m_executor, asio_ns::execution::blocking.never).execute(
-		[request, status, this]() { m_handler(request, status); });
+	asio_ns::require(m_executor, asio_ns::execution::blocking.never).execute([request, status, this]()
+		{ m_handler(request, status); });
 }
 
 } // namespace pinch

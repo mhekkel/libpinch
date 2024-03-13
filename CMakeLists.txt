@@ -1,77 +1,71 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(libpinch VERSION 1.1.0 LANGUAGES CXX)
+project(libpinch VERSION 1.1.1 LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
+include(CTest)
+
 option(USE_BOOST_ASIO "Use the asio library from Boost instead of the non-boost version" OFF)
 
-include(GNUInstallDirs)
-include(CheckFunctionExists)
-include(CheckIncludeFiles)
-include(FindFilesystem)
-include(CheckLibraryExists)
-include(CMakePackageConfigHelpers)
-include(Dart)
-include(GenerateExportHeader)
+# Documentation
+option(PINCH_BUILD_DOC "Build documentation" OFF)
 
-set(PACKAGE ${PROJECT_NAME})
-set(PACKAGE_VERSION ${PROJECT_VERSION})
-add_definitions(-DVERSION=${PACKAGE_VERSION})
+# include(GNUInstallDirs)
+# include(CheckFunctionExists)
+# include(CheckIncludeFiles)
+# include(FindFilesystem)
+# include(CheckLibraryExists)
+# include(CMakePackageConfigHelpers)
+# include(GenerateExportHeader)
 
-set(CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# if(CMAKE_CXX_COMPILER_ID MATCHES Clang AND CMAKE_CXX_COMPILER_VERSION LESS 16.0.0)
+# 	if(WIN32)
+# 		set(pinch_compile_flags "/clang:-fcoroutines")
+# 	else()
+# 		set(pinch_compile_flags "-fcoroutines")
+# 	endif()
+# elseif(MSVC)
+# 	check_include_file_cxx("coroutine" has_coroutine "/std:c++latest")
 
-if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
-	if(WIN32)
-		set(pinch_compile_flags "/clang:-fcoroutines-ts")
-	else()
-		set(pinch_compile_flags "-fcoroutines-ts")
-	endif()
-elseif(MSVC)
-	check_include_file_cxx("coroutine" has_coroutine "/std:c++latest")
+# 	if(NOT has_coroutine)
+# 		message(STATUS "Try <experimental/coroutine> (Coroutines TS) instead of <coroutine> ...")
+# 		check_include_file_cxx("experimental/coroutine" has_coroutine_ts "/std:c++20")
+# 	endif()
 
-	if(NOT has_coroutine)
-		message(STATUS "Try <experimental/coroutine> (Coroutines TS) instead of <coroutine> ...")
-		check_include_file_cxx("experimental/coroutine" has_coroutine_ts "/std:c++17")
-	endif()
+# 	# has coroutine headers?
+# 	if(has_coroutine)
+# 		set(pinch_compile_flags "/std:c++latest")
+# 	elseif(has_coroutine_ts)
+# 		set(pinch_compile_flags "/std:c++20")
+# 	else()
+# 		message(FATAL_ERROR "There are no headers for C++ Coroutines")
+# 	endif()
+# elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
+# 	#
+# 	# expect GCC 10 or later
+# 	#
+# 	check_include_file_cxx("coroutine" has_coroutine "-fcoroutines")
 
-	# has coroutine headers?
-	if(has_coroutine)
-		set(pinch_compile_flags "/std:c++latest")
-	elseif(has_coroutine_ts)
-		set(pinch_compile_flags "/std:c++17")
-	else()
-		message(FATAL_ERROR "There are no headers for C++ Coroutines")
-	endif()
-elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
-	#
-	# expect GCC 10 or later
-	#
-	check_include_file_cxx("coroutine" has_coroutine "-fcoroutines")
-
-	if(has_coroutine)
-		set(pinch_compile_flags "-fcoroutines")
-	endif()
-endif()
+# 	if(has_coroutine)
+# 		set(pinch_compile_flags "-fcoroutines")
+# 	endif()
+# endif()
 
 # support compiler options for coroutine?
-check_cxx_compiler_flag("${pinch_compile_flags}" support_coroutines)
+# check_cxx_compiler_flag("${pinch_compile_flags}" support_coroutines)
 
-if(NOT support_coroutines)
-	message(FATAL_ERROR "The compiler doesn't support C++ Coroutines")
-endif()
+# if(NOT support_coroutines)
+# 	message(FATAL_ERROR "The compiler doesn't support C++ Coroutines")
+# endif()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${pinch_compile_flags}")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${pinch_compile_flags}")
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers")
 elseif(MSVC)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
 endif()
-
-find_package(Filesystem REQUIRED)
 
 if(MSVC)
 	# Avoid linking the shared library of zlib
@@ -97,8 +91,6 @@ endif()
 find_package(ZLIB REQUIRED)
 
 if(USE_BOOST_ASIO)
-	# message(FATAL_ERROR "Boost ASIO is not working properly")
-
 	find_package(Boost 1.82 COMPONENTS headers REQUIRED)
 	set(ASIO_INCLUDE_DIR ${Boost_INCLUDE_DIR})
 	message(STATUS "Using asio from boost")
@@ -116,39 +108,41 @@ else()
 	configure_file(${PROJECT_SOURCE_DIR}/cmake/asio.hpp.in ${PROJECT_SOURCE_DIR}/include/pinch/asio.hpp @ONLY)
 endif()
 
-# Build shared libraries by default (not my cup of tea, but hey)
-option(BUILD_SHARED_LIBS "Build a shared library instead of a static one" OFF)
-set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+if(WIN32)
+	if(${CMAKE_SYSTEM_VERSION} GREATER_EQUAL 10) # Windows 10
+		add_definitions(-D _WIN32_WINNT=0x0A00)
+	elseif(${CMAKE_SYSTEM_VERSION} EQUAL 6.3) # Windows 8.1
+		add_definitions(-D _WIN32_WINNT=0x0603)
+	elseif(${CMAKE_SYSTEM_VERSION} EQUAL 6.2) # Windows 8
+		add_definitions(-D _WIN32_WINNT=0x0602)
+	elseif(${CMAKE_SYSTEM_VERSION} EQUAL 6.1) # Windows 7
+		add_definitions(-D _WIN32_WINNT=0x0601)
+	elseif(${CMAKE_SYSTEM_VERSION} EQUAL 6.0) # Windows Vista
+		add_definitions(-D _WIN32_WINNT=0x0600)
+	else() # Windows XP (5.1)
+		add_definitions(-D _WIN32_WINNT=0x0501)
+	endif()
+
+	add_definitions(-DNOMINMAX)
+
+	# We do not want to write an export file for all our symbols...
+	set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 
 if(MSVC)
 	# make msvc standards compliant...
 	add_compile_options(/permissive-)
 
-	macro(get_WIN32_WINNT version)
-		if(CMAKE_SYSTEM_VERSION)
-			set(ver ${CMAKE_SYSTEM_VERSION})
-			string(REGEX MATCH "^([0-9]+).([0-9])" ver ${ver})
-			string(REGEX MATCH "^([0-9]+)" verMajor ${ver})
+	# make msvc standards compliant...
+	add_compile_options(/permissive- /bigobj)
+	add_link_options(/NODEFAULTLIB:library)
 
-			# Check for Windows 10, b/c we'll need to convert to hex 'A'.
-			if("${verMajor}" MATCHES "10")
-				set(verMajor "A")
-				string(REGEX REPLACE "^([0-9]+)" ${verMajor} ver ${ver})
-			endif()
-
-			# Remove all remaining '.' characters.
-			string(REPLACE "." "" ver ${ver})
-
-			# Prepend each digit with a zero.
-			string(REGEX REPLACE "([0-9A-Z])" "0\\1" ver ${ver})
-			set(${version} "0x${ver}")
-		endif()
-	endmacro()
-
-	get_WIN32_WINNT(ver)
-	add_definitions(-D_WIN32_WINNT=${ver})
-
-	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+	if(BUILD_SHARED_LIBS)
+		set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+	else()
+		set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+	endif()
 endif()
 
 set(CMAKE_THREAD_PREFER_PTHREAD)
@@ -158,162 +152,101 @@ find_package(Threads REQUIRED)
 find_path(CRYPTOPP_INCLUDE_DIR NAMES cryptopp/cryptlib.h crypto++/cryptlib.h REQUIRED)
 find_library(CRYPTOPP_LIBRARY NAMES cryptopp crypto++ cryptlib REQUIRED)
 
+# The pinch library
+
 list(APPEND PINCH_HEADERS
-	${PROJECT_SOURCE_DIR}/include/pinch.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/detail/ssh_agent_impl.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/error.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/terminal_channel.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/ssh_agent.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/ssh_agent_channel.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/x11_channel.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/packet.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/crypto-engine.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/digest.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/known_hosts.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/port_forwarding.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/sftp_channel.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/debug.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/operations.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/connection.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/connection_pool.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/channel.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/key_exchange.hpp
-	${PROJECT_SOURCE_DIR}/include/pinch/types.hpp
+	include/pinch.hpp
+	include/pinch/detail/ssh_agent_impl.hpp
+	include/pinch/error.hpp
+	include/pinch/terminal_channel.hpp
+	include/pinch/ssh_agent.hpp
+	include/pinch/ssh_agent_channel.hpp
+	include/pinch/x11_channel.hpp
+	include/pinch/packet.hpp
+	include/pinch/crypto-engine.hpp
+	include/pinch/digest.hpp
+	include/pinch/known_hosts.hpp
+	include/pinch/port_forwarding.hpp
+	include/pinch/sftp_channel.hpp
+	include/pinch/debug.hpp
+	include/pinch/operations.hpp
+	include/pinch/connection.hpp
+	include/pinch/connection_pool.hpp
+	include/pinch/channel.hpp
+	include/pinch/key_exchange.hpp
+	include/pinch/types.hpp
 )
 
 list(APPEND PINCH_SRC
-	${PROJECT_SOURCE_DIR}/src/known_hosts.cpp
-	${PROJECT_SOURCE_DIR}/src/port_forwarding.cpp
-	${PROJECT_SOURCE_DIR}/src/connection.cpp
-	${PROJECT_SOURCE_DIR}/src/debug.cpp
-	${PROJECT_SOURCE_DIR}/src/error.cpp
-	${PROJECT_SOURCE_DIR}/src/sftp_channel.cpp
-	${PROJECT_SOURCE_DIR}/src/ssh_agent.cpp
-	${PROJECT_SOURCE_DIR}/src/terminal_channel.cpp
-	${PROJECT_SOURCE_DIR}/src/crypto-engine.cpp
-	${PROJECT_SOURCE_DIR}/src/digest.cpp
-	${PROJECT_SOURCE_DIR}/src/connection_pool.cpp
-	${PROJECT_SOURCE_DIR}/src/x11_channel.cpp
-	${PROJECT_SOURCE_DIR}/src/packet.cpp
-	${PROJECT_SOURCE_DIR}/src/channel.cpp
-	${PROJECT_SOURCE_DIR}/src/key_exchange.cpp
+	src/known_hosts.cpp
+	src/port_forwarding.cpp
+	src/connection.cpp
+	src/debug.cpp
+	src/error.cpp
+	src/sftp_channel.cpp
+	src/ssh_agent.cpp
+	src/terminal_channel.cpp
+	src/crypto-engine.cpp
+	src/digest.cpp
+	src/connection_pool.cpp
+	src/x11_channel.cpp
+	src/packet.cpp
+	src/channel.cpp
+	src/key_exchange.cpp
 )
 
 if(MSVC)
 	list(APPEND PINCH_SRC
-		${PROJECT_SOURCE_DIR}/src/win_ssh_agent_impl.cpp
+		src/win_ssh_agent_impl.cpp
 	)
 endif()
 
 if(UNIX)
 	list(APPEND PINCH_SRC
-		${PROJECT_SOURCE_DIR}/src/posix_ssh_agent_impl.cpp
+		src/posix_ssh_agent_impl.cpp
 	)
 endif()
 
-add_library(pinch ${PINCH_SRC} ${PINCH_HEADERS})
+add_library(pinch)
 add_library(pinch::pinch ALIAS pinch)
+
+target_sources(pinch
+	PRIVATE ${PINCH_SRC}
+	PUBLIC
+	FILE_SET public_headers TYPE HEADERS
+	BASE_DIRS
+	${CMAKE_CURRENT_SOURCE_DIR}
+	FILES
+	${PINCH_HEADERS}
+	)
+
 set_target_properties(pinch PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(pinch
 	PUBLIC
 	"$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
-	"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+	"$<INSTALL_INTERFACE:include>"
 	${CRYPTOPP_INCLUDE_DIR} ${ASIO_INCLUDE_DIR}
 )
 
-target_include_directories(pinch PRIVATE ${PROJECT_SOURCE_DIR}/include PUBLIC ${CRYPTOPP_INCLUDE_DIR})
-target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} std::filesystem ZLIB::ZLIB)
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-	target_link_options(pinch PRIVATE -undefined dynamic_lookup)
-endif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-
-if(MSVC)
-	target_compile_options(pinch PUBLIC "/ZI")
-	target_link_options(pinch PUBLIC "/INCREMENTAL")
-endif()
-
-set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR})
-set(LIBRARY_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR})
-
-generate_export_header(pinch EXPORT_FILE_NAME pinch/PINCH_export.hpp)
+target_link_libraries(pinch PUBLIC ${CRYPTOPP_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} ZLIB::ZLIB)
 
 # Install rules
 install(TARGETS pinch
-	EXPORT pinchTargets
-	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-	INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+	EXPORT pinch
+	FILE_SET public_headers DESTINATION include)
 
-install(EXPORT pinchTargets
-	FILE "pinchTargets.cmake"
+install(EXPORT pinch
+	FILE pinch-targets.cmake
 	NAMESPACE pinch::
-	DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pinch
+	DESTINATION lib/cmake/pinch
 )
 
-install(
-	DIRECTORY include/pinch
-	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-	COMPONENT Devel
-)
+configure_file(${PROJECT_SOURCE_DIR}/cmake/pinch-config.cmake.in
+	${CMAKE_CURRENT_BINARY_DIR}/pinch-config.cmake @ONLY)
 
-install(
-	FILES "${PROJECT_SOURCE_DIR}/include/pinch.hpp"
-	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-	COMPONENT Devel
-)
-
-install(
-	FILES "${CMAKE_CURRENT_BINARY_DIR}/pinch/PINCH_export.hpp"
-	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pinch
-	COMPONENT Devel
-)
-
-configure_package_config_file(Config.cmake.in
-	${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfig.cmake
-	INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pinch
-	PATH_VARS INCLUDE_INSTALL_DIR LIBRARY_INSTALL_DIR
-)
-
-install(FILES
-	"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfig.cmake"
-	"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfigVersion.cmake"
-	DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pinch
-	COMPONENT Devel
-)
-
-set(PINCH_MAJOR_VERSION 5)
-set_target_properties(pinch PROPERTIES
-	VERSION ${PROJECT_VERSION}
-	SOVERSION 5.1
-	INTERFACE_PINCH_MAJOR_VERSION 5)
-
-set_property(TARGET pinch APPEND PROPERTY
-	COMPATIBLE_INTERFACE_STRING PINCH_MAJOR_VERSION
-)
-
-write_basic_package_version_file(
-	"${CMAKE_CURRENT_BINARY_DIR}/pinch/pinchConfigVersion.cmake"
-	VERSION ${PROJECT_VERSION}
-	COMPATIBILITY AnyNewerVersion
-)
-
-# pkgconfig support
-set(prefix ${CMAKE_INSTALL_PREFIX})
-set(exec_prefix ${CMAKE_INSTALL_PREFIX})
-set(libdir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
-set(includedir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})
-
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libpinch.pc.in
-	${CMAKE_CURRENT_BINARY_DIR}/libpinch.pc.in @ONLY)
-file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libpinch.pc
-	INPUT ${CMAKE_CURRENT_BINARY_DIR}/libpinch.pc.in)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libpinch.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-
-# Documentation
-option(PINCH_BUILD_DOC "Build documentation" OFF)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pinch-config.cmake
+	DESTINATION lib/cmake/pinch)
 
 if(PINCH_BUILD_DOC)
 	find_program(DOXYGEN doxygen)
@@ -378,49 +311,5 @@ endif()
 option(PINCH_BUILD_TESTS "Build test executables" OFF)
 
 if(PINCH_BUILD_TESTS)
-	enable_testing()
-
-	# unit parser serializer xpath json crypto http processor webapp soap rest security uri
-	list(APPEND PINCH_tests
-
-		# coro
-		service
-
-		# sftp
-		# unit
-	)
-
-	foreach(TEST IN LISTS PINCH_tests)
-		set(PINCH_TEST "${TEST}-test")
-		set(PINCH_TEST_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/test/${PINCH_TEST}.cpp")
-
-		add_executable(${PINCH_TEST} ${PINCH_TEST_SOURCE})
-
-		if("${TEST}" STREQUAL "http/processor")
-			target_compile_definitions(${PINCH_TEST} PUBLIC DOCROOT=".")
-		endif()
-
-		target_include_directories(${PINCH_TEST} PRIVATE
-			${CMAKE_CURRENT_SOURCE_DIR}/include
-			${CMAKE_CURRENT_BINARY_DIR} # for config.h
-			${PROJECT_SOURCE_DIR}/include
-		)
-
-		target_link_libraries(${PINCH_TEST} PRIVATE pinch)
-
-		if(MSVC)
-			# Specify unwind semantics so that MSVC knowns how to handle exceptions
-			target_compile_options(${PINCH_TEST} PRIVATE /EHsc)
-		endif()
-
-		if(${TEST} STREQUAL "sftp")
-			set(${PINCH_TEST_ARGS} "localhost 22 maarten")
-		else()
-			set(${PINCH_TEST_ARGS} "")
-		endif()
-
-		add_test(NAME ${PINCH_TEST}
-			COMMAND $<TARGET_FILE:${PINCH_TEST}> ${PINCH_TEST_ARGS}
-			WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/test)
-	endforeach()
+	add_subdirectory(test)
 endif()

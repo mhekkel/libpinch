@@ -382,6 +382,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// and will provide a full SOCKS5 server implementation.
 	void forward_socks5(uint16_t local_port);
 
+	/// \brief Analog for ForwardRemote in OpenSSH, version taking two sockets
+	void forward_remote(const std::string &remote_socket, const std::string &local_socket);
+
 	/// \brief Return the connection parameters in a string for direction \a dir
 	std::string get_connection_parameters(direction dir) const
 	{
@@ -688,6 +691,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	std::list<channel_ptr> m_channels;                       ///< The currently registered channels
 	std::shared_ptr<port_forward_listener> m_port_forwarder; ///< The port forwarder
+	std::shared_ptr<port_forward_listener> m_socket_forwarder;
 
 	std::deque<detail::wait_connection_op *> m_waiting_ops; ///< what is waiting
 	std::unique_ptr<key_exchange> m_kex;                    ///< for rekeying

@@ -433,6 +433,11 @@ void basic_connection::forward_socks5(uint16_t local_port)
 	m_port_forwarder->forward_socks5(local_port);
 }
 
+void basic_connection::forward_remote(const std::string &remote_socket, const std::string &local_socket)
+{
+	
+}
+
 // --------------------------------------------------------------------
 // Handshake code
 
