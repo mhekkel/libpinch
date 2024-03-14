@@ -14,7 +14,7 @@ namespace pinch
 
 struct x11_socket_impl_base
 {
-	virtual ~x11_socket_impl_base() {}
+	virtual ~x11_socket_impl_base() = default;
 
 	virtual void async_read(std::shared_ptr<x11_channel> channel, asio_ns::streambuf &response) = 0;
 	virtual void async_write(channel_ptr channel, std::shared_ptr<asio_ns::streambuf> data) = 0;

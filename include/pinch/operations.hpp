@@ -11,6 +11,7 @@
 
 namespace pinch::detail
 {
+/// @cond
 
 // --------------------------------------------------------------------
 /// \brief Abstract base class for all asynchronous operations
@@ -18,7 +19,7 @@ namespace pinch::detail
 class operation
 {
   public:
-	virtual ~operation() {}
+	virtual ~operation() = default;
 
 	virtual void complete(const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) = 0;
 };
@@ -103,4 +104,5 @@ struct binder
 	std::tuple<Args...> m_args;
 };
 
+/// @endcond
 } // namespace pinch::detail

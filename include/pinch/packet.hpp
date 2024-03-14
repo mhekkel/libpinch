@@ -10,16 +10,16 @@
 #include "pinch/asio.hpp"
 #include "pinch/types.hpp"
 
-#include <cryptopp/cryptlib.h>
-
 #include <ostream>
 #include <system_error>
 #include <type_traits>
 
+/// @cond
 namespace CryptoPP
 {
 class Integer;
 }
+/// @endcond
 
 /// forward declaration
 struct z_stream_s;
@@ -237,6 +237,8 @@ class opacket
 		return *this;
 	}
 
+	/// @cond
+
 	opacket &operator<<(std::string_view v);
 	opacket &operator<<(const std::vector<std::string> &v);
 	opacket &operator<<(const blob &v);
@@ -246,7 +248,11 @@ class opacket
 
   protected:
 	blob m_data;
+
+	/// @endcond
 };
+
+/// @cond
 
 struct skip_string_t
 {
@@ -267,6 +273,8 @@ struct skip_offset
 
 constexpr skip_offset skip_str = skip_offset(skip_string_t{});
 constexpr skip_offset skip(int offset) { return skip_offset(offset); }
+
+/// @endcond
 
 /// \brief Incomming packet
 class ipacket
@@ -421,12 +429,16 @@ class ipacket
 		return *this;
 	}
 
+	/// @cond
+
 	ipacket &operator>>(std::string &v);
 	ipacket &operator>>(std::vector<std::string> &v);
 	ipacket &operator>>(blob &v);
 	ipacket &operator>>(CryptoPP::Integer &v);
 	ipacket &operator>>(ipacket &v);
 	ipacket &operator>>(std::pair<const char *, std::size_t> &v);
+
+	/// @endcond
 
 	/// \brief Skip over data in a packet.
 	///
@@ -448,6 +460,8 @@ class ipacket
 		return *this;
 	}
 
+	/// @cond
+
 	friend std::ostream &operator<<(std::ostream &os, ipacket &p);
 
   protected:
@@ -458,6 +472,8 @@ class ipacket
 	uint32_t m_number = 0;
 	uint32_t m_offset, m_length;
 	uint8_t *m_data;
+
+	/// @endcond
 };
 
 } // namespace pinch

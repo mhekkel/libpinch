@@ -362,7 +362,7 @@ static inline uint32_t rotr32(uint32_t n, unsigned int c)
 
 struct hash_impl
 {
-	virtual ~hash_impl() {}
+	virtual ~hash_impl() = default;
 
 	virtual void write_bit_length(uint64_t l, uint8_t *b) = 0;
 	virtual void transform(const uint8_t *data) = 0;

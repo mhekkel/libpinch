@@ -64,6 +64,8 @@ class connection_pool
 	bool has_open_channels();
 
   private:
+	/// @cond
+
 	connection_pool(const connection_pool &);
 	connection_pool &operator=(const connection_pool &);
 
@@ -99,6 +101,8 @@ class connection_pool
 	asio_ns::io_context &m_io_context;
 	entry_list m_entries;
 	proxy_list m_proxies;
+
+	/// @endcond
 };
 
 } // namespace pinch

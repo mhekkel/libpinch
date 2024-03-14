@@ -20,19 +20,17 @@ namespace pinch
 
 class crypto_engine;
 
+/// @cond
+
 // --------------------------------------------------------------------
-
-/// \brief Private implementation
-struct TransformDataImpl;
-
-/// \brief Wrapper class around stream transformation classes (encyption/decryption)
-class TransformData
+// Wrapper class around stream transformation classes (encyption/decryption)
+class transform_data
 {
   public:
-	TransformData() {}
-	TransformData(const TransformData &) = delete;
-	TransformData &operator=(const TransformData &) = delete;
-	~TransformData();
+	transform_data() = default;
+	transform_data(const transform_data &) = delete;
+	transform_data &operator=(const transform_data &) = delete;
+	~transform_data();
 
 	void clear();
 
@@ -47,22 +45,18 @@ class TransformData
   private:
 	friend class crypto_engine;
 
-	struct TransformDataImpl *m_impl = nullptr;
+	struct transform_data_impl *m_impl = nullptr;
 };
 
 // --------------------------------------------------------------------
-
-/// \brief Private implementation
-struct MessageAuthenticationCodeImpl;
-
-/// \brief Wrapper class around message authentication classes
-class MessageAuthenticationCode
+// Wrapper class around message authentication classes
+class message_authentication_code
 {
   public:
-	MessageAuthenticationCode() {}
-	MessageAuthenticationCode(const MessageAuthenticationCode &) = delete;
-	MessageAuthenticationCode &operator=(const MessageAuthenticationCode &) = delete;
-	~MessageAuthenticationCode();
+	message_authentication_code() = default;
+	message_authentication_code(const message_authentication_code &) = delete;
+	message_authentication_code &operator=(const message_authentication_code &) = delete;
+	~message_authentication_code();
 
 	void clear();
 
@@ -78,8 +72,10 @@ class MessageAuthenticationCode
   private:
 	friend class crypto_engine;
 
-	struct MessageAuthenticationCodeImpl *m_impl = nullptr;
+	struct message_authentication_code_impl *m_impl = nullptr;
 };
+
+/// @endcond
 
 /// --------------------------------------------------------------------
 /// \brief the crypto_engine class
@@ -133,6 +129,8 @@ class crypto_engine
 	/// \brief Fetch the next block of data
 	blob get_next_block(asio_ns::streambuf &buffer, bool empty);
 
+	/// @cond
+
 	std::size_t m_iblocksize = 8, m_oblocksize = 8;
 	uint32_t m_in_seq_nr = 0, m_out_seq_nr = 0;
 
@@ -140,10 +138,10 @@ class crypto_engine
 		m_alg_enc_c2s, m_alg_ver_c2s, m_alg_cmp_c2s,
 		m_alg_enc_s2c, m_alg_ver_s2c, m_alg_cmp_s2c;
 
-	TransformData m_decryptor;
-	TransformData m_encryptor;
-	MessageAuthenticationCode m_signer;
-	MessageAuthenticationCode m_verifier;
+	transform_data m_decryptor;
+	transform_data m_encryptor;
+	message_authentication_code m_signer;
+	message_authentication_code m_verifier;
 
 	std::unique_ptr<compression_helper> m_compressor;
 	std::unique_ptr<compression_helper> m_decompressor;
@@ -152,6 +150,8 @@ class crypto_engine
 	std::unique_ptr<ipacket> m_packet;
 
 	std::mutex m_in_mutex, m_out_mutex;
+
+	/// @endcond
 };
 
 } // namespace pinch

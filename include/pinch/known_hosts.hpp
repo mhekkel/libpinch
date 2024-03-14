@@ -80,13 +80,15 @@ class known_hosts
 	std::size_t size() const { return m_host_keys.size(); }
 
   private:
-	known_hosts() {}
+	/// @cond
+	known_hosts() = default;
 
 	known_hosts(const known_hosts &) = delete;
 	known_hosts &operator=(const known_hosts &) = delete;
 
 	std::vector<host_key> m_host_keys;
 	std::mutex m_mutex;
+	/// @endcond
 };
 
 } // namespace pinch

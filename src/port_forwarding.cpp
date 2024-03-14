@@ -38,7 +38,7 @@ class forwarding_connection : public std::enable_shared_from_this<forwarding_con
 	{
 	}
 
-	virtual ~forwarding_connection() {}
+	virtual ~forwarding_connection() = default;
 
 	virtual void start() = 0;
 
@@ -85,7 +85,7 @@ using forwarding_connection_factory = std::function<std::shared_ptr<forwarding_c
 class bound_port : public std::enable_shared_from_this<bound_port>
 {
   public:
-	virtual ~bound_port() {}
+	virtual ~bound_port() = default;
 
 	bound_port(std::shared_ptr<basic_connection> connection, port_forward_listener &listener, forwarding_connection_factory &&connection_factory);
 

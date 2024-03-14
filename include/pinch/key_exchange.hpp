@@ -27,8 +27,6 @@ std::string choose_protocol(const std::string &server, const std::string &client
 
 // --------------------------------------------------------------------
 
-struct key_exchange_impl;
-
 /// \brief The class encapsulating the key exchange algorithm
 class key_exchange
 {
@@ -118,7 +116,9 @@ class key_exchange
 	/// \brief process the kexinit message
 	void process_kexinit(ipacket &in, opacket &out, asio_system_ns::error_code &ec);
 
-	key_exchange_impl *m_impl = nullptr;
+	/// @cond
+
+	struct key_exchange_impl *m_impl = nullptr;
 
 	std::string m_host_version;
 	blob m_session_id;
@@ -134,6 +134,8 @@ class key_exchange
 		s_alg_kex,
 		s_alg_enc_s2c, s_alg_enc_c2s, s_alg_ver_s2c, s_alg_ver_c2s, s_alg_cmp_s2c, s_alg_cmp_c2s,
 		s_server_host_key;
+
+	/// @endcond
 };
 
 } // namespace pinch

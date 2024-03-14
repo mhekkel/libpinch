@@ -95,8 +95,7 @@ namespace detail
 {
 
 	// --------------------------------------------------------------------
-
-	/// \brief An operation that opens a connection
+	// An operation that opens a connection
 
 	class open_connection_op : public operation
 	{
@@ -127,7 +126,6 @@ namespace detail
 
 	// --------------------------------------------------------------------
 
-	/// \brief enum used in connection::async_wait
 	enum class connection_wait_type
 	{
 		open,
@@ -204,11 +202,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	{
 	}
 
+	/// @cond
 	basic_connection(const basic_connection &) = delete;
 	basic_connection &operator=(const basic_connection &) = delete;
 
   public:
-	virtual ~basic_connection() {}
+	virtual ~basic_connection() = default;
 
 	/// The type of the lowest layer. In our case that's always a tcp::socket
 	/// making the code easier.
@@ -226,6 +225,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	/// Access to the lowest layer
 	virtual lowest_layer_type &lowest_layer() = 0;
 	virtual const lowest_layer_type &lowest_layer() const = 0;
+
+	/// @endcond
 
 	/// \brief Open means, the next layer is open (socket e.g.)
 	/// and the authentication has completed successfully.
@@ -314,12 +315,9 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		auto buffer = m_crypto_engine.get_next_request(std::move(p));
 
 		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::size_t)>(
-			[
-				buffer = std::move(buffer),
+			[buffer = std::move(buffer),
 				conn = this->shared_from_this(),
-				state = start
-			]
-			(auto &self, const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
+				state = start](auto &self, const asio_system_ns::error_code &ec = {}, std::size_t bytes_transferred = 0) mutable
 			{
 				if (not ec and state == start)
 				{
@@ -432,14 +430,11 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		};
 
 		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, bool)>(
-			[
-				state1 = start,
+			[state1 = start,
 				this,
 				state = host_key_state::no_match,
 				algorithm,
-				key
-			]
-			(auto &self, asio_system_ns::error_code ec = {}, bool accept = {}) mutable
+				key](auto &self, asio_system_ns::error_code ec = {}, bool accept = {}) mutable
 			{
 				if (not ec)
 				{
@@ -495,6 +490,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		m_accept_host_key_handler = handler;
 	}
 
+	/// \brief Tell the connection to always accept a host key, but do not store it
 	void set_always_accept_host_key_once()
 	{
 		set_accept_host_key_handler(&always_trust_host_key_once);
@@ -511,11 +507,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		};
 
 		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::string)>(
-			[
-				state = start,
-				this
-			]
-			(auto &self, asio_system_ns::error_code ec = {}, std::string pw = {}) mutable
+			[state = start,
+				this](auto &self, asio_system_ns::error_code ec = {}, std::string pw = {}) mutable
 			{
 				if (not ec)
 				{
@@ -561,15 +554,12 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		};
 
 		return asio_ns::async_compose<Handler, void(asio_system_ns::error_code, std::vector<std::string>)>(
-			[
-				state = start,
+			[state = start,
 				name,
 				instruction,
 				lang,
 				prompts,
-				this
-			]
-			(auto &self, const asio_system_ns::error_code &ec = {}, std::vector<std::string> reply = {}) mutable
+				this](auto &self, const asio_system_ns::error_code &ec = {}, std::vector<std::string> reply = {}) mutable
 			{
 				if (not ec)
 				{
@@ -653,7 +643,7 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 	uint16_t m_port;              ///< The port number
 	bool m_forward_agent = false; ///< Flag indicating we want to forward the SSH agent
 
-	asio_ns::io_context &m_io_context;
+	asio_ns::io_context &m_io_context;                            ///< The io_context to use
 	asio_ns::strand<asio_ns::io_context::executor_type> m_strand; ///< for our coroutines
 
 	std::string m_host_version; ///< The host version string, used for generating keys
@@ -667,6 +657,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 		handshake,         ///< In the handshaking phase
 		authenticated      ///< Fully authenticated
 	} m_auth_state = none; ///< The authentication state
+
+	/// @cond
 
 	// Keep track of I/O operations in order to be able to send keep-alive
 	// messages
@@ -747,6 +739,8 @@ class basic_connection : public std::enable_shared_from_this<basic_connection>
 
 	/// \brief The handshake code
 	asio_ns::awaitable<void> do_handshake(std::unique_ptr<detail::open_connection_op> op);
+
+	/// @endcond
 };
 
 // --------------------------------------------------------------------
@@ -814,10 +808,12 @@ class connection : public basic_connection
 	/// \brief Asynchronously open the socket, notifying \a op when done
 	void open_next_layer(std::unique_ptr<detail::wait_connection_op> op) override;
 
+	/// @cond
 	friend async_open_next_layer_impl;
 
 	asio_ns::io_context &m_io_context;     ///< The IO Context we use
 	asio_ns::ip::tcp::socket m_next_layer; ///< The TCP socket
+	/// @endcond
 };
 
 // --------------------------------------------------------------------
@@ -888,6 +884,7 @@ class proxied_connection : public basic_connection
 	void keep_alive(std::chrono::seconds interval = std::chrono::seconds(5), uint32_t max_timeouts = 3) override;
 
   private:
+	/// @cond
 	friend async_wait_impl;
 	friend async_open_next_layer_impl;
 
@@ -899,10 +896,13 @@ class proxied_connection : public basic_connection
 
 	std::shared_ptr<basic_connection> m_proxy; ///< The proxy connection
 	std::shared_ptr<channel> m_channel;        ///< The channel in m_proxy used for this connection
+
+	/// @endcond
 };
 
 // --------------------------------------------------------------------
 
+/// @cond
 template <typename Handler>
 void basic_connection::async_open_impl::operator()(Handler &&handler, basic_connection *connection)
 {
@@ -994,5 +994,7 @@ void basic_connection::async_wait_impl::operator()(
 			break;
 	}
 }
+
+/// @endcond
 
 } // namespace pinch

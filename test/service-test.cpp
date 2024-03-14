@@ -77,7 +77,7 @@ class my_queue
   public:
 	struct handler_base
 	{
-		virtual ~handler_base() {}
+		virtual ~handler_base() = default;
 		virtual void execute() = 0;
 	};
 

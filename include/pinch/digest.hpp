@@ -28,8 +28,10 @@ class invalid_base64 : public std::invalid_argument
 	}
 };
 
-/// \brief base64 routines
+/// \brief decode base64
 blob decode_base64(std::string_view s);
+
+/// \brief encode base64
 std::string encode_base64(const blob &b);
 
 /// \brief hmac/sha1 hashing

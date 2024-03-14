@@ -220,7 +220,7 @@ template <typename HAlg>
 class hash
 {
   public:
-	hash() {}
+	hash() = default;
 
 	hash &update(const CryptoPP::Integer &v)
 	{

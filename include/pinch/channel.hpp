@@ -27,7 +27,6 @@ namespace detail
 
 	// --------------------------------------------------------------------
 
-	/// \brief Channel wait types
 	enum class channel_wait_type
 	{
 		open,
@@ -35,7 +34,7 @@ namespace detail
 		write
 	};
 
-	/// \brief internal classes to implement asynchronous operations
+	// internal classes to implement asynchronous operations
 
 	class open_channel_op : public operation
 	{
@@ -512,6 +511,7 @@ class channel : public std::enable_shared_from_this<channel>
 	{
 	}
 
+	/// \brief destructor
 	virtual ~channel()
 	{
 		if (is_open())
@@ -522,6 +522,7 @@ class channel : public std::enable_shared_from_this<channel>
 	virtual std::string channel_type() const { return "session"; }
 
 	// low level stuff
+	/// @cond
 	void send_pending(const asio_system_ns::error_code &ec = {});
 	void push_received();
 	void check_wait();
@@ -606,14 +607,31 @@ class channel : public std::enable_shared_from_this<channel>
 			ch->check_wait();
 		}
 	};
+
+	/// @endcond
 };
 
 // --------------------------------------------------------------------
 
+/**
+ * @brief An exec channel executes a single command at the other side
+ * 
+ */
 class exec_channel : public channel
 {
   public:
 	using callback_executor_type = asio_ns::execution::any_executor<asio_ns::execution::blocking_t::never_t>;
+
+	/**
+	 * @brief Construct a new exec channel object
+	 * 
+	 * @tparam Handler Type of the \a handler
+	 * @tparam Executor Type of the \a executor
+	 * @param connection The connection to use
+	 * @param cmd The command to execute
+	 * @param handler The handler that will receive the result, an integer with exit code
+	 * @param executor The executor for this call
+	 */
 
 	template <typename Handler, typename Executor>
 	exec_channel(std::shared_ptr<basic_connection> connection,
@@ -625,16 +643,20 @@ class exec_channel : public channel
 	{
 	}
 
-	virtual void opened();
+	/// @cond
+
+	void opened() override;
 
   protected:
-	virtual void handle_channel_request(const std::string &request, ipacket &in,
-		opacket &out);
+	void handle_channel_request(const std::string &request, ipacket &in,
+		opacket &out) override;
 
   private:
 	std::string m_command;
 	std::function<void(std::string, int)> m_handler;
 	callback_executor_type m_executor;
+
+	/// @endcond
 };
 
 } // namespace pinch

@@ -1,7 +1,7 @@
 .vscode
 include/pinch/config.hpp.in
 include/pinch/config.hpp
-doc/bin/
+doc/api/
 doc/html/
 doc/autodoc.xml
 build/

@@ -52,12 +52,15 @@ class port_forward_listener
 	void connection_closed();
 
   private:
+	/// @cond
 	port_forward_listener(const port_forward_listener &);
 	port_forward_listener &
 	operator=(const port_forward_listener &);
 
 	std::shared_ptr<basic_connection> m_connection;
 	std::vector<std::shared_ptr<bound_port>> m_bound_ports;
+
+	/// @endcond
 };
 
 // --------------------------------------------------------------------
@@ -99,9 +102,13 @@ class forwarding_channel : public channel
 	}
 
   protected:
+	/// @cond
+
 	std::string m_remote_address;
 	uint16_t m_remote_port;
 	uint16_t m_local_port;
+
+	/// @endcond
 };
 
 } // namespace pinch

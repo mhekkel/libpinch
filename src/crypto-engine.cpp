@@ -1,4 +1,4 @@
-//        Copyright Maarten L. Hekkelman 2013-2021
+//        Copyright Maarten L. Hekkelman 2013-2024
 // Distributed under the Boost Software License, Version 1.0.
 //    (See accompanying file LICENSE_1_0.txt or copy at
 //          http://www.boost.org/LICENSE_1_0.txt)
@@ -24,121 +24,121 @@
 namespace pinch
 {
 
-struct TransformDataImpl
+struct transform_data_impl
 {
 	std::unique_ptr<CryptoPP::StreamTransformation> m_stream_transformation;
 };
 
-TransformData::~TransformData()
+transform_data::~transform_data()
 {
 	delete m_impl;
 }
 
-void TransformData::clear()
+void transform_data::clear()
 {
 	delete m_impl;
 	m_impl = nullptr;
 }
 
-void TransformData::reset_encryptor(const std::string &name, const uint8_t *key, const uint8_t *iv)
+void transform_data::reset_encryptor(const std::string &name, const uint8_t *key, const uint8_t *iv)
 {
 	clear();
 
 	if (name == "3des-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption>(key, 24, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Encryption>(key, 24, iv)};
 	else if (name == "aes128-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 16, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 16, iv)};
 	else if (name == "aes192-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 24, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 24, iv)};
 	else if (name == "aes256-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 32, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>(key, 32, iv)};
 	else if (name == "aes128-ctr")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 16, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 16, iv)};
 	else if (name == "aes192-ctr")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 24, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 24, iv)};
 	else if (name == "aes256-ctr")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 32, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption>(key, 32, iv)};
 	else
 		assert(false);
 }
 
-void TransformData::reset_decryptor(const std::string &name, const uint8_t *key, const uint8_t *iv)
+void transform_data::reset_decryptor(const std::string &name, const uint8_t *key, const uint8_t *iv)
 {
 	clear();
 
 	if (name == "3des-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption>(key, 24, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::DES_EDE3>::Decryption>(key, 24, iv)};
 	else if (name == "aes128-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 16, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 16, iv)};
 	else if (name == "aes192-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 24, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 24, iv)};
 	else if (name == "aes256-cbc")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 32, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>(key, 32, iv)};
 	else if (name == "aes128-ctr")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 16, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 16, iv)};
 	else if (name == "aes192-ctr")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 24, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 24, iv)};
 	else if (name == "aes256-ctr")
-		m_impl = new TransformDataImpl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 32, iv)};
+		m_impl = new transform_data_impl{std::make_unique<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption>(key, 32, iv)};
 	else
 		assert(false);
 }
 
-void TransformData::process(const uint8_t *in, std::size_t len, uint8_t *out)
+void transform_data::process(const uint8_t *in, std::size_t len, uint8_t *out)
 {
 	assert(m_impl);
 	assert(m_impl->m_stream_transformation);
 	m_impl->m_stream_transformation->ProcessData(out, in, len);
 }
 
-std::size_t TransformData::get_block_size() const
+std::size_t transform_data::get_block_size() const
 {
 	return m_impl->m_stream_transformation->OptimalBlockSize();
 }
 
 // --------------------------------------------------------------------
 
-struct MessageAuthenticationCodeImpl
+struct message_authentication_code_impl
 {
 	std::unique_ptr<CryptoPP::MessageAuthenticationCode> m_verify;
 };
 
-MessageAuthenticationCode::~MessageAuthenticationCode()
+message_authentication_code::~message_authentication_code()
 {
 	delete m_impl;
 }
 
-void MessageAuthenticationCode::clear()
+void message_authentication_code::clear()
 {
 	delete m_impl;
 	m_impl = nullptr;
 }
 
-void MessageAuthenticationCode::reset(const std::string &name, const uint8_t *iv)
+void message_authentication_code::reset(const std::string &name, const uint8_t *iv)
 {
 	clear();
 
 	if (name == "hmac-sha2-512")
-		m_impl = new MessageAuthenticationCodeImpl{std::make_unique<CryptoPP::HMAC<CryptoPP::SHA512>>(iv, 64)};
+		m_impl = new message_authentication_code_impl{std::make_unique<CryptoPP::HMAC<CryptoPP::SHA512>>(iv, 64)};
 	else if (name == "hmac-sha2-256")
-		m_impl = new MessageAuthenticationCodeImpl{std::make_unique<CryptoPP::HMAC<CryptoPP::SHA256>>(iv, 32)};
+		m_impl = new message_authentication_code_impl{std::make_unique<CryptoPP::HMAC<CryptoPP::SHA256>>(iv, 32)};
 	else if (name == "hmac-sha1")
-		m_impl = new MessageAuthenticationCodeImpl{std::make_unique<CryptoPP::HMAC<CryptoPP::SHA1>>(iv, 20)};
+		m_impl = new message_authentication_code_impl{std::make_unique<CryptoPP::HMAC<CryptoPP::SHA1>>(iv, 20)};
 	else
 		assert(false);
 }
 
-void MessageAuthenticationCode::update(const uint8_t *data, std::size_t len)
+void message_authentication_code::update(const uint8_t *data, std::size_t len)
 {
 	m_impl->m_verify->Update(data, len);
 }
 
-bool MessageAuthenticationCode::verify(const uint8_t *signature)
+bool message_authentication_code::verify(const uint8_t *signature)
 {
 	return m_impl->m_verify->Verify(signature);
 }
 
-std::size_t MessageAuthenticationCode::get_digest_size() const
+std::size_t message_authentication_code::get_digest_size() const
 {
 	return m_impl->m_verify->DigestSize();
 }
