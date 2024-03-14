@@ -12,6 +12,7 @@ option(USE_BOOST_ASIO "Use the asio library from Boost instead of the non-boost 
 
 # Documentation
 option(PINCH_BUILD_DOC "Build documentation" OFF)
+option(PINCH_BUILD_EXAMPLES "Build examples" ON)
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers")
@@ -266,4 +267,8 @@ option(PINCH_BUILD_TESTS "Build test executables" OFF)
 
 if(PINCH_BUILD_TESTS)
 	add_subdirectory(test)
+endif()
+
+if(PINCH_BUILD_EXAMPLES)
+	add_subdirectory(examples)
 endif()

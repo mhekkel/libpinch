@@ -7,7 +7,7 @@ int main(int argc, char* const argv[])
 {
 	if (argc != 3)
 	{
-		std::cerr << "usage: example-1 username host" << std::endl;
+		std::cerr << "usage: example-1 username host\n";
 		exit(1);
 	}
 
@@ -36,14 +36,14 @@ int main(int argc, char* const argv[])
 	auto channel = std::make_shared<pinch::exec_channel>(connection, "uptime",
 		[connection](const std::string& req, int status)
 		{
-			std::cout << "req: " << req << " -> status: " << status << std::endl;
+			std::cout << "req: " << req << " -> status: " << status << '\n';
 			connection->close();
 		}, io_context.get_executor());
 
 	/*<< Open a execution channel with the command 'uptime' >>*/
 	channel->async_open([](asio_system_ns::error_code ec)
 	{
-		std::cout << "open result: " << ec.message() << std::endl;
+		std::cout << "open result: " << ec.message() << '\n';
 	});
 
 	/*<< Run the io_context >>*/
