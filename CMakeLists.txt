@@ -4,62 +4,14 @@ project(libpinch VERSION 1.1.1 LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
+include(FindPkgConfig)
+include(CMakePackageConfigHelpers)
 include(CTest)
 
 option(USE_BOOST_ASIO "Use the asio library from Boost instead of the non-boost version" OFF)
 
 # Documentation
 option(PINCH_BUILD_DOC "Build documentation" OFF)
-
-# include(GNUInstallDirs)
-# include(CheckFunctionExists)
-# include(CheckIncludeFiles)
-# include(FindFilesystem)
-# include(CheckLibraryExists)
-# include(CMakePackageConfigHelpers)
-# include(GenerateExportHeader)
-
-# if(CMAKE_CXX_COMPILER_ID MATCHES Clang AND CMAKE_CXX_COMPILER_VERSION LESS 16.0.0)
-# 	if(WIN32)
-# 		set(pinch_compile_flags "/clang:-fcoroutines")
-# 	else()
-# 		set(pinch_compile_flags "-fcoroutines")
-# 	endif()
-# elseif(MSVC)
-# 	check_include_file_cxx("coroutine" has_coroutine "/std:c++latest")
-
-# 	if(NOT has_coroutine)
-# 		message(STATUS "Try <experimental/coroutine> (Coroutines TS) instead of <coroutine> ...")
-# 		check_include_file_cxx("experimental/coroutine" has_coroutine_ts "/std:c++20")
-# 	endif()
-
-# 	# has coroutine headers?
-# 	if(has_coroutine)
-# 		set(pinch_compile_flags "/std:c++latest")
-# 	elseif(has_coroutine_ts)
-# 		set(pinch_compile_flags "/std:c++20")
-# 	else()
-# 		message(FATAL_ERROR "There are no headers for C++ Coroutines")
-# 	endif()
-# elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
-# 	#
-# 	# expect GCC 10 or later
-# 	#
-# 	check_include_file_cxx("coroutine" has_coroutine "-fcoroutines")
-
-# 	if(has_coroutine)
-# 		set(pinch_compile_flags "-fcoroutines")
-# 	endif()
-# endif()
-
-# support compiler options for coroutine?
-# check_cxx_compiler_flag("${pinch_compile_flags}" support_coroutines)
-
-# if(NOT support_coroutines)
-# 	message(FATAL_ERROR "The compiler doesn't support C++ Coroutines")
-# endif()
-
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${pinch_compile_flags}")
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers")
@@ -100,7 +52,7 @@ else()
 	if(MSVC)
 		find_file(ASIO asio.hpp)
 	else()
-		pkg_check_modules(ASIO asio>=1.28 REQUIRED IMPORTED_TARGET)
+		pkg_check_modules(ASIO asio>=1.27 REQUIRED IMPORTED_TARGET)
 	endif()
 
 	message(STATUS "Using standalone asio")
@@ -128,7 +80,6 @@ if(WIN32)
 	# We do not want to write an export file for all our symbols...
 	set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
-
 
 if(MSVC)
 	# make msvc standards compliant...
@@ -209,6 +160,7 @@ endif()
 
 add_library(pinch)
 add_library(pinch::pinch ALIAS pinch)
+target_compile_features(pinch PUBLIC cxx_std_20)
 
 target_sources(pinch
 	PRIVATE ${PINCH_SRC}
@@ -242,8 +194,10 @@ install(EXPORT pinch
 	DESTINATION lib/cmake/pinch
 )
 
-configure_file(${PROJECT_SOURCE_DIR}/cmake/pinch-config.cmake.in
-	${CMAKE_CURRENT_BINARY_DIR}/pinch-config.cmake @ONLY)
+configure_package_config_file(
+	${PROJECT_SOURCE_DIR}/cmake/pinch-config.cmake.in
+	${CMAKE_CURRENT_BINARY_DIR}/pinch-config.cmake
+	INSTALL_DESTINATION lib/cmake/pinch)
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pinch-config.cmake
 	DESTINATION lib/cmake/pinch)
