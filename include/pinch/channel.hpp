@@ -590,8 +590,9 @@ class channel : public std::enable_shared_from_this<channel>
 				handler(error::make_error_code(error::connection_lost), 0);
 			else
 			{
+				auto size = packet.size() - sizeof(uint32_t);
 				ch->m_write_ops.emplace_back(new detail::write_channel_handler(
-					std::move(handler), ch->get_executor(), std::move(packet), packet.size() - sizeof(uint32_t)));
+					std::move(handler), ch->get_executor(), std::move(packet), size));
 				ch->send_pending();
 			}
 		}
