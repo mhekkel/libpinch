@@ -70,6 +70,11 @@ class ssh_agent
 	iterator begin() { return m_private_keys.begin(); }
 	iterator end() { return m_private_keys.end(); }
 
+	const ssh_private_key &at(uint32_t ix)
+	{
+		return m_private_keys.at(ix);
+	}
+
 	ssh_private_key get_key(const std::string &hash) const;
 	ssh_private_key get_key(ipacket &blob) const;
 
